@@ -1,0 +1,6 @@
+{
+  "name": "Life-Scheduler",
+  "description": "高保真个人任务规划拓扑蓝图原型系统。具有动态 DAG 拓扑、标准化模块 BOM 重用、多维目标子图谱合并排布及交互式甘特排期时间轴等全链路设计。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
