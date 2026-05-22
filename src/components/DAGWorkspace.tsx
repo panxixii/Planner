@@ -31,20 +31,41 @@ import {
 } from 'lucide-react';
 import { Task, GoalNode } from '../types';
 
-// Helper to find all downstream children in the DAG path for Mind Map movement
+// Helper to find all connected nodes to move synchronously if the nodeId is the terminal (last) node in the relationship
 const getDescendantNodeIds = (nodeId: string, edges: any[]): Set<string> => {
   const result = new Set<string>();
+  
+  // First, check if the node has outgoing edges (meaning it's a preceding node)
+  const hasOutgoing = edges.some(e => e.source === nodeId);
+  if (hasOutgoing) {
+    // If it is a preceding node, its movement does not affect others
+    return result;
+  }
+  
+  // Second, check if the node has incoming edges (confirming it's connected and is indeed a terminal "last node")
+  const hasIncoming = edges.some(e => e.target === nodeId);
+  if (!hasIncoming) {
+    // Isolated node, starts no chain, is not the "last node" of any chain
+    return result;
+  }
+  
+  // N is a "last node" - find all nodes in its connected component using undirected BFS
   const queue = [nodeId];
   while (queue.length > 0) {
     const current = queue.shift()!;
-    const children = edges.filter((e) => e.source === current).map((e) => e.target);
-    for (const child of children) {
-      if (!result.has(child)) {
-        result.add(child);
-        queue.push(child);
+    // Get all neighboring node IDs regardless of direction
+    const neighbors = edges
+      .filter((e) => e.source === current || e.target === current)
+      .map((e) => e.source === current ? e.target : e.source);
+      
+    for (const neighbor of neighbors) {
+      if (neighbor !== nodeId && !result.has(neighbor)) {
+        result.add(neighbor);
+        queue.push(neighbor);
       }
     }
   }
+  
   return result;
 };
 

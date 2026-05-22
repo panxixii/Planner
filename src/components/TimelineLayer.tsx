@@ -4,6 +4,15 @@ import { Calendar, Clock, Sparkles, SlidersHorizontal, Scale, ChevronRight, Inbo
 
 type ZoomScaleType = 'minutes' | 'hours' | 'days' | 'weeks' | 'months';
 
+const getTodayDateStr = (): string => {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const r = String(d.getDate()).padStart(2, '0');
+  const dateStr = `${y}-${m}-${r}`;
+  return dateStr.startsWith('2026') ? dateStr : '2026-05-22';
+};
+
 export const TimelineLayer: React.FC = () => {
   const tasks = useAppStore((state) => state.tasks);
   const selectTask = useAppStore((state) => state.selectTask);
@@ -89,19 +98,28 @@ export const TimelineLayer: React.FC = () => {
       }
       case 'days':
       default: {
-        const startRaw = '2026-05-20';
+        const startRaw = getTodayDateStr();
         const dates: string[] = [];
         const dateObj = new Date(startRaw);
         for (let i = 0; i < 22; i++) {
           dates.push(dateObj.toISOString().split('T')[0]);
           dateObj.setDate(dateObj.getDate() + 1);
         }
+        
+        const endDateObj = new Date(startRaw);
+        endDateObj.setDate(endDateObj.getDate() + 21);
+        const endDateStr = endDateObj.toISOString().split('T')[0];
+        
+        const startRawObj = new Date(startRaw);
+        const startMD = `${startRawObj.getMonth() + 1}月${startRawObj.getDate()}日`;
+        const endMD = `${endDateObj.getMonth() + 1}月${endDateObj.getDate()}日`;
+
         return {
-          title: '5月20日 - 6月10日 (22天度量，目标追踪)',
+          title: `${startMD} - ${endMD} (22天度量，目标追踪)`,
           gridWidthClass: 'w-[1600px]',
           colCount: 22,
-          rangeStart: new Date('2026-05-20').getTime(),
-          rangeEnd: new Date('2026-06-10').getTime() + 86400000,
+          rangeStart: new Date(startRaw).getTime(),
+          rangeEnd: endDateObj.getTime() + 86400000,
           headers: dates
         };
       }
@@ -241,7 +259,7 @@ export const TimelineLayer: React.FC = () => {
               已实例化计划下的阶段节点
             </div>
             {scaleConfig.headers.map((h, idx) => {
-              const isToday = zoomScale === 'days' && h === '2026-05-21';
+              const isToday = zoomScale === 'days' && h === getTodayDateStr();
               return (
                 <div 
                   key={idx} 
