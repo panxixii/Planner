@@ -75,6 +75,7 @@ export interface AppState {
   
   // Goal Actions
   addGoal: (goal: Goal) => void;
+  deleteGoal: (goalId: string) => void;
   updateGoalNodes: (goalId: string, nodes: GoalNode[]) => void;
   updateGoalEdges: (goalId: string, edges: GoalEdge[]) => void;
   addNodeToGoal: (goalId: string, node: GoalNode) => void;

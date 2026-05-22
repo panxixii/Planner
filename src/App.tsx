@@ -50,6 +50,7 @@ export default function App() {
   const [newCategoryLabel, setNewCategoryLabel] = React.useState('');
   const [editingCategoryId, setEditingCategoryId] = React.useState<string | null>(null);
   const [editingCategoryLabel, setEditingCategoryLabel] = React.useState('');
+  const [deletingCategoryId, setDeletingCategoryId] = React.useState<string | null>(null);
 
   const getCategoryIcon = (id: string, sizeClass = "w-4 h-4") => {
     switch (id) {
@@ -89,7 +90,7 @@ export default function App() {
                 </div>
                 <div>
                   <h2 className="text-sm font-semibold tracking-tight text-neutral-800 font-sans">
-                    人生规划调度器
+                    规划调度器
                   </h2>
                   <span className="text-[10px] text-neutral-450 uppercase font-mono tracking-widest block">
                     DAG 蓝图引擎
@@ -130,12 +131,12 @@ export default function App() {
           <div className="space-y-1.5">
             <div className="flex items-center justify-between px-2 select-none">
               <span className="text-[10px] font-bold text-neutral-450 uppercase font-mono tracking-widest block">
-                类别赛道
+                分类
               </span>
               <button
                 onClick={() => setIsAddingCategory(!isAddingCategory)}
                 className="p-1 rounded text-neutral-400 hover:text-blue-600 hover:bg-neutral-50 transition-all cursor-pointer"
-                title="新建赛道"
+                title="新建分类"
               >
                 <Plus className="w-3.5 h-3.5" />
               </button>
@@ -194,7 +195,7 @@ export default function App() {
                     <span className={isActive ? 'text-blue-600 font-bold' : 'text-neutral-400 shrink-0'}>
                       <Compass className="w-4 h-4" />
                     </span>
-                    <span className="font-sans">所有目标赛道</span>
+                    <span className="font-sans">全部</span>
                   </button>
                 );
               })()}
@@ -244,6 +245,35 @@ export default function App() {
                   );
                 }
 
+                if (deletingCategoryId === c.id) {
+                  return (
+                    <div key={c.id} className="flex items-center justify-between gap-1 bg-rose-50/80 px-2 py-1 outline-none rounded-lg border border-rose-200 animate-in fade-in duration-150">
+                      <span className="text-[10px] font-bold text-rose-800 font-sans truncate flex-grow">
+                        确认删除分类 &ldquo;{c.label}&rdquo;？
+                      </span>
+                      <div className="flex items-center gap-0.5 shrink-0">
+                        <button 
+                          onClick={() => {
+                            deleteCategory(c.id);
+                            setDeletingCategoryId(null);
+                          }}
+                          className="p-0.5 hover:text-rose-700 text-rose-500 font-bold cursor-pointer"
+                          title="确定删除分类及其下属目标"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                        </button>
+                        <button 
+                          onClick={() => setDeletingCategoryId(null)}
+                          className="p-0.5 hover:text-neutral-600 text-neutral-400 cursor-pointer"
+                          title="取消"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
+
                 return (
                   <div key={c.id} className="group relative flex items-center justify-between w-full">
                     <button
@@ -269,19 +299,17 @@ export default function App() {
                           setEditingCategoryLabel(c.label);
                         }}
                         className="p-0.5 text-neutral-400 hover:text-neutral-700 cursor-pointer"
-                        title="重命名赛道"
+                        title="重命名分类"
                       >
                         <Edit className="w-3 h-3" />
                       </button>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (confirm(`确定要移除 “${c.label}” 赛道吗？此操作将永久清理其包含的所有目标及拓扑图。`)) {
-                            deleteCategory(c.id);
-                          }
+                          setDeletingCategoryId(c.id);
                         }}
                         className="p-0.5 text-neutral-400 hover:text-rose-600 cursor-pointer"
-                        title="删除赛道"
+                        title="删除分类"
                       >
                         <Trash2 className="w-3 h-3" />
                       </button>

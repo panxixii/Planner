@@ -203,6 +203,20 @@ export const useAppStore = create<AppState>((set, get) => {
       goals: { ...state.goals, [goal.id]: goal }
     })),
 
+    deleteGoal: (goalId) => persistSet((state: AppState) => {
+      const nextGoals = { ...state.goals };
+      delete nextGoals[goalId];
+      
+      const nextActiveMerged = state.activeMergedGoalIds.filter(id => id !== goalId);
+      const nextSelectedGoalId = state.selectedGoalId === goalId ? null : state.selectedGoalId;
+      
+      return {
+        goals: nextGoals,
+        activeMergedGoalIds: nextActiveMerged,
+        selectedGoalId: nextSelectedGoalId
+      };
+    }),
+
     updateGoalNodes: (goalId, nodes) => persistSet((state: AppState) => {
       const targetGoal = state.goals[goalId];
       if (!targetGoal) return {};

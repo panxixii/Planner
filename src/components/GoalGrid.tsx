@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../store';
 import { Goal, CategoryType, Task } from '../types';
-import { Target, Layers, ArrowRight, Plus, HelpCircle, BarChart3, AlertCircle, BookOpen } from 'lucide-react';
+import { Target, Layers, ArrowRight, Plus, HelpCircle, BarChart3, AlertCircle, BookOpen, Trash2 } from 'lucide-react';
 
 export const GoalGrid: React.FC = () => {
   const goals = useAppStore((state) => state.goals);
@@ -9,6 +9,7 @@ export const GoalGrid: React.FC = () => {
   const selectedCategoryId = useAppStore((state) => state.selectedCategoryId);
   const selectGoal = useAppStore((state) => state.selectGoal);
   const addGoal = useAppStore((state) => state.addGoal);
+  const deleteGoal = useAppStore((state) => state.deleteGoal);
   const showHelp = useAppStore((state) => state.showHelp);
   const toggleHelp = useAppStore((state) => state.toggleHelp);
   const categoriesList = useAppStore((state) => state.categories);
@@ -19,6 +20,7 @@ export const GoalGrid: React.FC = () => {
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState<CategoryType>('career');
   const [color, setColor] = useState('indigo');
+  const [deletingGoalId, setDeletingGoalId] = useState<string | null>(null);
 
   // Synchronize category selection state when opening creation form
   React.useEffect(() => {
@@ -209,22 +211,72 @@ export const GoalGrid: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {filteredGoals.map((g) => {
             const { total, done, percent, hours } = getMetric(g);
+            const isConfirmingDelete = deletingGoalId === g.id;
             return (
               <div
                 key={g.id}
-                onClick={() => selectGoal(g.id)}
-                className="group relative bg-white hover:bg-neutral-55 border border-neutral-200 rounded-xl p-5 flex flex-col justify-between h-56 transition-all duration-300 hover:scale-[1.01] hover:border-neutral-300 cursor-pointer shadow-xs"
+                onClick={() => {
+                  if (isConfirmingDelete) return;
+                  selectGoal(g.id);
+                }}
+                className="group relative bg-white hover:bg-neutral-55 border border-neutral-200 rounded-xl p-5 flex flex-col justify-between h-56 transition-all duration-300 hover:scale-[1.01] hover:border-neutral-300 cursor-pointer shadow-xs overflow-hidden"
               >
+                {isConfirmingDelete ? (
+                  <div 
+                    onClick={(e) => e.stopPropagation()} 
+                    className="absolute inset-0 bg-rose-50/95 backdrop-blur-xs flex flex-col justify-between p-5 z-10 animate-in fade-in zoom-in-95 duration-150 select-none"
+                  >
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-1.5 text-rose-600 font-bold text-xs uppercase font-mono">
+                        <AlertCircle className="w-4 h-4" />
+                        <span>确认彻底删除吗？</span>
+                      </div>
+                      <h4 className="text-[11px] font-semibold text-neutral-800 leading-normal font-sans">
+                        确定永久清除计划 “{g.title}” 吗？此操作将彻底销毁该计划名下的所有规划节点、拓扑连线，且无法撤销！
+                      </h4>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          deleteGoal(g.id);
+                          setDeletingGoalId(null);
+                        }}
+                        className="flex-1 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-[11px] font-bold font-sans transition-all cursor-pointer text-center border border-rose-600 shadow-2xs"
+                      >
+                        确认删除
+                      </button>
+                      <button
+                        onClick={() => setDeletingGoalId(null)}
+                        className="px-3 py-1.5 rounded-lg bg-white border border-neutral-200 hover:bg-neutral-50 text-neutral-600 text-[11px] font-bold font-sans transition-all cursor-pointer text-center"
+                      >
+                        取消
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
                 <div className="space-y-3">
-                  {/* Tag Indicator */}
+                  {/* Tag Indicator & Actions */}
                   <div className="flex items-center justify-between">
                     <span className="px-2 py-0.5 rounded bg-blue-50 border border-blue-200 text-[9.5px] text-blue-600 font-bold font-mono tracking-wide uppercase">
                       {categoriesList.find(c => c.id === g.category)?.label || g.category}
                     </span>
 
-                    <span className="text-[10px] text-neutral-450 font-semibold font-mono">
-                      {hours} 小时预计工时
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] text-neutral-450 font-semibold font-mono">
+                        {hours} 小时预计工时
+                      </span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeletingGoalId(g.id);
+                        }}
+                        className="p-1 text-neutral-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-all cursor-pointer opacity-0 group-hover:opacity-100"
+                        title="删除此目标计划"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
 
                   {/* Title */}
