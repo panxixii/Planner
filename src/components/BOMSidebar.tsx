@@ -71,10 +71,18 @@ export const BOMSidebar: React.FC = () => {
     if (isFolder) {
       return (
         <div key={node.id} className="space-y-1">
-          <button
+          <div
             onClick={() => toggleExpand(node.id)}
-            className="w-full flex items-center justify-between py-1.5 px-2 rounded-lg hover:bg-neutral-100 text-neutral-700 hover:text-neutral-900 transition-all text-xs font-medium group cursor-pointer"
+            className="w-full flex items-center justify-between py-1.5 px-2 rounded-lg hover:bg-neutral-100 text-neutral-700 hover:text-neutral-900 transition-all text-xs font-medium group cursor-pointer select-none"
             style={{ paddingLeft: `${depth * 12 + 8}px` }}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                toggleExpand(node.id);
+              }
+            }}
           >
             <div className="flex items-center gap-1.5 min-w-0">
               {isExpanded ? (
@@ -95,7 +103,7 @@ export const BOMSidebar: React.FC = () => {
             >
               <Plus className="w-3.5 h-3.5" />
             </button>
-          </button>
+          </div>
 
           {/* Inline creation modal */}
           {isAddingToFolder === node.id && (
