@@ -45,6 +45,7 @@ export default function App() {
   const addCategory = useAppStore((state) => state.addCategory);
   const renameCategory = useAppStore((state) => state.renameCategory);
   const deleteCategory = useAppStore((state) => state.deleteCategory);
+  const clearWorkspace = useAppStore((state) => state.clearWorkspace);
 
   const [isAddingCategory, setIsAddingCategory] = React.useState(false);
   const [newCategoryLabel, setNewCategoryLabel] = React.useState('');
@@ -389,6 +390,20 @@ export default function App() {
             >
               <Sparkles className={`w-3.5 h-3.5 ${showHelp ? 'text-blue-600 animate-pulse' : 'text-neutral-400'}`} />
               <span className="font-sans">提示: {showHelp ? '已显示' : '已隐藏'}</span>
+            </button>
+
+            {/* Clear all custom goals/plans */}
+            <button
+              onClick={() => {
+                if (window.confirm('您确定要清空工作区中的所有计划和目标数据吗？')) {
+                  clearWorkspace();
+                }
+              }}
+              className="flex items-center gap-1.5 px-3 py-1 bg-rose-50 hover:bg-rose-100 border border-rose-205 text-rose-600 hover:text-rose-700 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-2xs select-none"
+              title="清空所有的自定义目标与计划"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span className="font-sans">清空计划</span>
             </button>
 
             <span className="text-[11px] text-neutral-550 uppercase tracking-widest bg-neutral-100 px-2.5 py-1 rounded border border-neutral-200">

@@ -119,9 +119,16 @@ const DEMO_BOM_TREE: BOMTreeItem[] = [
   }
 ];
 
-const EMPTY_TASKS = DEMO_TASKS;
-const EMPTY_GOALS = DEMO_GOALS;
-const EMPTY_BOM_TREE = DEMO_BOM_TREE;
+const EMPTY_TASKS: Record<string, Task> = {
+  't-bom-ds': { id: 't-bom-ds', title: '核心多数据源配置', description: '配置分布式读写分离，处理数据库冗余及分布式事务。', duration: 4, isDone: false, color: 'sky' },
+  't-bom-rd': { id: 't-bom-rd', title: 'Redis多级路由缓存层', description: '整合Redis高可用集群，拦截热点 key 穿透，实施限流降级。', duration: 3, isDone: false, color: 'sky' },
+  't-bom-auth': { id: 't-bom-auth', title: '统一安全鉴权拦截插件', description: '结合 OAuth 与 JWT，实现细粒度的接口权限级别拦截服务。', duration: 5, isDone: false, color: 'sky' },
+  't-bom-stretch': { id: 't-bom-stretch', title: '30分钟核心力量拉伸', description: '强化下背及腹内斜肌群力量。', duration: 1, isDone: false, color: 'emerald' },
+  't-bom-cardio': { id: 't-bom-cardio', title: '深蹲与心肺有氧强化训练', description: '负重自重交叉锻炼。', duration: 2, isDone: false, color: 'emerald' },
+  't-bom-feynman': { id: 't-bom-feynman', title: '费曼技巧周度输出提纲', description: '教授他人，归纳盲区并查漏补缺。', duration: 3, isDone: false, color: 'amber' }
+};
+const EMPTY_GOALS: Record<string, Goal> = {};
+const EMPTY_BOM_TREE: BOMTreeItem[] = DEMO_BOM_TREE;
 
 // Standard category list defaults, fully renameable/deleteable by user
 const DEFAULT_CATEGORIES: AppCategory[] = [
@@ -148,6 +155,10 @@ const loadSavedState = () => {
         const loadedGoals = parsed.goals || {};
         const validatedGoals: Record<string, Goal> = {};
         Object.entries(loadedGoals).forEach(([gid, goal]: [string, any]) => {
+          // Skip built-in showcase demonstration plans to satisfy user request of purging them completely
+          if (gid === 'goal-tech-saas' || gid === 'goal-health-marathon' || gid === 'goal-personal-book') {
+            return;
+          }
           if (goal && typeof goal === 'object') {
             validatedGoals[gid] = {
               id: goal.id || gid,
@@ -161,8 +172,21 @@ const loadSavedState = () => {
           }
         });
 
+        const loadedTasks = parsed.tasks || {};
+        const validatedTasks: Record<string, Task> = {};
+        Object.entries(loadedTasks).forEach(([tid, task]: [string, any]) => {
+          // Skip default preloaded plan tasks
+          const isDemoTask = ['t-tech-1', 't-tech-2', 't-tech-3', 't-tech-4', 't-health-1', 't-health-2', 't-health-3', 't-health-4', 't-grow-1', 't-grow-2', 't-grow-3'].includes(tid);
+          if (isDemoTask) return;
+          if (task && typeof task === 'object') {
+            validatedTasks[tid] = task;
+          }
+        });
+        // Always backfill/ensure the baseline BOM database components are present
+        Object.assign(validatedTasks, EMPTY_TASKS);
+
         return {
-          tasks: parsed.tasks || {},
+          tasks: validatedTasks,
           goals: validatedGoals,
           bomTree: Array.isArray(parsed.bomTree) ? parsed.bomTree : [],
           categories: safeCategories,
@@ -466,6 +490,15 @@ export const useAppStore = create<AppState>((set, get) => {
     }),
 
     toggleSidebar: () => persistSet((state: AppState) => ({ isSidebarCollapsed: !state.isSidebarCollapsed })),
-    toggleHelp: () => persistSet((state: AppState) => ({ showHelp: !state.showHelp }))
+    toggleHelp: () => persistSet((state: AppState) => ({ showHelp: !state.showHelp })),
+    clearWorkspace: () => persistSet({
+      tasks: EMPTY_TASKS,
+      goals: {},
+      selectedGoalId: null,
+      selectedTaskId: null,
+      isMergedView: false,
+      activeMergedGoalIds: [],
+      crossGoalEdges: []
+    })
   };
 });

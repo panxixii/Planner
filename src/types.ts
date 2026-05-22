@@ -96,4 +96,5 @@ export interface AppState {
   toggleSidebar: () => void;
   showHelp: boolean;
   toggleHelp: () => void;
+  clearWorkspace: () => void;
 }
