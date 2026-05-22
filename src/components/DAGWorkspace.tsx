@@ -88,13 +88,10 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
   const nodes: Node[] = useMemo(() => {
     if (isMergedView) {
       const allNodes: Node[] = [];
-      Object.entries(goals).forEach(([gid, g]) => {
-        // ONLY include if this goal ID has been pulled/loaded into workspace!
-        if (!activeMergedGoalIds.includes(gid)) return;
-
-        let yOffset = 0;
-        if (gid === 'goal-health-marathon') yOffset = 250;
-        if (gid === 'goal-personal-book') yOffset = 500;
+      const activeGoalIds = Object.keys(goals).filter(gid => activeMergedGoalIds.includes(gid));
+      activeGoalIds.forEach((gid, index) => {
+        const g = goals[gid];
+        const yOffset = index * 250;
 
         g.nodes.forEach((n) => {
           allNodes.push({
@@ -197,13 +194,14 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
     const { id, position } = node;
 
     if (isMergedView) {
+      const activeGoalIds = Object.keys(goals).filter(gid => activeMergedGoalIds.includes(gid));
       for (const [gid, g] of Object.entries(goals)) {
         const matchIdx = g.nodes.findIndex((n) => n.id === id);
         if (matchIdx !== -1) {
           const prevPosition = g.nodes[matchIdx].position;
-          let yOffset = 0;
-          if (gid === 'goal-health-marathon') yOffset = 250;
-          if (gid === 'goal-personal-book') yOffset = 500;
+          
+          const index = activeGoalIds.indexOf(gid);
+          const yOffset = index !== -1 ? index * 250 : 0;
 
           const targetX = position.x;
           const targetY = position.y - yOffset;
