@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState, useEffect } from 'react';
 import { 
   ReactFlow, 
   Background, 
@@ -7,7 +7,11 @@ import {
   Connection,
   Edge,
   Node,
-  BackgroundVariant
+  BackgroundVariant,
+  applyNodeChanges,
+  applyEdgeChanges,
+  NodeChange,
+  EdgeChange
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useAppStore } from '../store';
@@ -84,10 +88,14 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
     taskNode: TaskNode
   }), []);
 
-  // Compute final elements
-  const nodes: Node[] = useMemo(() => {
+  // Compute final elements dynamically with local cache
+  const [localNodes, setLocalNodes] = useState<Node[]>([]);
+  const [localEdges, setLocalEdges] = useState<Edge[]>([]);
+
+  // Calculate clean merged nodes and edges whenever underlying store state changes
+  useEffect(() => {
+    let computedNodes: Node[] = [];
     if (isMergedView) {
-      const allNodes: Node[] = [];
       const activeGoalIds = Object.keys(goals).filter(gid => activeMergedGoalIds.includes(gid));
       activeGoalIds.forEach((gid, index) => {
         const g = goals[gid];
@@ -96,32 +104,27 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
 
         g.nodes.forEach((n) => {
           if (!n) return;
-          allNodes.push({
+          computedNodes.push({
             id: n.id,
             type: 'taskNode',
             position: { x: n.position.x, y: n.position.y + yOffset },
-            data: { taskId: n.taskId, goalColor: g.color, goalTitle: g.title, isMerged: true }
+            data: { taskId: n.taskId, goalColor: g.color, goalTitle: g.title, goalId: gid, isMerged: true }
           });
         });
       });
-      return allNodes;
     } else if (selectedGoalId && goals[selectedGoalId]) {
       const goal = goals[selectedGoalId];
-      return (goal.nodes || []).map((n) => ({
+      computedNodes = (goal.nodes || []).map((n) => ({
         id: n.id,
         type: 'taskNode',
         position: n.position,
-        data: { taskId: n.taskId, goalColor: goal.color, goalTitle: goal.title, isMerged: false }
+        data: { taskId: n.taskId, goalColor: goal.color, goalTitle: goal.title, goalId: selectedGoalId, isMerged: false }
       }));
     }
-    return [];
-  }, [isMergedView, selectedGoalId, goals, activeMergedGoalIds]);
 
-  const edges: Edge[] = useMemo(() => {
+    let computedEdges: Edge[] = [];
     if (isMergedView) {
-      const allEdges: Edge[] = [];
       Object.keys(goals).forEach((gid) => {
-        // ONLY render structural edges of loaded goals
         if (!activeMergedGoalIds.includes(gid)) return;
 
         const g = goals[gid];
@@ -129,33 +132,33 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
         g.edges.forEach((e) => {
           if (!e) return;
           const isCustom = e.id.startsWith('edge-custom-');
-          allEdges.push({
+          computedEdges.push({
             id: e.id,
             source: e.source,
             target: e.target,
-            type: 'step', // Ensure hard orthogonal step connections
+            type: 'step',
             animated: isCustom,
             style: { 
               stroke: isCustom ? '#2563EB' : '#94A3B8', 
               strokeWidth: isCustom ? 2.5 : 1.5,
               opacity: isCustom ? 1 : 0.65
             },
-            interactionWidth: 25 // Enlarge hitbox for easy double-clicking to delete!
+            interactionWidth: 25
           });
         });
       });
 
-      // Overlay cross-goal connections, ONLY if both source and target nodes exist in our visible node list
+      // Overlay cross-goal connections
       crossGoalEdges.forEach((e) => {
-        const hasSource = nodes.some(n => n.id === e.source);
-        const hasTarget = nodes.some(n => n.id === e.target);
+        const hasSource = computedNodes.some(n => n.id === e.source);
+        const hasTarget = computedNodes.some(n => n.id === e.target);
         if (hasSource && hasTarget) {
           const isCustom = e.id.startsWith('edge-custom-');
-          allEdges.push({
+          computedEdges.push({
             id: e.id,
             source: e.source,
             target: e.target,
-            type: 'step', // Ensure hard orthogonal step connections
+            type: 'step',
             animated: isCustom,
             style: { 
               stroke: isCustom ? '#2563EB' : '#94A3B8', 
@@ -165,98 +168,116 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
             },
             label: isCustom ? '自订跨赛道依赖' : '同构默认依赖',
             labelStyle: { fill: isCustom ? '#2563EB' : '#94A3B8', fontSize: 9, fontFamily: 'monospace', fontWeight: 'bold' },
-            interactionWidth: 25 // Enlarge hitbox for easy double-clicking to delete!
+            interactionWidth: 25
           });
         }
       });
-
-      return allEdges;
     } else if (selectedGoalId && goals[selectedGoalId]) {
       const goal = goals[selectedGoalId];
-      return (goal.edges || []).map((e) => {
+      computedEdges = (goal.edges || []).map((e) => {
         if (!e) return {} as Edge;
         const isCustom = e.id.startsWith('edge-custom-');
         return {
           id: e.id,
           source: e.source,
           target: e.target,
-          type: 'step', // Ensure hard orthogonal step connections
+          type: 'step',
           animated: isCustom,
           style: { 
             stroke: isCustom ? '#2563EB' : '#94A3B8', 
             strokeWidth: isCustom ? 2.5 : 1.5,
             opacity: isCustom ? 1 : 0.65
           },
-          interactionWidth: 25 // Enlarge hitbox for easy double-clicking to delete!
+          interactionWidth: 25
         };
       });
     }
-    return [];
-  }, [isMergedView, selectedGoalId, goals, crossGoalEdges, activeMergedGoalIds, nodes]);
 
-  // Continuous dragging of parent and all child descendants simultaneously (Mind-Map style)
+    setLocalNodes(computedNodes);
+    setLocalEdges(computedEdges);
+  }, [isMergedView, selectedGoalId, goals, activeMergedGoalIds, crossGoalEdges]);
+
+  // Standard React Flow selection and state synchronization handlers
+  const onNodesChange = useCallback((changes: NodeChange[]) => {
+    setLocalNodes((nds) => applyNodeChanges(changes, nds));
+  }, []);
+
+  const onEdgesChange = useCallback((changes: EdgeChange[]) => {
+    setLocalEdges((eds) => applyEdgeChanges(changes, eds));
+  }, []);
+
+  // Continuous dragging of parent and all child descendants synchronously (Mind-Map style update in local state)
   const onNodeDrag = useCallback((_event: React.MouseEvent, node: Node) => {
     const { id, position } = node;
 
+    // Find previous local node layout coords
+    const prevNode = localNodes.find((n) => n.id === id);
+    if (!prevNode) return;
+
+    const dx = position.x - prevNode.position.x;
+    const dy = position.y - prevNode.position.y;
+
+    if (dx !== 0 || dy !== 0) {
+      const descIds = getDescendantNodeIds(id, localEdges);
+      setLocalNodes((nds) =>
+        nds.map((n) => {
+          if (n.id === id) {
+            return { ...n, position };
+          } else if (descIds.has(n.id)) {
+            return {
+              ...n,
+              position: {
+                x: n.position.x + dx,
+                y: n.position.y + dy,
+              },
+            };
+          }
+          return n;
+        })
+      );
+    }
+  }, [localNodes, localEdges]);
+
+  // When drag is complete, compile coordinates and save them back to each corresponding goal in store
+  const onNodeDragStop = useCallback((_event: React.MouseEvent, node: Node) => {
     if (isMergedView) {
       const activeGoalIds = Object.keys(goals).filter(gid => activeMergedGoalIds.includes(gid));
-      for (const [gid, g] of Object.entries(goals)) {
-        if (!g || !g.nodes) continue;
-        const matchIdx = g.nodes.findIndex((n) => n.id === id);
-        if (matchIdx !== -1) {
-          const prevPosition = g.nodes[matchIdx].position;
-          
-          const index = activeGoalIds.indexOf(gid);
-          const yOffset = index !== -1 ? index * 250 : 0;
+      activeGoalIds.forEach((gid, index) => {
+        const g = goals[gid];
+        if (!g || !g.nodes) return;
+        const yOffset = index * 250;
 
-          const targetX = position.x;
-          const targetY = position.y - yOffset;
-
-          const dx = targetX - prevPosition.x;
-          const dy = targetY - prevPosition.y;
-
-          if (dx !== 0 || dy !== 0) {
-            const descIds = getDescendantNodeIds(id, g.edges || []);
-            const updatedNodes = g.nodes.map((n) => {
-              if (n.id === id) {
-                return { ...n, position: { x: targetX, y: targetY } };
-              } else if (descIds.has(n.id)) {
-                return { ...n, position: { x: n.position.x + dx, y: n.position.y + dy } };
+        const updatedGoalNodes = g.nodes.map((gn) => {
+          const match = localNodes.find((ln) => ln.id === gn.id);
+          if (match) {
+            return {
+              ...gn,
+              position: {
+                x: match.position.x,
+                y: match.position.y - yOffset
               }
-              return n;
-            });
-            updateGoalNodes(gid, updatedNodes);
+            };
           }
-          break;
-        }
-      }
+          return gn;
+        });
+
+        updateGoalNodes(gid, updatedGoalNodes);
+      });
     } else if (selectedGoalId && goals[selectedGoalId]) {
       const g = goals[selectedGoalId];
-      const matchIdx = g.nodes.findIndex((n) => n.id === id);
-      if (matchIdx !== -1) {
-        const prevPosition = g.nodes[matchIdx].position;
-        const dx = position.x - prevPosition.x;
-        const dy = position.y - prevPosition.y;
-
-        if (dx !== 0 || dy !== 0) {
-          const descIds = getDescendantNodeIds(id, g.edges);
-          const updatedNodes = g.nodes.map((n) => {
-            if (n.id === id) {
-              return { ...n, position: { x: position.x, y: position.y } };
-            } else if (descIds.has(n.id)) {
-              return { ...n, position: { x: n.position.x + dx, y: n.position.y + dy } };
-            }
-            return n;
-          });
-          updateGoalNodes(selectedGoalId, updatedNodes);
+      const updatedGoalNodes = g.nodes.map((gn) => {
+        const match = localNodes.find((ln) => ln.id === gn.id);
+        if (match) {
+          return {
+            ...gn,
+            position: match.position
+          };
         }
-      }
+        return gn;
+      });
+      updateGoalNodes(selectedGoalId, updatedGoalNodes);
     }
-  }, [isMergedView, selectedGoalId, goals, updateGoalNodes]);
-
-  const onNodeDragStop = useCallback((_event: React.MouseEvent, node: Node) => {
-    onNodeDrag(_event, node);
-  }, [onNodeDrag]);
+  }, [isMergedView, selectedGoalId, goals, activeMergedGoalIds, localNodes, updateGoalNodes]);
 
   // Handle Tab keypress to spawn a child concept node directly aligned rightwards
   const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
@@ -266,11 +287,9 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
     }
 
     if (event.key === 'Tab') {
-      // Find the currently selected element on the reactive landscape
-      const selectedNode = nodes.find((n) => n.selected);
+      const selectedNode = localNodes.find((n) => n.selected);
       if (!selectedNode) return;
 
-      // Disable tab list navigation default layout cycling
       event.preventDefault();
 
       let targetGoalId = selectedGoalId;
@@ -287,12 +306,10 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
 
       const g = goals[targetGoalId];
 
-      // Standard child offset positioning (Mind map horizontal branches flow)
       const sourcePos = selectedNode.position;
       let nextX = sourcePos.x + 250;
       let nextY = sourcePos.y;
 
-      // Safe collision check - Never overlapping nodes!
       while (g && g.nodes && g.nodes.some((n) => Math.abs(n.position.x - nextX) < 100 && Math.abs(n.position.y - nextY) < 60)) {
         nextY += 110;
       }
@@ -319,7 +336,6 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
 
       addNodeToGoal(targetGoalId, newGoalNode);
 
-      // Create a sharp orthogonal visual connector line
       const edgeId = `edge-custom-${Math.random().toString(36).substring(2, 9)}`;
       const newEdge = {
         id: edgeId,
@@ -330,16 +346,20 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
 
       showToast('🍀 思维子分支已生成！已建立右偏对齐连线(硬直角)！');
     }
-  }, [nodes, isMergedView, selectedGoalId, goals, addTask, addNodeToGoal, addEdgeToGoal, showToast]);
+  }, [localNodes, isMergedView, selectedGoalId, goals, addTask, addNodeToGoal, addEdgeToGoal, showToast]);
 
   // Handle new dependency connections
   const onConnect = useCallback((connection: Connection) => {
     const edgeId = `edge-custom-${Math.random().toString(36).substring(2, 9)}`;
     
     if (isMergedView) {
-      // Cross-goal dependency
-      const isCross = nodes.find(n => n.id === connection.source)?.data?.goalTitle !==
-                      nodes.find(n => n.id === connection.target)?.data?.goalTitle;
+      const sourceNode = localNodes.find(n => n.id === connection.source);
+      const targetNode = localNodes.find(n => n.id === connection.target);
+      
+      const sourceGoalId = sourceNode?.data?.goalId;
+      const targetGoalId = targetNode?.data?.goalId;
+      
+      const isCross = sourceGoalId !== targetGoalId;
       
       const newEdge = {
         id: edgeId,
@@ -349,13 +369,8 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
 
       if (isCross) {
         addCrossGoalEdge(newEdge);
-      } else {
-        for (const [gid, g] of Object.entries(goals)) {
-          if (g && g.nodes && g.nodes.some(n => n.id === connection.source)) {
-            addEdgeToGoal(gid, newEdge);
-            break;
-          }
-        }
+      } else if (sourceGoalId) {
+        addEdgeToGoal(sourceGoalId, newEdge);
       }
     } else if (selectedGoalId) {
       const newEdge = {
@@ -365,7 +380,7 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
       };
       addEdgeToGoal(selectedGoalId, newEdge);
     }
-  }, [isMergedView, selectedGoalId, nodes, goals, addCrossGoalEdge, addEdgeToGoal]);
+  }, [isMergedView, selectedGoalId, localNodes, addCrossGoalEdge, addEdgeToGoal]);
 
   // Double click edge to delete dependency (RESTRICTED TO CUSTOM WORKSPACE EDGES IN MERGED VIEW ONLY)
   const onEdgeDoubleClick = useCallback((_event: React.MouseEvent, edge: Edge) => {
@@ -635,9 +650,11 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
         className="flex-1 min-h-0 bg-neutral-50/50 cursor-grab active:cursor-grabbing text-neutral-800 outline-none"
       >
         <ReactFlow
-          nodes={nodes}
-          edges={edges}
+          nodes={localNodes}
+          edges={localEdges}
           nodeTypes={nodeTypes}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
           onNodeDrag={onNodeDrag}
           onNodeDragStop={onNodeDragStop}
           onConnect={onConnect}
