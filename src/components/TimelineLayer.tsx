@@ -119,6 +119,47 @@ export const TimelineLayer: React.FC = () => {
     return names[d.getDay()];
   };
 
+  const getDaysRemainingStr = (endTimeStr?: string) => {
+    if (!endTimeStr) return '';
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const end = new Date(endTimeStr);
+    end.setHours(0, 0, 0, 0);
+    
+    const diffTime = end.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 0) {
+      return '今日截止';
+    } else if (diffDays < 0) {
+      return `已逾期 ${Math.abs(diffDays)} 天`;
+    } else {
+      return `剩 ${diffDays} 天`;
+    }
+  };
+
+  const getCountdownBadgeClass = (endTimeStr: string, isDone: boolean) => {
+    if (isDone) return 'bg-neutral-100 text-neutral-400 border border-neutral-200';
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const end = new Date(endTimeStr);
+    end.setHours(0, 0, 0, 0);
+    
+    const diffTime = end.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays < 0) {
+      return 'bg-rose-50 text-rose-500 border border-rose-100';
+    } else if (diffDays <= 2) {
+      return 'bg-amber-50 text-amber-600 border border-amber-150 animate-pulse';
+    } else {
+      return 'bg-emerald-50 text-emerald-600 border border-emerald-100';
+    }
+  };
+
   // 3. COLOR CLASSES MAPPING
   const colorClasses: Record<string, string> = {
     emerald: 'from-emerald-500 to-emerald-600 border-emerald-400/30 text-white shadow-emerald-500/10',
@@ -279,9 +320,14 @@ export const TimelineLayer: React.FC = () => {
                       >
                         {task.title}
                       </button>
-                      <span className="text-[9.5px] text-neutral-450 font-mono">
-                        工期评估: {task.duration}h
-                      </span>
+                      <div className="flex items-center gap-1.5 text-[9px] text-neutral-450 font-mono">
+                        <span>工期评估: {task.duration}h</span>
+                        {task.endTime && (
+                          <span className={`px-1 py-0.2 rounded text-[8px] font-medium leading-none shrink-0 ${getCountdownBadgeClass(task.endTime, task.isDone)}`}>
+                            {getDaysRemainingStr(task.endTime)}
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     {/* Timeline Multi Column Cell spanning track */}
@@ -303,9 +349,16 @@ export const TimelineLayer: React.FC = () => {
                               : barColor
                             }`}
                         >
-                          <span className="text-[10px] font-sans font-medium truncate">
-                            {task.title}
-                          </span>
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="text-[10px] font-sans font-medium truncate">
+                              {task.title}
+                            </span>
+                            {task.endTime && !task.isDone && (
+                              <span className="hidden sm:inline bg-black/15 text-white/95 px-1 py-0.2 rounded text-[8px] font-bold shrink-0 font-mono scale-90">
+                                {getDaysRemainingStr(task.endTime)}
+                              </span>
+                            )}
+                          </div>
                           
                           <div className="flex items-center gap-0.5 shrink-0 font-mono text-[9px] opacity-80 group-hover:opacity-100">
                             <Clock className="w-2.5 h-2.5" />
