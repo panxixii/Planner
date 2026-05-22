@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../store';
-import { Calendar, Clock, Sparkles, SlidersHorizontal, Scale, ChevronRight, Inbox } from 'lucide-react';
+import { Calendar, Clock, Sparkles, SlidersHorizontal, Scale, ChevronRight, Inbox, GripVertical } from 'lucide-react';
 
 type ZoomScaleType = 'minutes' | 'hours' | 'days' | 'weeks' | 'months';
 
@@ -18,8 +18,14 @@ export const TimelineLayer: React.FC = () => {
   const selectTask = useAppStore((state) => state.selectTask);
   const goals = useAppStore((state) => state.goals);
   const activeMergedGoalIds = useAppStore((state) => state.activeMergedGoalIds);
+  const timelineTaskOrder = useAppStore((state) => state.timelineTaskOrder);
+  const setTimelineTaskOrder = useAppStore((state) => state.setTimelineTaskOrder);
 
   const [zoomScale, setZoomScale] = useState<ZoomScaleType>('days');
+
+  // Drag and drop sorting state
+  const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
+  const [dragOverTaskId, setDragOverTaskId] = useState<string | null>(null);
 
   // 1. FILTER TASKS: Only display tasks that belong to goals currently LOADED into the merged workspace!
   const visibleTasks = useMemo(() => {
@@ -39,6 +45,64 @@ export const TimelineLayer: React.FC = () => {
       (t) => visibleTaskIds.has(t.id) && t.startTime && t.endTime
     );
   }, [tasks, goals, activeMergedGoalIds]);
+
+  // Synchronously sort the filtered tasks based on custom sort criteria
+  const orderedVisibleTasks = useMemo(() => {
+    const list = [...visibleTasks];
+    list.sort((a, b) => {
+      const idxA = timelineTaskOrder.indexOf(a.id);
+      const idxB = timelineTaskOrder.indexOf(b.id);
+      if (idxA !== -1 && idxB !== -1) {
+        return idxA - idxB;
+      }
+      if (idxA !== -1) return -1;
+      if (idxB !== -1) return 1;
+      return a.title.localeCompare(b.title); // stable alphabetical fallback
+    });
+    return list;
+  }, [visibleTasks, timelineTaskOrder]);
+
+  // Drag event handler definitions
+  const handleDragStart = (e: React.DragEvent, id: string) => {
+    setDraggedTaskId(id);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', id);
+  };
+
+  const handleDragOver = (e: React.DragEvent, targetId: string) => {
+    e.preventDefault();
+    if (draggedTaskId === targetId) return;
+    setDragOverTaskId(targetId);
+  };
+
+  const handleDragEnd = () => {
+    if (draggedTaskId && dragOverTaskId && draggedTaskId !== dragOverTaskId) {
+      const allIds = orderedVisibleTasks.map(t => t.id);
+      const fromIndex = allIds.indexOf(draggedTaskId);
+      const toIndex = allIds.indexOf(dragOverTaskId);
+
+      if (fromIndex !== -1 && toIndex !== -1) {
+        const updatedIds = [...allIds];
+        const [movedId] = updatedIds.splice(fromIndex, 1);
+        updatedIds.splice(toIndex, 0, movedId);
+
+        setTimelineTaskOrder(updatedIds);
+      }
+    }
+    setDraggedTaskId(null);
+    setDragOverTaskId(null);
+  };
+
+  const getDragBorderClass = (taskId: string) => {
+    if (taskId !== dragOverTaskId || !draggedTaskId) return '';
+    const taskIds = orderedVisibleTasks.map(t => t.id);
+    const fromIdx = taskIds.indexOf(draggedTaskId);
+    const toIdx = taskIds.indexOf(taskId);
+    if (fromIdx === -1 || toIdx === -1) return '';
+    return fromIdx > toIdx 
+      ? 'border-t-2 border-t-blue-500 bg-blue-50/10' 
+      : 'border-b-2 border-b-blue-500 bg-blue-50/10';
+  };
 
   // 2. DEFINE TIMELINE TIME BOUNDS & HEADERS PER SCALE
   const scaleConfig = useMemo(() => {
@@ -281,14 +345,14 @@ export const TimelineLayer: React.FC = () => {
 
           {/* B. Gantt Progression Tracks */}
           <div className="flex-1 overflow-y-auto divide-y divide-neutral-100">
-            {visibleTasks.length === 0 ? (
+            {orderedVisibleTasks.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-neutral-450 text-xs py-12 gap-2 font-mono">
                 <Inbox className="w-8 h-8 text-neutral-350 stroke-1" />
                 <span>当前合并画布没有载入任何拓扑节点，时间轴无排期指标。</span>
                 <span className="text-[10px] text-neutral-400">请勾选载入成长计划，或拖拽左下角 BOM 里程碑至画布。</span>
               </div>
             ) : (
-              visibleTasks.map((task) => {
+              orderedVisibleTasks.map((task) => {
                 // Calculate bounds style using math utilities
                 let startTs = new Date(task.startTime!).getTime();
                 let endTs = new Date(task.endTime!).getTime() + 86400000;
@@ -327,24 +391,38 @@ export const TimelineLayer: React.FC = () => {
                 return (
                   <div 
                     key={task.id} 
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, task.id)}
+                    onDragOver={(e) => handleDragOver(e, task.id)}
+                    onDragEnd={handleDragEnd}
                     style={{ gridTemplateColumns: `240px repeat(${scaleConfig.colCount}, 1fr)` }}
-                    className="grid items-center hover:bg-neutral-50/50 transition-colors divide-x divide-neutral-100 py-2.5 h-[52px]"
+                    className={`grid items-center transition-all divide-x divide-neutral-100 py-2.5 h-[52px] relative
+                      ${draggedTaskId === task.id ? 'opacity-40 bg-neutral-100 cursor-grabbing' : 'hover:bg-neutral-50/50'}
+                      ${getDragBorderClass(task.id)}
+                    `}
                   >
                     {/* Normalized Task Identifier Row Header */}
-                    <div className="px-6 flex flex-col justify-center min-w-0">
-                      <button
-                        onClick={() => selectTask(task.id)}
-                        className="text-xs font-semibold text-neutral-800 hover:text-blue-600 truncate text-left transition-colors cursor-pointer font-sans"
-                      >
-                        {task.title}
-                      </button>
-                      <div className="flex items-center gap-1.5 text-[9px] text-neutral-450 font-mono">
-                        <span>工期评估: {task.duration}h</span>
-                        {task.endTime && (
-                          <span className={`px-1 py-0.2 rounded text-[8px] font-medium leading-none shrink-0 ${getCountdownBadgeClass(task.endTime, task.isDone)}`}>
-                            {getDaysRemainingStr(task.endTime)}
-                          </span>
-                        )}
+                    <div className="px-4 pr-6 flex items-center gap-2 min-w-0">
+                      {/* Drag Handle Indicator */}
+                      <div className="text-neutral-300 cursor-grab active:cursor-grabbing hover:text-neutral-500 transition-colors shrink-0">
+                        <GripVertical className="w-3.5 h-3.5" />
+                      </div>
+
+                      <div className="flex flex-col justify-center min-w-0 flex-1">
+                        <button
+                          onClick={() => selectTask(task.id)}
+                          className="text-xs font-semibold text-neutral-800 hover:text-blue-600 truncate text-left transition-colors cursor-pointer font-sans"
+                        >
+                          {task.title}
+                        </button>
+                        <div className="flex items-center gap-1.5 text-[9px] text-neutral-450 font-mono">
+                          <span>工期评估: {task.duration}h</span>
+                          {task.endTime && (
+                            <span className={`px-1 py-0.2 rounded text-[8px] font-medium leading-none shrink-0 ${getCountdownBadgeClass(task.endTime, task.isDone)}`}>
+                              {getDaysRemainingStr(task.endTime)}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
 

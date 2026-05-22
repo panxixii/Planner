@@ -97,4 +97,8 @@ export interface AppState {
   showHelp: boolean;
   toggleHelp: () => void;
   clearWorkspace: () => void;
+  
+  // Custom task sorting for Gantt timeline
+  timelineTaskOrder: string[];
+  setTimelineTaskOrder: (order: string[]) => void;
 }
