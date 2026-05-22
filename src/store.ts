@@ -89,46 +89,11 @@ const DEMO_GOALS: Record<string, Goal> = {
   }
 };
 
-const DEMO_BOM_TREE: BOMTreeItem[] = [
-  {
-    id: 'bom-tech-pack',
-    title: '研发与工程架构模板',
-    type: 'category',
-    children: [
-      { id: 'bom-node-tech-1', title: '核心多数据源配置', type: 'task', taskId: 't-bom-ds' },
-      { id: 'bom-node-tech-2', title: 'Redis多级路由缓存层', type: 'task', taskId: 't-bom-rd' },
-      { id: 'bom-node-tech-3', title: '统一安全鉴权拦截插件', type: 'task', taskId: 't-bom-auth' }
-    ]
-  },
-  {
-    id: 'bom-health-routines',
-    title: '精力调理与健康常设模块',
-    type: 'category',
-    children: [
-      { id: 'bom-node-hea-1', title: '30分钟核心力量拉伸', type: 'task', taskId: 't-bom-stretch' },
-      { id: 'bom-node-hea-2', title: '深蹲与心肺有氧强化训练', type: 'task', taskId: 't-bom-cardio' }
-    ]
-  },
-  {
-    id: 'bom-growth-blueprints',
-    title: '终身成长规划库',
-    type: 'category',
-    children: [
-      { id: 'bom-node-grow-1', title: '费曼技巧周度输出提纲', type: 'task', taskId: 't-bom-feynman' }
-    ]
-  }
-];
+const DEMO_BOM_TREE: BOMTreeItem[] = [];
 
-const EMPTY_TASKS: Record<string, Task> = {
-  't-bom-ds': { id: 't-bom-ds', title: '核心多数据源配置', description: '配置分布式读写分离，处理数据库冗余及分布式事务。', duration: 4, isDone: false, color: 'sky' },
-  't-bom-rd': { id: 't-bom-rd', title: 'Redis多级路由缓存层', description: '整合Redis高可用集群，拦截热点 key 穿透，实施限流降级。', duration: 3, isDone: false, color: 'sky' },
-  't-bom-auth': { id: 't-bom-auth', title: '统一安全鉴权拦截插件', description: '结合 OAuth 与 JWT，实现细粒度的接口权限级别拦截服务。', duration: 5, isDone: false, color: 'sky' },
-  't-bom-stretch': { id: 't-bom-stretch', title: '30分钟核心力量拉伸', description: '强化下背及腹内斜肌群力量。', duration: 1, isDone: false, color: 'emerald' },
-  't-bom-cardio': { id: 't-bom-cardio', title: '深蹲与心肺有氧强化训练', description: '负重自重交叉锻炼。', duration: 2, isDone: false, color: 'emerald' },
-  't-bom-feynman': { id: 't-bom-feynman', title: '费曼技巧周度输出提纲', description: '教授他人，归纳盲区并查漏补缺。', duration: 3, isDone: false, color: 'amber' }
-};
+const EMPTY_TASKS: Record<string, Task> = {};
 const EMPTY_GOALS: Record<string, Goal> = {};
-const EMPTY_BOM_TREE: BOMTreeItem[] = DEMO_BOM_TREE;
+const EMPTY_BOM_TREE: BOMTreeItem[] = [];
 
 // Standard category list defaults, fully renameable/deleteable by user
 const DEFAULT_CATEGORIES: AppCategory[] = [
@@ -178,17 +143,44 @@ const loadSavedState = () => {
           // Skip default preloaded plan tasks
           const isDemoTask = ['t-tech-1', 't-tech-2', 't-tech-3', 't-tech-4', 't-health-1', 't-health-2', 't-health-3', 't-health-4', 't-grow-1', 't-grow-2', 't-grow-3'].includes(tid);
           if (isDemoTask) return;
+          // Skip legacy demo BOM tasks to ensure clean starting slate
+          const isLegacyBOMDemo = ['t-bom-ds', 't-bom-rd', 't-bom-auth', 't-bom-stretch', 't-bom-cardio', 't-bom-feynman'].includes(tid);
+          if (isLegacyBOMDemo) return;
+
           if (task && typeof task === 'object') {
             validatedTasks[tid] = task;
           }
         });
-        // Always backfill/ensure the baseline BOM database components are present
-        Object.assign(validatedTasks, EMPTY_TASKS);
+
+        const filterBOMTree = (items: any[]): any[] => {
+          if (!Array.isArray(items)) return [];
+          const demoTaskIds = ['t-bom-ds', 't-bom-rd', 't-bom-auth', 't-bom-stretch', 't-bom-cardio', 't-bom-feynman'];
+          const demoNodeIds = ['bom-node-tech-1', 'bom-node-tech-2', 'bom-node-tech-3', 'bom-node-hea-1', 'bom-node-hea-2', 'bom-node-grow-1'];
+          return items
+            .map((item) => {
+              if (item.children) {
+                return {
+                  ...item,
+                  children: filterBOMTree(item.children)
+                };
+              }
+              return item;
+            })
+            .filter((item) => {
+              if (item.taskId && demoTaskIds.includes(item.taskId)) return false;
+              if (demoNodeIds.includes(item.id)) return false;
+              if (['bom-tech-pack', 'bom-health-routines', 'bom-growth-blueprints'].includes(item.id)) return false;
+              return true;
+            });
+        };
+
+        const cleanedBOMTree = filterBOMTree(parsed.bomTree || []);
+        const finalBOMTree = cleanedBOMTree.length > 0 ? cleanedBOMTree : EMPTY_BOM_TREE;
 
         return {
           tasks: validatedTasks,
           goals: validatedGoals,
-          bomTree: Array.isArray(parsed.bomTree) ? parsed.bomTree : [],
+          bomTree: finalBOMTree,
           categories: safeCategories,
           selectedCategoryId: parsed.selectedCategoryId || 'all',
           selectedGoalId: parsed.selectedGoalId || null,
@@ -357,9 +349,22 @@ export const useAppStore = create<AppState>((set, get) => {
     }),
 
     // GOAL ACTIONS
-    addGoal: (goal) => persistSet((state: AppState) => ({
-      goals: { ...state.goals, [goal.id]: goal }
-    })),
+    addGoal: (goal) => persistSet((state: AppState) => {
+      const folderId = `bom-folder-${goal.id}`;
+      const nextBomTree = [
+        ...state.bomTree,
+        {
+          id: folderId,
+          title: goal.title,
+          type: 'category',
+          children: []
+        }
+      ];
+      return {
+        goals: { ...state.goals, [goal.id]: goal },
+        bomTree: nextBomTree
+      };
+    }),
 
     deleteGoal: (goalId) => persistSet((state: AppState) => {
       const nextGoals = { ...state.goals };
@@ -368,10 +373,14 @@ export const useAppStore = create<AppState>((set, get) => {
       const nextActiveMerged = state.activeMergedGoalIds.filter(id => id !== goalId);
       const nextSelectedGoalId = state.selectedGoalId === goalId ? null : state.selectedGoalId;
       
+      const folderId = `bom-folder-${goalId}`;
+      const nextBomTree = state.bomTree.filter(item => item.id !== folderId);
+
       return {
         goals: nextGoals,
         activeMergedGoalIds: nextActiveMerged,
-        selectedGoalId: nextSelectedGoalId
+        selectedGoalId: nextSelectedGoalId,
+        bomTree: nextBomTree
       };
     }),
 
@@ -400,6 +409,60 @@ export const useAppStore = create<AppState>((set, get) => {
     addNodeToGoal: (goalId, node) => persistSet((state: AppState) => {
       const targetGoal = state.goals[goalId];
       if (!targetGoal) return {};
+
+      // Auto add to BOM sidebar if not already present
+      let nextBomTree = [...state.bomTree];
+      const task = state.tasks[node.taskId];
+      
+      if (task) {
+        const hasTask = (items: BOMTreeItem[], tid: string): boolean => {
+          for (const item of items) {
+            if (item.type === 'task' && item.taskId === tid) return true;
+            if (item.children && hasTask(item.children, tid)) return true;
+          }
+          return false;
+        };
+
+        if (!hasTask(nextBomTree, task.id)) {
+          const targetFolderId = `bom-folder-${goalId}`;
+          const hasFolder = nextBomTree.some(item => item.id === targetFolderId);
+          if (!hasFolder) {
+            nextBomTree.push({
+              id: targetFolderId,
+              title: targetGoal.title,
+              type: 'category',
+              children: []
+            });
+          }
+
+          // Recursive helper to update category folders in BOM tree
+          const addLeafToFolder = (items: BOMTreeItem[]): BOMTreeItem[] => {
+            return items.map((subNode) => {
+              if (subNode.id === targetFolderId && subNode.type === 'category') {
+                const newLeaf: BOMTreeItem = {
+                  id: `bom-node-${Math.random().toString(36).substring(2, 9)}`,
+                  title: task.title,
+                  type: 'task',
+                  taskId: task.id
+                };
+                return {
+                  ...subNode,
+                  children: [...(subNode.children || []), newLeaf]
+                };
+              } else if (subNode.children) {
+                return {
+                  ...subNode,
+                  children: addLeafToFolder(subNode.children)
+                };
+              }
+              return subNode;
+            });
+          };
+
+          nextBomTree = addLeafToFolder(nextBomTree);
+        }
+      }
+
       return {
         goals: {
           ...state.goals,
@@ -407,7 +470,8 @@ export const useAppStore = create<AppState>((set, get) => {
             ...targetGoal,
             nodes: [...targetGoal.nodes, node]
           }
-        }
+        },
+        bomTree: nextBomTree
       };
     }),
 
@@ -498,7 +562,8 @@ export const useAppStore = create<AppState>((set, get) => {
       selectedTaskId: null,
       isMergedView: false,
       activeMergedGoalIds: [],
-      crossGoalEdges: []
+      crossGoalEdges: [],
+      bomTree: EMPTY_BOM_TREE
     })
   };
 });

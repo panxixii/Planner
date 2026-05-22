@@ -14,11 +14,7 @@ export const BOMSidebar: React.FC = () => {
   const toggleHelp = useAppStore((state) => state.toggleHelp);
 
   // Keep track of which folders are expanded
-  const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({
-    'bom-tech-pack': true,
-    'bom-health-routines': true,
-    'bom-growth-blueprints': false,
-  });
+  const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({});
 
   // State to add customized element
   const [isAddingToFolder, setIsAddingToFolder] = useState<string | null>(null);
@@ -28,7 +24,7 @@ export const BOMSidebar: React.FC = () => {
   const toggleExpand = (nodeId: string) => {
     setExpandedNodes((prev) => ({
       ...prev,
-      [nodeId]: !prev[nodeId],
+      [nodeId]: prev[nodeId] === false ? true : false,
     }));
   };
 
@@ -70,7 +66,7 @@ export const BOMSidebar: React.FC = () => {
 
   const renderTreeItem = (node: BOMTreeItem, depth = 0) => {
     const isFolder = node.type === 'category';
-    const isExpanded = expandedNodes[node.id];
+    const isExpanded = expandedNodes[node.id] !== false;
     
     if (isFolder) {
       return (
@@ -173,7 +169,7 @@ export const BOMSidebar: React.FC = () => {
           <div className="flex items-center gap-1.5 min-w-0">
             <GripVertical className="w-3 h-3 text-neutral-300 group-hover:text-neutral-400 shrink-0" />
             <FileText className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
-            <span className="truncate">{node.title}</span>
+            <span className="truncate">{associatedTask?.title || node.title}</span>
           </div>
 
           <span className="text-[9px] text-neutral-500 px-1.5 py-0.2 rounded bg-neutral-100 font-mono border border-neutral-200 shrink-0 select-none">
