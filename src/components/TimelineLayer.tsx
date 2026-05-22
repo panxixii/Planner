@@ -16,9 +16,13 @@ export const TimelineLayer: React.FC = () => {
   const visibleTasks = useMemo(() => {
     const visibleTaskIds = new Set<string>();
     
-    Object.entries(goals).forEach(([gid, g]) => {
-      if (activeMergedGoalIds.includes(gid)) {
-        g.nodes.forEach(n => visibleTaskIds.add(n.taskId));
+    Object.entries(goals || {}).forEach(([gid, g]) => {
+      if (activeMergedGoalIds && activeMergedGoalIds.includes(gid) && g && g.nodes) {
+        g.nodes.forEach(n => {
+          if (n && n.taskId) {
+            visibleTaskIds.add(n.taskId);
+          }
+        });
       }
     });
 

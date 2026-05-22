@@ -6,10 +6,122 @@ const genId = () => Math.random().toString(36).substring(2, 11);
 
 const LOCAL_STORAGE_KEY = 'lifeprint-blueprints-state-v1';
 
-// Clean initial empty database values (Purged of all preloaded template items)
-const EMPTY_TASKS: Record<string, Task> = {};
-const EMPTY_GOALS: Record<string, Goal> = {};
-const EMPTY_BOM_TREE: BOMTreeItem[] = [];
+// Preconfigured showcase database values (to populate with rich blueprints & timelines on first load)
+const DEMO_TASKS: Record<string, Task> = {
+  // SaaS plan tasks
+  't-tech-1': { id: 't-tech-1', title: '独立微架构技术选型与原型设计', description: '评估微服务栈，编写技术路线可行性分析报告，跑跑本地MVP Demo。', duration: 4, isDone: true, color: 'sky', startTime: '2026-05-20', endTime: '2026-05-21' },
+  't-tech-2': { id: 't-tech-2', title: '高内聚关系型数据库 schema 库表设计', description: '进行领域模型、关系型外键范式、以及依赖流转和状态机索引声明。', duration: 3, isDone: false, color: 'sky', startTime: '2026-05-22', endTime: '2026-05-23' },
+  't-tech-3': { id: 't-tech-3', title: '前后端微服务及 Gateway 核心逻辑实现', description: '编写网关路由策略，完成JWT安全令牌验证中间件，并接通RPC。', duration: 8, isDone: false, color: 'violet', startTime: '2026-05-24', endTime: '2026-05-28' },
+  't-tech-4': { id: 't-tech-4', title: '一键容器化构建、安全部署与发布上云', description: '打包镜像制作，配置CI/CD pipeline，完成生产环境安全鉴权校验。', duration: 5, isDone: false, color: 'emerald', startTime: '2026-05-29', endTime: '2026-06-01' },
+
+  // Marathon plan tasks
+  't-health-1': { id: 't-health-1', title: '购置专业缓震跑鞋与阻氧心率手环', description: '到装备专柜试穿合适的越野竞速跑鞋，同步运动心率与睡眠监测计。', duration: 2, isDone: true, color: 'rose', startTime: '2026-05-20', endTime: '2026-05-20' },
+  't-health-2': { id: 't-health-2', title: '5公里体能跑及MAF180运动心率评估', description: '测试当前有氧心率配速底峰，建立个人训练里程跟进行动基准。', duration: 3, isDone: true, color: 'emerald', startTime: '2026-05-21', endTime: '2026-05-21' },
+  't-health-3': { id: 't-health-3', title: '长距离 L.S.D 轻松跑体能心肺储备跑', description: '保持中低强度（心率控制在有氧区间），单次跑够 40 分钟进行阻氧扩容。', duration: 4, isDone: false, color: 'emerald', startTime: '2026-05-22', endTime: '2026-05-24' },
+  't-health-4': { id: 't-health-4', title: 'Q2 城市马拉松5公里顺利跑进25分大关', description: '进行能量补给测试，在5月末完成终极赛道极限测试。', duration: 6, isDone: false, color: 'emerald', startTime: '2026-05-28', endTime: '2026-05-29' },
+
+  // Grow/Read book plan tasks
+  't-grow-1': { id: 't-grow-1', title: '拟定Q2书单并整理出10本神级必读书目', description: '结合生产力、管理决策以及系统性思维领域，制定本季度硬核读书方向。', duration: 1, isDone: true, color: 'amber', startTime: '2026-05-20', endTime: '2026-05-20' },
+  't-grow-2': { id: 't-grow-2', title: '硬核阅读《系统之美》与《原子习惯》', description: '标记书中精华理论，整理出思维导图，深度提炼阻碍行为习惯的正反馈闭环。', duration: 6, isDone: false, color: 'amber', startTime: '2026-05-21', endTime: '2026-05-25' },
+  't-grow-3': { id: 't-grow-3', title: '形成个人结构化精髓卡片知识盒归集', description: '按照卢曼卡片盒体系将提炼的见解、思考和推导转录，撰写深度分析报告。', duration: 3, isDone: false, color: 'amber', startTime: '2026-05-26', endTime: '2026-05-28' },
+
+  // BOM template default task backings
+  't-bom-ds': { id: 't-bom-ds', title: '核心多数据源配置', description: '配置分布式读写分离，处理数据库冗余及分布式事务。', duration: 4, isDone: false, color: 'sky' },
+  't-bom-rd': { id: 't-bom-rd', title: 'Redis多级路由缓存层', description: '整合Redis高可用集群，拦截热点 key 穿透，实施限流降级。', duration: 3, isDone: false, color: 'sky' },
+  't-bom-auth': { id: 't-bom-auth', title: '统一安全鉴权拦截插件', description: '结合 OAuth 与 JWT，实现细粒度的接口权限级别拦截服务。', duration: 5, isDone: false, color: 'sky' },
+  't-bom-stretch': { id: 't-bom-stretch', title: '30分钟核心力量拉伸', description: '强化下背及腹内斜肌群力量。', duration: 1, isDone: false, color: 'emerald' },
+  't-bom-cardio': { id: 't-bom-cardio', title: '深蹲与心肺有氧强化训练', description: '负重自重交叉锻炼。', duration: 2, isDone: false, color: 'emerald' },
+  't-bom-feynman': { id: 't-bom-feynman', title: '费曼技巧周度输出提纲', description: '教授他人，归纳盲区并查漏补缺。', duration: 3, isDone: false, color: 'amber' }
+};
+
+const DEMO_GOALS: Record<string, Goal> = {
+  'goal-tech-saas': {
+    id: 'goal-tech-saas',
+    title: '独立 SaaS 系统微架构规划',
+    description: '设计并落地一款具备 OAuth 单点登录与高并发网关的微型独立服务，跑通全链路集成。',
+    category: 'career',
+    color: 'sky',
+    nodes: [
+      { id: 'node-saas-1', taskId: 't-tech-1', position: { x: 50, y: 100 } },
+      { id: 'node-saas-2', taskId: 't-tech-2', position: { x: 300, y: 100 } },
+      { id: 'node-saas-3', taskId: 't-tech-3', position: { x: 550, y: 50 } },
+      { id: 'node-saas-4', taskId: 't-tech-4', position: { x: 550, y: 180 } }
+    ],
+    edges: [
+      { id: 'edge-saas-1', source: 'node-saas-1', target: 'node-saas-2' },
+      { id: 'edge-saas-2', source: 'node-saas-2', target: 'node-saas-3' },
+      { id: 'edge-saas-3', source: 'node-saas-2', target: 'node-saas-4' }
+    ]
+  },
+  'goal-health-marathon': {
+    id: 'goal-health-marathon',
+    title: '5公里马拉松体能破刻计划',
+    description: '通过渐进式有氧心率区间的周训练、间歇跑与排程体能充沛计划，在5月底前顺利安全达成记录。',
+    category: 'health',
+    color: 'emerald',
+    nodes: [
+      { id: 'node-marathon-1', taskId: 't-health-1', position: { x: 50, y: 100 } },
+      { id: 'node-marathon-2', taskId: 't-health-2', position: { x: 280, y: 100 } },
+      { id: 'node-marathon-3', taskId: 't-health-3', position: { x: 520, y: 100 } },
+      { id: 'node-marathon-4', taskId: 't-health-4', position: { x: 760, y: 100 } }
+    ],
+    edges: [
+      { id: 'edge-mara-1', source: 'node-marathon-1', target: 'node-marathon-2' },
+      { id: 'edge-mara-2', source: 'node-marathon-2', target: 'node-marathon-3' },
+      { id: 'edge-mara-3', source: 'node-marathon-3', target: 'node-marathon-4' }
+    ]
+  },
+  'goal-personal-book': {
+    id: 'goal-personal-book',
+    title: '深度心智读书与知识沉淀',
+    description: '通读经典书籍并搭建个人结构化卡片盒知识体系，产出行动力复盘报告。',
+    category: 'personal',
+    color: 'amber',
+    nodes: [
+      { id: 'node-book-1', taskId: 't-grow-1', position: { x: 50, y: 100 } },
+      { id: 'node-book-2', taskId: 't-grow-2', position: { x: 280, y: 100 } },
+      { id: 'node-book-3', taskId: 't-grow-3', position: { x: 520, y: 100 } }
+    ],
+    edges: [
+      { id: 'edge-bk-1', source: 'node-book-1', target: 'node-book-2' },
+      { id: 'edge-bk-2', source: 'node-book-2', target: 'node-book-3' }
+    ]
+  }
+};
+
+const DEMO_BOM_TREE: BOMTreeItem[] = [
+  {
+    id: 'bom-tech-pack',
+    title: '研发与工程架构模板',
+    type: 'category',
+    children: [
+      { id: 'bom-node-tech-1', title: '核心多数据源配置', type: 'task', taskId: 't-bom-ds' },
+      { id: 'bom-node-tech-2', title: 'Redis多级路由缓存层', type: 'task', taskId: 't-bom-rd' },
+      { id: 'bom-node-tech-3', title: '统一安全鉴权拦截插件', type: 'task', taskId: 't-bom-auth' }
+    ]
+  },
+  {
+    id: 'bom-health-routines',
+    title: '精力调理与健康常设模块',
+    type: 'category',
+    children: [
+      { id: 'bom-node-hea-1', title: '30分钟核心力量拉伸', type: 'task', taskId: 't-bom-stretch' },
+      { id: 'bom-node-hea-2', title: '深蹲与心肺有氧强化训练', type: 'task', taskId: 't-bom-cardio' }
+    ]
+  },
+  {
+    id: 'bom-growth-blueprints',
+    title: '终身成长规划库',
+    type: 'category',
+    children: [
+      { id: 'bom-node-grow-1', title: '费曼技巧周度输出提纲', type: 'task', taskId: 't-bom-feynman' }
+    ]
+  }
+];
+
+const EMPTY_TASKS = DEMO_TASKS;
+const EMPTY_GOALS = DEMO_GOALS;
+const EMPTY_BOM_TREE = DEMO_BOM_TREE;
 
 // Standard category list defaults, fully renameable/deleteable by user
 const DEFAULT_CATEGORIES: AppCategory[] = [
@@ -19,7 +131,7 @@ const DEFAULT_CATEGORIES: AppCategory[] = [
   { id: 'personal', label: '心智与成长' }
 ];
 
-// Helper to load state from localStorage
+// Helper to load state from localStorage with robust schema verification & fallback migration
 const loadSavedState = () => {
   if (typeof window === 'undefined') return null;
   try {
@@ -27,17 +139,39 @@ const loadSavedState = () => {
     if (data) {
       const parsed = JSON.parse(data);
       if (parsed && typeof parsed === 'object') {
+        // Safe category array validation
+        const safeCategories = Array.isArray(parsed.categories) && parsed.categories.length > 0
+          ? parsed.categories
+          : DEFAULT_CATEGORIES;
+
+        // Re-construct and validate loaded goals to prevent malformed properties
+        const loadedGoals = parsed.goals || {};
+        const validatedGoals: Record<string, Goal> = {};
+        Object.entries(loadedGoals).forEach(([gid, goal]: [string, any]) => {
+          if (goal && typeof goal === 'object') {
+            validatedGoals[gid] = {
+              id: goal.id || gid,
+              title: goal.title || '未命名目标计划',
+              description: goal.description || '无详细内容。',
+              category: goal.category || 'career',
+              color: goal.color || 'indigo',
+              nodes: Array.isArray(goal.nodes) ? goal.nodes : [],
+              edges: Array.isArray(goal.edges) ? goal.edges : []
+            };
+          }
+        });
+
         return {
           tasks: parsed.tasks || {},
-          goals: parsed.goals || {},
-          bomTree: parsed.bomTree || [],
-          categories: parsed.categories || DEFAULT_CATEGORIES,
+          goals: validatedGoals,
+          bomTree: Array.isArray(parsed.bomTree) ? parsed.bomTree : [],
+          categories: safeCategories,
           selectedCategoryId: parsed.selectedCategoryId || 'all',
           selectedGoalId: parsed.selectedGoalId || null,
           isMergedView: parsed.isMergedView || false,
-          activeMergedGoalIds: parsed.activeMergedGoalIds || [],
-          crossGoalEdges: parsed.crossGoalEdges || [],
-          isSidebarCollapsed: parsed.isSidebarCollapsed || false,
+          activeMergedGoalIds: Array.isArray(parsed.activeMergedGoalIds) ? parsed.activeMergedGoalIds : [],
+          crossGoalEdges: Array.isArray(parsed.crossGoalEdges) ? parsed.crossGoalEdges : [],
+          isSidebarCollapsed: !!parsed.isSidebarCollapsed,
           showHelp: typeof parsed.showHelp === 'boolean' ? parsed.showHelp : true
         };
       }

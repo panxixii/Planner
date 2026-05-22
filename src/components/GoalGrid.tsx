@@ -60,16 +60,18 @@ export const GoalGrid: React.FC = () => {
   };
 
   const getMetric = (goal: Goal) => {
-    const total = goal.nodes.length;
+    const total = (goal?.nodes || []).length;
     if (total === 0) return { total, done: 0, percent: 0, hours: 0 };
 
     let done = 0;
     let hours = 0;
-    goal.nodes.forEach((node) => {
-      const associatedTask = tasks[node.taskId];
-      if (associatedTask) {
-        hours += associatedTask.duration;
-        if (associatedTask.isDone) done++;
+    (goal?.nodes || []).forEach((node) => {
+      if (node && node.taskId) {
+        const associatedTask = tasks[node.taskId];
+        if (associatedTask) {
+          hours += associatedTask.duration;
+          if (associatedTask.isDone) done++;
+        }
       }
     });
 

@@ -91,9 +91,11 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
       const activeGoalIds = Object.keys(goals).filter(gid => activeMergedGoalIds.includes(gid));
       activeGoalIds.forEach((gid, index) => {
         const g = goals[gid];
+        if (!g || !g.nodes) return;
         const yOffset = index * 250;
 
         g.nodes.forEach((n) => {
+          if (!n) return;
           allNodes.push({
             id: n.id,
             type: 'taskNode',
@@ -105,7 +107,7 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
       return allNodes;
     } else if (selectedGoalId && goals[selectedGoalId]) {
       const goal = goals[selectedGoalId];
-      return goal.nodes.map((n) => ({
+      return (goal.nodes || []).map((n) => ({
         id: n.id,
         type: 'taskNode',
         position: n.position,
@@ -123,7 +125,9 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
         if (!activeMergedGoalIds.includes(gid)) return;
 
         const g = goals[gid];
+        if (!g || !g.edges) return;
         g.edges.forEach((e) => {
+          if (!e) return;
           const isCustom = e.id.startsWith('edge-custom-');
           allEdges.push({
             id: e.id,
@@ -169,7 +173,8 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
       return allEdges;
     } else if (selectedGoalId && goals[selectedGoalId]) {
       const goal = goals[selectedGoalId];
-      return goal.edges.map((e) => {
+      return (goal.edges || []).map((e) => {
+        if (!e) return {} as Edge;
         const isCustom = e.id.startsWith('edge-custom-');
         return {
           id: e.id,
@@ -196,6 +201,7 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
     if (isMergedView) {
       const activeGoalIds = Object.keys(goals).filter(gid => activeMergedGoalIds.includes(gid));
       for (const [gid, g] of Object.entries(goals)) {
+        if (!g || !g.nodes) continue;
         const matchIdx = g.nodes.findIndex((n) => n.id === id);
         if (matchIdx !== -1) {
           const prevPosition = g.nodes[matchIdx].position;
@@ -210,7 +216,7 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
           const dy = targetY - prevPosition.y;
 
           if (dx !== 0 || dy !== 0) {
-            const descIds = getDescendantNodeIds(id, g.edges);
+            const descIds = getDescendantNodeIds(id, g.edges || []);
             const updatedNodes = g.nodes.map((n) => {
               if (n.id === id) {
                 return { ...n, position: { x: targetX, y: targetY } };
@@ -270,7 +276,7 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
       let targetGoalId = selectedGoalId;
       if (isMergedView) {
         for (const [gid, g] of Object.entries(goals)) {
-          if (g.nodes.some((n) => n.id === selectedNode.id)) {
+          if (g && g.nodes && g.nodes.some((n) => n.id === selectedNode.id)) {
             targetGoalId = gid;
             break;
           }
@@ -287,7 +293,7 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
       let nextY = sourcePos.y;
 
       // Safe collision check - Never overlapping nodes!
-      while (g.nodes.some((n) => Math.abs(n.position.x - nextX) < 100 && Math.abs(n.position.y - nextY) < 60)) {
+      while (g && g.nodes && g.nodes.some((n) => Math.abs(n.position.x - nextX) < 100 && Math.abs(n.position.y - nextY) < 60)) {
         nextY += 110;
       }
 
@@ -345,7 +351,7 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
         addCrossGoalEdge(newEdge);
       } else {
         for (const [gid, g] of Object.entries(goals)) {
-          if (g.nodes.some(n => n.id === connection.source)) {
+          if (g && g.nodes && g.nodes.some(n => n.id === connection.source)) {
             addEdgeToGoal(gid, newEdge);
             break;
           }
@@ -373,10 +379,10 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
       const isCross = crossGoalEdges.some((e) => e.id === edge.id);
       if (isCross) {
         deleteCrossGoalEdge(edge.id);
-        showToast('已断开自主规划的跨赛道拓扑依赖连线！');
+        showToast('已断开自主规划 of custom dependencies!');
       } else {
         for (const [gid, g] of Object.entries(goals)) {
-          if (g.edges.some((e) => e.id === edge.id)) {
+          if (g && g.edges && g.edges.some((e) => e.id === edge.id)) {
             deleteEdgeFromGoal(gid, edge.id);
             showToast(`已断开计划 “${g.title}” 内部的自主预设/连线！`);
             break;
@@ -394,7 +400,7 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
     nodesDeleted.forEach((node) => {
       if (isMergedView) {
         for (const [gid, g] of Object.entries(goals)) {
-          if (g.nodes.some(n => n.id === node.id)) {
+          if (g && g.nodes && g.nodes.some(n => n.id === node.id)) {
             deleteNodeFromGoal(gid, node.id);
             break;
           }
@@ -696,7 +702,7 @@ export const DAGWorkspace: React.FC = () => {
       // Find which plan owns this template node task to add correctly!
       let targetGoalId = '';
       for (const [gid, g] of Object.entries(goals)) {
-        if (g.nodes.some((n) => n.taskId === taskId)) {
+        if (g && g.nodes && g.nodes.some((n) => n.taskId === taskId)) {
           targetGoalId = gid;
           break;
         }
