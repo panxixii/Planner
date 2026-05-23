@@ -28,7 +28,7 @@ export const TaskDrawer: React.FC = () => {
     if (task) {
       setTitle(task.title || '');
       setDescription(task.description || '');
-      setDuration(task.duration || 1);
+      setDuration(task.duration !== undefined ? task.duration : 0);
       setIsDone(task.isDone || false);
       setStartTime(task.startTime || '');
       setEndTime(task.endTime || '');
@@ -43,10 +43,6 @@ export const TaskDrawer: React.FC = () => {
   const colors = ['indigo', 'emerald', 'sky', 'rose', 'amber', 'violet'];
 
   const handleSave = () => {
-    if (!title.trim()) {
-      setErrorMsg('任务标题不能为空');
-      return;
-    }
     if (startTime && endTime && startTime > endTime) {
       setErrorMsg('开始日期必须早于/等于结束日期');
       return;
@@ -152,10 +148,11 @@ export const TaskDrawer: React.FC = () => {
                 </label>
                 <input 
                   type="number"
-                  min="1"
-                  value={duration} 
-                  onChange={(e) => setDuration(Math.max(1, Number(e.target.value)))}
+                  min="0"
+                  value={duration || ''} 
+                  onChange={(e) => setDuration(Math.max(0, Number(e.target.value)))}
                   className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-3.5 py-2.5 text-neutral-800 focus:outline-hidden focus:bg-white focus:border-blue-500 font-mono"
+                  placeholder="未设定工时..."
                 />
               </div>
 

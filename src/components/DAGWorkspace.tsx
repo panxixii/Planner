@@ -310,12 +310,12 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
       const newTaskId = `t-mind-${Math.random().toString(36).substring(2, 9)}`;
       const newTaskObj: Task = {
         id: newTaskId,
-        title: '新分支里程碑子步骤',
-        description: '这是通过 Tab 键盘生成的子拓扑约束节点。双击节点可以定制所有任务细则并调配起止日期。',
-        duration: 4,
+        title: '',
+        description: '',
+        duration: 0,
         isDone: false,
-        startTime: '2026-05-24',
-        endTime: '2026-05-26',
+        startTime: '',
+        endTime: '',
         color: 'sky'
       };
       addTask(newTaskObj);
@@ -403,12 +403,12 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
     const newTaskId = `t-quick-${Math.random().toString(36).substring(2, 9)}`;
     const newTaskObj: Task = {
       id: newTaskId,
-      title: '随性目标阶段性里程碑',
-      description: '双击拓扑节点以呼出详细属性查阅/控制编辑侧抽屉。',
-      duration: 6,
+      title: '',
+      description: '',
+      duration: 0,
       isDone: false,
-      startTime: '2026-05-24',
-      endTime: '2026-05-26',
+      startTime: '',
+      endTime: '',
       color: 'indigo'
     };
     addTask(newTaskObj);
