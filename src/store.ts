@@ -338,6 +338,52 @@ export const useAppStore = create<AppState>((set, get) => {
       };
     }),
 
+    moveCategory: (draggedId, targetId, position) => persistSet((state: AppState) => {
+      const isDescendantOf = (parent: string, child: string): boolean => {
+        let curr = state.categories.find(c => c.id === child);
+        while (curr && curr.parentId) {
+          if (curr.parentId === parent) return true;
+          curr = state.categories.find(c => c.id === curr.parentId);
+        }
+        return false;
+      };
+
+      if (draggedId === targetId || (targetId !== 'all' && isDescendantOf(draggedId, targetId))) {
+        return {};
+      }
+
+      const draggedCategory = state.categories.find(c => c.id === draggedId);
+      if (!draggedCategory) return {};
+
+      let nextCategories = [...state.categories];
+
+      if (position === 'inside') {
+        const newParentId = targetId === 'all' ? undefined : targetId;
+        nextCategories = nextCategories.map(c => 
+          c.id === draggedId ? { ...c, parentId: newParentId } : c
+        );
+      } else {
+        const targetCategory = state.categories.find(c => c.id === targetId);
+        if (!targetCategory) return {};
+
+        const targetParentId = targetCategory.parentId;
+
+        nextCategories = nextCategories.filter(c => c.id !== draggedId);
+
+        const updatedCategory = { ...draggedCategory, parentId: targetParentId };
+
+        const targetIdx = nextCategories.findIndex(c => c.id === targetId);
+        if (targetIdx !== -1) {
+          const insertIdx = position === 'before' ? targetIdx : targetIdx + 1;
+          nextCategories.splice(insertIdx, 0, updatedCategory);
+        } else {
+          nextCategories.push(updatedCategory);
+        }
+      }
+
+      return { categories: nextCategories };
+    }),
+
     selectGoal: (goalId) => persistSet({ 
       selectedGoalId: goalId, 
       isMergedView: false 

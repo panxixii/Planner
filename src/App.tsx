@@ -29,7 +29,8 @@ import {
   Edit,
   Trash2,
   Check,
-  X
+  X,
+  GripVertical
 } from 'lucide-react';
 
 export default function App() {
@@ -50,6 +51,7 @@ export default function App() {
   const addCategory = useAppStore((state) => state.addCategory);
   const renameCategory = useAppStore((state) => state.renameCategory);
   const deleteCategory = useAppStore((state) => state.deleteCategory);
+  const moveCategory = useAppStore((state) => state.moveCategory);
   const clearWorkspace = useAppStore((state) => state.clearWorkspace);
 
   const [isAddingCategory, setIsAddingCategory] = React.useState(false);
@@ -60,6 +62,10 @@ export default function App() {
   const [editingCategoryParentId, setEditingCategoryParentId] = React.useState('none');
   const [deletingCategoryId, setDeletingCategoryId] = React.useState<string | null>(null);
   const [expandedCategories, setExpandedCategories] = React.useState<Record<string, boolean>>({});
+  
+  // Drag and drop category state
+  const [draggedCategoryId, setDraggedCategoryId] = React.useState<string | null>(null);
+  const [dragOverState, setDragOverState] = React.useState<{ id: string; position: 'before' | 'after' | 'inside' } | null>(null);
 
   // Build category hierarchical tree structure
   const categoryTree = React.useMemo(() => {
@@ -196,11 +202,73 @@ export default function App() {
       );
     }
 
+    const isOver = dragOverState?.id === c.id;
+    const isDragged = draggedCategoryId === c.id;
+
     return (
       <div key={c.id} className="space-y-0.5">
         <div
           style={{ paddingLeft: `${depth * 12}px` }}
-          className="group relative flex items-center justify-between w-full"
+          className={`group relative flex items-center justify-between w-full rounded-lg transition-all duration-200
+            ${isDragged ? 'opacity-30 scale-[0.98]' : ''}
+            ${isOver && dragOverState?.position === 'inside' ? 'bg-blue-50 border border-dashed border-blue-400/85 shadow-2xs' : ''}
+            ${isOver && dragOverState?.position === 'before' ? 'border-t-2 border-blue-500 bg-blue-50/15' : ''}
+            ${isOver && dragOverState?.position === 'after' ? 'border-b-2 border-blue-500 bg-blue-50/15' : ''}
+          `}
+          draggable={editingCategoryId !== c.id}
+          onDragStart={(e) => {
+            setDraggedCategoryId(c.id);
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', c.id);
+          }}
+          onDragEnd={() => {
+            setDraggedCategoryId(null);
+            setDragOverState(null);
+          }}
+          onDragOver={(e) => {
+            if (draggedCategoryId === c.id) return;
+            e.preventDefault();
+            e.stopPropagation();
+
+            const rect = e.currentTarget.getBoundingClientRect();
+            const relativeY = e.clientY - rect.top;
+            const height = rect.height;
+
+            let dragPos: 'before' | 'after' | 'inside' = 'inside';
+            if (relativeY < height * 0.25) {
+              dragPos = 'before';
+            } else if (relativeY > height * 0.75) {
+              dragPos = 'after';
+            }
+
+            setDragOverState({ id: c.id, position: dragPos });
+          }}
+          onDragLeave={() => {
+            setDragOverState(null);
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const draggedId = e.dataTransfer.getData('text/plain') || draggedCategoryId;
+            if (!draggedId || draggedId === c.id) {
+              setDragOverState(null);
+              return;
+            }
+
+            const rect = e.currentTarget.getBoundingClientRect();
+            const relativeY = e.clientY - rect.top;
+            const height = rect.height;
+
+            let dragPos: 'before' | 'after' | 'inside' = 'inside';
+            if (relativeY < height * 0.25) {
+              dragPos = 'before';
+            } else if (relativeY > height * 0.75) {
+              dragPos = 'after';
+            }
+
+            moveCategory(draggedId, c.id, dragPos);
+            setDragOverState(null);
+          }}
         >
           <button
             onClick={() => handleSelectCategory(c.id)}
@@ -210,6 +278,11 @@ export default function App() {
                 : 'text-neutral-600 hover:text-neutral-950 hover:bg-neutral-50'
               }`}
           >
+            {/* Drag Handle */}
+            <span className="text-neutral-300 hover:text-neutral-500 cursor-grab active:cursor-grabbing mr-0.5 opacity-30 group-hover:opacity-75 transition-opacity shrink-0 flex items-center">
+              <GripVertical className="w-3.5 h-3.5" />
+            </span>
+
             {hasChildren ? (
               <span
                 onClick={(e) => {
@@ -333,7 +406,17 @@ export default function App() {
                 分类
               </span>
               <button
-                onClick={() => setIsAddingCategory(!isAddingCategory)}
+                onClick={() => {
+                  const targetState = !isAddingCategory;
+                  setIsAddingCategory(targetState);
+                  if (targetState) {
+                    if (selectedCategoryId && selectedCategoryId !== 'all') {
+                      setNewCategoryParentId(selectedCategoryId);
+                    } else {
+                      setNewCategoryParentId('');
+                    }
+                  }
+                }}
                 className="p-1 rounded text-neutral-400 hover:text-blue-600 hover:bg-neutral-50 transition-all cursor-pointer"
                 title="新建分类"
               >
@@ -342,64 +425,68 @@ export default function App() {
             </div>
             
             {isAddingCategory && (
-              <div className="px-2 py-1.5 flex flex-col gap-1.5 bg-neutral-50 border border-neutral-200 rounded-lg animate-in fade-in slide-in-from-top-1 duration-200">
+              <div className="px-2 py-1 bg-neutral-50 border border-neutral-200 rounded-lg animate-in fade-in slide-in-from-top-1 duration-200">
                 <input
                   type="text"
                   value={newCategoryLabel}
                   onChange={(e) => setNewCategoryLabel(e.target.value)}
-                  className="w-full text-xs bg-white border border-neutral-200 rounded p-1 font-sans font-medium text-neutral-800 focus:outline-hidden focus:border-blue-500"
-                  placeholder="新赛道分类名称..."
+                  className="w-full text-xs bg-white border border-neutral-250 rounded px-2 py-1.5 font-sans font-medium text-neutral-800 focus:outline-hidden focus:border-blue-500 shadow-2xs"
+                  placeholder={
+                    categories.find(c => c.id === newCategoryParentId)
+                      ? `新建 [${categories.find(c => c.id === newCategoryParentId)?.label}] 的子分类...`
+                      : "新建一级分类名称..."
+                  }
                   autoFocus
+                  onBlur={() => {
+                    // Small delay to let any click logic resolve first, then close setting state safely
+                    setTimeout(() => {
+                      setIsAddingCategory(false);
+                      setNewCategoryLabel('');
+                      setNewCategoryParentId('');
+                    }, 180);
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       if (newCategoryLabel.trim()) {
                         addCategory(newCategoryLabel.trim(), newCategoryParentId || undefined);
-                        setNewCategoryLabel('');
-                        setNewCategoryParentId('');
-                        setIsAddingCategory(false);
                       }
+                      setNewCategoryLabel('');
+                      setNewCategoryParentId('');
+                      setIsAddingCategory(false);
                     } else if (e.key === 'Escape') {
                       setIsAddingCategory(false);
+                      setNewCategoryLabel('');
+                      setNewCategoryParentId('');
                     }
                   }}
                 />
-                <div className="flex items-center justify-between gap-1">
-                  <select
-                    value={newCategoryParentId}
-                    onChange={(e) => setNewCategoryParentId(e.target.value)}
-                    className="bg-white border border-neutral-200 rounded text-[10px] py-0.5 px-1 font-sans text-neutral-600 max-w-[120px]"
-                  >
-                    <option value="">无(主分类)</option>
-                    {categories.map((c) => (
-                      <option key={c.id} value={c.id}>{c.label}</option>
-                    ))}
-                  </select>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button 
-                      onClick={() => {
-                        if (newCategoryLabel.trim()) {
-                          addCategory(newCategoryLabel.trim(), newCategoryParentId || undefined);
-                          setNewCategoryLabel('');
-                          setNewCategoryParentId('');
-                          setIsAddingCategory(false);
-                        }
-                      }}
-                      className="p-1 hover:text-emerald-600 text-neutral-400 cursor-pointer"
-                    >
-                      <Check className="w-3.5 h-3.5" />
-                    </button>
-                    <button 
-                      onClick={() => setIsAddingCategory(false)}
-                      className="p-1 hover:text-rose-600 text-neutral-400 cursor-pointer"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
               </div>
             )}
 
-            <nav className="space-y-1">
+            <nav 
+              className={`space-y-1 p-1 rounded-lg transition-colors duration-200 min-h-[120px]
+                ${dragOverState?.id === 'nav-bg' ? 'bg-blue-50/10 border border-dashed border-neutral-300' : ''}
+              `}
+              onDragOver={(e) => {
+                if (e.target === e.currentTarget) {
+                  e.preventDefault();
+                  setDragOverState({ id: 'nav-bg', position: 'inside' });
+                }
+              }}
+              onDragLeave={() => {
+                if (dragOverState?.id === 'nav-bg') {
+                  setDragOverState(null);
+                }
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                const draggedId = e.dataTransfer.getData('text/plain') || draggedCategoryId;
+                if (draggedId) {
+                  moveCategory(draggedId, 'all', 'inside');
+                }
+                setDragOverState(null);
+              }}
+            >
               {/* Virtual Category mapping: 'all' */}
               {(() => {
                 const isActive = selectedCategoryId === 'all' && !isMergedView;
@@ -407,11 +494,30 @@ export default function App() {
                   <button
                     key="all"
                     onClick={() => handleSelectCategory('all')}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setDragOverState({ id: 'all', position: 'inside' });
+                    }}
+                    onDragLeave={() => {
+                      setDragOverState(null);
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const draggedId = e.dataTransfer.getData('text/plain') || draggedCategoryId;
+                      if (draggedId) {
+                        moveCategory(draggedId, 'all', 'inside');
+                      }
+                      setDragOverState(null);
+                    }}
                     className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium tracking-tight transition-all cursor-pointer text-left
                       ${isActive 
                         ? 'bg-neutral-100/80 border-l-2 border-blue-600 text-neutral-900 font-semibold shadow-2xs' 
                         : 'text-neutral-600 hover:text-neutral-950 hover:bg-neutral-50'
-                      }`}
+                      }
+                      ${dragOverState?.id === 'all' ? 'bg-blue-50 border border-dashed border-blue-400 shadow-2xs' : ''}
+                    `}
                   >
                     <span className={isActive ? 'text-blue-600 font-bold' : 'text-neutral-400 shrink-0'}>
                       <Compass className="w-4 h-4" />

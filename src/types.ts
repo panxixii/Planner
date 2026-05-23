@@ -63,6 +63,7 @@ export interface AppState {
   addCategory: (label: string, parentId?: string) => void;
   renameCategory: (id: string, newLabel: string, parentId?: string) => void;
   deleteCategory: (id: string) => void;
+  moveCategory: (draggedId: string, targetId: string | 'all', position: 'before' | 'after' | 'inside') => void;
   selectGoal: (goalId: string | null) => void;
   setMergedView: (val: boolean) => void;
   toggleActiveMergedGoalId: (goalId: string) => void;
