@@ -415,6 +415,31 @@ export const useAppStore = create<AppState>((set, get) => {
       };
     }),
 
+    updateGoal: (goalId, updates) => persistSet((state: AppState) => {
+      const targetGoal = state.goals[goalId];
+      if (!targetGoal) return {};
+      
+      // If title is changing, also update any static category folder title in the legacy bomTree structure
+      let nextBomTree = state.bomTree;
+      if (updates.title !== undefined) {
+        const folderId = `bom-folder-${goalId}`;
+        nextBomTree = state.bomTree.map(item => {
+          if (item.id === folderId) {
+            return { ...item, title: updates.title! };
+          }
+          return item;
+        });
+      }
+
+      return {
+        goals: {
+          ...state.goals,
+          [goalId]: { ...targetGoal, ...updates }
+        },
+        bomTree: nextBomTree
+      };
+    }),
+
     updateGoalNodes: (goalId, nodes) => persistSet((state: AppState) => {
       const targetGoal = state.goals[goalId];
       if (!targetGoal) return {};

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../store';
 import { Goal, CategoryType, Task } from '../types';
-import { Target, Layers, ArrowRight, Plus, HelpCircle, BarChart3, AlertCircle, BookOpen, Trash2 } from 'lucide-react';
+import { Target, Layers, ArrowRight, Plus, HelpCircle, BarChart3, AlertCircle, BookOpen, Trash2, Pencil } from 'lucide-react';
 
 export const GoalGrid: React.FC = () => {
   const goals = useAppStore((state) => state.goals);
@@ -10,6 +10,7 @@ export const GoalGrid: React.FC = () => {
   const selectGoal = useAppStore((state) => state.selectGoal);
   const addGoal = useAppStore((state) => state.addGoal);
   const deleteGoal = useAppStore((state) => state.deleteGoal);
+  const updateGoal = useAppStore((state) => state.updateGoal);
   const showHelp = useAppStore((state) => state.showHelp);
   const toggleHelp = useAppStore((state) => state.toggleHelp);
   const categoriesList = useAppStore((state) => state.categories);
@@ -21,6 +22,12 @@ export const GoalGrid: React.FC = () => {
   const [category, setCategory] = useState<CategoryType>('career');
   const [color, setColor] = useState('indigo');
   const [deletingGoalId, setDeletingGoalId] = useState<string | null>(null);
+
+  // Goal editing interaction state
+  const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editCategory, setEditCategory] = useState<CategoryType>('career');
 
   // Synchronize category selection state when opening creation form
   React.useEffect(() => {
@@ -214,11 +221,12 @@ export const GoalGrid: React.FC = () => {
           {filteredGoals.map((g) => {
             const { total, done, percent, hours } = getMetric(g);
             const isConfirmingDelete = deletingGoalId === g.id;
+            const isEditingThisGoal = editingGoalId === g.id;
             return (
               <div
                 key={g.id}
                 onClick={() => {
-                  if (isConfirmingDelete) return;
+                  if (isConfirmingDelete || isEditingThisGoal) return;
                   selectGoal(g.id);
                 }}
                 className="group relative bg-white hover:bg-neutral-55 border border-neutral-200 rounded-xl p-5 flex flex-col justify-between h-56 transition-all duration-300 hover:scale-[1.01] hover:border-neutral-300 cursor-pointer shadow-xs overflow-hidden"
@@ -257,6 +265,72 @@ export const GoalGrid: React.FC = () => {
                   </div>
                 ) : null}
 
+                {isEditingThisGoal ? (
+                  <div 
+                    onClick={(e) => e.stopPropagation()} 
+                    className="absolute inset-0 bg-white border border-neutral-200 flex flex-col justify-between p-4 z-15 animate-in fade-in zoom-in-95 duration-150 select-none shadow-sm"
+                  >
+                    <div className="space-y-2.5">
+                      <div className="flex items-center gap-1.5 text-blue-600 font-bold text-xs uppercase font-mono">
+                        <Pencil className="w-3.5 h-3.5 animate-pulse" />
+                        <span>编辑目标计划详情</span>
+                      </div>
+                      <div className="space-y-1">
+                        <input
+                          type="text"
+                          value={editTitle}
+                          onChange={(e) => setEditTitle(e.target.value)}
+                          placeholder="计划标题"
+                          className="w-full bg-neutral-50 border border-neutral-200 rounded px-2 py-1 text-neutral-800 text-xs focus:outline-hidden focus:bg-white focus:border-blue-500 font-medium font-sans"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <textarea
+                          rows={2}
+                          value={editDescription}
+                          onChange={(e) => setEditDescription(e.target.value)}
+                          placeholder="具体目标说明"
+                          className="w-full bg-neutral-50 border border-neutral-200 rounded px-2 py-1 text-neutral-850 text-[11px] focus:outline-hidden focus:bg-white focus:border-blue-500 font-medium font-sans resize-none"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <select
+                          value={editCategory}
+                          onChange={(e) => setEditCategory(e.target.value)}
+                          className="w-full bg-neutral-50 border border-neutral-200 rounded px-2 py-1 text-neutral-800 text-xs focus:outline-hidden focus:border-blue-500 font-mono font-medium"
+                        >
+                          {categoriesList.map((c) => (
+                            <option key={c.id} value={c.id}>{c.label}领域</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 pt-1.5 border-t border-neutral-100">
+                      <button
+                        onClick={() => {
+                          if (editTitle.trim()) {
+                            updateGoal(g.id, {
+                              title: editTitle,
+                              description: editDescription,
+                              category: editCategory
+                            });
+                            setEditingGoalId(null);
+                          }
+                        }}
+                        className="flex-1 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold font-sans transition-all cursor-pointer text-center shadow-2xs border border-blue-500"
+                      >
+                        保存
+                      </button>
+                      <button
+                        onClick={() => setEditingGoalId(null)}
+                        className="px-2.5 py-1 rounded bg-white border border-neutral-200 hover:bg-neutral-50 text-neutral-600 text-[11px] font-bold font-sans transition-all cursor-pointer text-center"
+                      >
+                        取消
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
                 <div className="space-y-3">
                   {/* Tag Indicator & Actions */}
                   <div className="flex items-center justify-between">
@@ -264,10 +338,23 @@ export const GoalGrid: React.FC = () => {
                       {categoriesList.find(c => c.id === g.category)?.label || g.category}
                     </span>
 
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[10px] text-neutral-450 font-semibold font-mono">
-                        {hours} 小时预计工时
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] text-neutral-450 font-semibold font-mono mr-1">
+                        {hours} 小时
                       </span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingGoalId(g.id);
+                          setEditTitle(g.title);
+                          setEditDescription(g.description);
+                          setEditCategory(g.category);
+                        }}
+                        className="p-1 text-neutral-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-all cursor-pointer opacity-0 group-hover:opacity-100"
+                        title="编辑此目标计划"
+                      >
+                        <Pencil className="w-3 h-3" />
+                      </button>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
