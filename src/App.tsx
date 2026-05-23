@@ -5,7 +5,12 @@ import { TaskDrawer } from './components/TaskDrawer';
 import { DAGWorkspace } from './components/DAGWorkspace';
 import { GoalGrid } from './components/GoalGrid';
 import { TimelineLayer } from './components/TimelineLayer';
-import { CategoryType } from './types';
+import { CategoryType, AppCategory } from './types';
+
+interface CategoryNode {
+  category: AppCategory;
+  children: CategoryNode[];
+}
 import { 
   Target, 
   Layers, 
@@ -49,9 +54,34 @@ export default function App() {
 
   const [isAddingCategory, setIsAddingCategory] = React.useState(false);
   const [newCategoryLabel, setNewCategoryLabel] = React.useState('');
+  const [newCategoryParentId, setNewCategoryParentId] = React.useState('');
   const [editingCategoryId, setEditingCategoryId] = React.useState<string | null>(null);
   const [editingCategoryLabel, setEditingCategoryLabel] = React.useState('');
+  const [editingCategoryParentId, setEditingCategoryParentId] = React.useState('none');
   const [deletingCategoryId, setDeletingCategoryId] = React.useState<string | null>(null);
+  const [expandedCategories, setExpandedCategories] = React.useState<Record<string, boolean>>({});
+
+  // Build category hierarchical tree structure
+  const categoryTree = React.useMemo(() => {
+    const nodeMap: Record<string, CategoryNode> = {};
+    const roots: CategoryNode[] = [];
+
+    // Initialize all category nodes
+    categories.forEach((c) => {
+      nodeMap[c.id] = { category: c, children: [] };
+    });
+
+    // Wire up parent-child relationships
+    categories.forEach((c) => {
+      if (c.parentId && nodeMap[c.parentId]) {
+        nodeMap[c.parentId].children.push(nodeMap[c.id]);
+      } else {
+        roots.push(nodeMap[c.id]);
+      }
+    });
+
+    return roots;
+  }, [categories]);
 
   const getCategoryIcon = (id: string, sizeClass = "w-4 h-4") => {
     switch (id) {
@@ -69,6 +99,174 @@ export default function App() {
 
   const handleActivateMergedView = () => {
     setMergedView(true);
+  };
+
+  // Render category node recursively
+  const renderCategoryNode = (node: CategoryNode, depth = 0): React.ReactNode => {
+    const c = node.category;
+    const isActive = selectedCategoryId === c.id && !isMergedView;
+    const children = node.children;
+    const hasChildren = children.length > 0;
+    const isExpanded = expandedCategories[c.id] !== false;
+
+    if (editingCategoryId === c.id) {
+      return (
+        <div key={c.id} style={{ paddingLeft: `${depth * 12}px` }} className="space-y-1.5 py-1">
+          <div className="flex flex-col gap-1.5 bg-neutral-50 p-2 rounded-lg border border-neutral-200 animate-in fade-in duration-100">
+            <input
+              type="text"
+              value={editingCategoryLabel}
+              onChange={(e) => setEditingCategoryLabel(e.target.value)}
+              className="w-full text-xs bg-white border border-neutral-200 rounded px-1.5 py-1 font-sans font-medium text-neutral-800 focus:border-blue-500 focus:outline-hidden"
+              placeholder="重命名..."
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  if (editingCategoryLabel.trim()) {
+                    renameCategory(editingCategoryId, editingCategoryLabel.trim(), editingCategoryParentId);
+                  }
+                  setEditingCategoryId(null);
+                } else if (e.key === 'Escape') {
+                  setEditingCategoryId(null);
+                }
+              }}
+            />
+            <div className="flex items-center justify-between gap-1">
+              <select
+                value={editingCategoryParentId}
+                onChange={(e) => setEditingCategoryParentId(e.target.value)}
+                className="bg-white border border-neutral-200 rounded text-[10px] py-0.5 px-1 font-sans text-neutral-600 max-w-[110px]"
+              >
+                <option value="none">无(主分类)</option>
+                {categories.filter(parent => parent.id !== c.id).map(parent => (
+                  <option key={parent.id} value={parent.id}>{parent.label}</option>
+                ))}
+              </select>
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  onClick={() => {
+                    if (editingCategoryLabel.trim()) {
+                      renameCategory(editingCategoryId, editingCategoryLabel.trim(), editingCategoryParentId);
+                    }
+                    setEditingCategoryId(null);
+                  }}
+                  className="p-1 hover:text-emerald-600 text-neutral-400 cursor-pointer"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => setEditingCategoryId(null)}
+                  className="p-1 hover:text-rose-600 text-neutral-400 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (deletingCategoryId === c.id) {
+      return (
+        <div key={c.id} style={{ paddingLeft: `${depth * 12}px` }} className="space-y-0.5 py-1">
+          <div className="flex items-center justify-between gap-1 bg-rose-50 px-2 py-1 rounded-lg border border-rose-200 animate-in fade-in duration-100">
+            <span className="text-[10px] font-bold text-rose-800 font-sans truncate max-w-[120px]">
+              确认删除 &ldquo;{c.label}&rdquo;？
+            </span>
+            <div className="flex items-center gap-0.5 shrink-0">
+              <button
+                onClick={() => {
+                  deleteCategory(c.id);
+                  setDeletingCategoryId(null);
+                }}
+                className="p-0.5 hover:text-rose-700 text-rose-500 cursor-pointer"
+              >
+                <Check className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => setDeletingCategoryId(null)}
+                className="p-0.5 hover:text-neutral-600 text-neutral-450 cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div key={c.id} className="space-y-0.5">
+        <div
+          style={{ paddingLeft: `${depth * 12}px` }}
+          className="group relative flex items-center justify-between w-full"
+        >
+          <button
+            onClick={() => handleSelectCategory(c.id)}
+            className={`flex-grow flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium tracking-tight transition-all cursor-pointer text-left
+              ${isActive
+                ? 'bg-neutral-100/80 border-l-2 border-blue-600 text-neutral-900 font-semibold shadow-2xs'
+                : 'text-neutral-600 hover:text-neutral-950 hover:bg-neutral-50'
+              }`}
+          >
+            {hasChildren ? (
+              <span
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setExpandedCategories(prev => ({ ...prev, [c.id]: !isExpanded }));
+                }}
+                className="p-0.5 rounded hover:bg-neutral-200 text-neutral-400 hover:text-neutral-600 shrink-0 cursor-pointer transition-transform duration-150 inline-block"
+                style={{ transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}
+              >
+                <ChevronRight className="w-3.5 h-3.5 animate-in" />
+              </span>
+            ) : depth > 0 ? (
+              <span className="text-neutral-300 font-mono text-[10px] pl-1 pr-0.5 select-none shrink-0">└─</span>
+            ) : (
+              <span className="w-3.5 h-3.5 shrink-0" />
+            )}
+            <span className={isActive ? 'text-blue-600 shrink-0' : 'text-neutral-400 shrink-0'}>
+              {getCategoryIcon(c.id, "w-3.5 h-3.5")}
+            </span>
+            <span className="font-sans truncate max-w-[130px]">{c.label}</span>
+          </button>
+
+          {/* Hover actions */}
+          <div className="absolute right-2 top-2 hidden group-hover:flex items-center gap-1 bg-white border border-neutral-200 rounded px-1 py-0.5 shadow-xs z-10 select-none">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setEditingCategoryId(c.id);
+                setEditingCategoryLabel(c.label);
+                setEditingCategoryParentId(c.parentId || 'none');
+              }}
+              className="p-0.5 text-neutral-400 hover:text-neutral-700 cursor-pointer"
+              title="重命名或修改所属关系"
+            >
+              <Edit className="w-3 h-3" />
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setDeletingCategoryId(c.id);
+              }}
+              className="p-0.5 text-neutral-400 hover:text-rose-600 cursor-pointer"
+              title="删除此分类"
+            >
+              <Trash2 className="w-3 h-3" />
+            </button>
+          </div>
+        </div>
+
+        {/* Recursive subcategories */}
+        {hasChildren && isExpanded && (
+          <div className="space-y-0.5 animate-in fade-in duration-150">
+            {children.map((childNode) => renderCategoryNode(childNode, depth + 1))}
+          </div>
+        )}
+      </div>
+    );
   };
 
   const activeGoalObject = selectedGoalId ? goals[selectedGoalId] : null;
@@ -144,19 +342,20 @@ export default function App() {
             </div>
             
             {isAddingCategory && (
-              <div className="px-2 py-1 flex items-center gap-1.5 bg-neutral-50 border border-neutral-200 rounded-lg animate-in fade-in slide-in-from-top-1 duration-200">
+              <div className="px-2 py-1.5 flex flex-col gap-1.5 bg-neutral-50 border border-neutral-200 rounded-lg animate-in fade-in slide-in-from-top-1 duration-200">
                 <input
                   type="text"
                   value={newCategoryLabel}
                   onChange={(e) => setNewCategoryLabel(e.target.value)}
-                  className="w-full text-xs bg-transparent border-0 outline-none p-1 font-sans font-medium text-neutral-800"
-                  placeholder="新赛道名称..."
+                  className="w-full text-xs bg-white border border-neutral-200 rounded p-1 font-sans font-medium text-neutral-800 focus:outline-hidden focus:border-blue-500"
+                  placeholder="新赛道分类名称..."
                   autoFocus
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       if (newCategoryLabel.trim()) {
-                        addCategory(newCategoryLabel.trim());
+                        addCategory(newCategoryLabel.trim(), newCategoryParentId || undefined);
                         setNewCategoryLabel('');
+                        setNewCategoryParentId('');
                         setIsAddingCategory(false);
                       }
                     } else if (e.key === 'Escape') {
@@ -164,18 +363,39 @@ export default function App() {
                     }
                   }}
                 />
-                <button 
-                  onClick={() => {
-                    if (newCategoryLabel.trim()) {
-                      addCategory(newCategoryLabel.trim());
-                      setNewCategoryLabel('');
-                      setIsAddingCategory(false);
-                    }
-                  }}
-                  className="p-0.5 hover:text-emerald-600 text-neutral-400 cursor-pointer"
-                >
-                  <Check className="w-3.5 h-3.5" />
-                </button>
+                <div className="flex items-center justify-between gap-1">
+                  <select
+                    value={newCategoryParentId}
+                    onChange={(e) => setNewCategoryParentId(e.target.value)}
+                    className="bg-white border border-neutral-200 rounded text-[10px] py-0.5 px-1 font-sans text-neutral-600 max-w-[120px]"
+                  >
+                    <option value="">无(主分类)</option>
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.id}>{c.label}</option>
+                    ))}
+                  </select>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button 
+                      onClick={() => {
+                        if (newCategoryLabel.trim()) {
+                          addCategory(newCategoryLabel.trim(), newCategoryParentId || undefined);
+                          setNewCategoryLabel('');
+                          setNewCategoryParentId('');
+                          setIsAddingCategory(false);
+                        }
+                      }}
+                      className="p-1 hover:text-emerald-600 text-neutral-400 cursor-pointer"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                    </button>
+                    <button 
+                      onClick={() => setIsAddingCategory(false)}
+                      className="p-1 hover:text-rose-600 text-neutral-400 cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -201,123 +421,8 @@ export default function App() {
                 );
               })()}
 
-              {/* Dynamic Categories */}
-              {categories.map((c) => {
-                const isActive = selectedCategoryId === c.id && !isMergedView;
-                if (editingCategoryId === c.id) {
-                  return (
-                    <div key={c.id} className="flex items-center gap-1 bg-neutral-50 px-2 py-1 rounded-lg border border-neutral-200">
-                      <input
-                        type="text"
-                        value={editingCategoryLabel}
-                        onChange={(e) => setEditingCategoryLabel(e.target.value)}
-                        className="w-full text-xs bg-transparent border-0 outline-none p-1 font-sans font-medium text-neutral-800"
-                        placeholder="重命名..."
-                        autoFocus
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            if (editingCategoryLabel.trim()) {
-                              renameCategory(editingCategoryId, editingCategoryLabel.trim());
-                            }
-                            setEditingCategoryId(null);
-                          } else if (e.key === 'Escape') {
-                            setEditingCategoryId(null);
-                          }
-                        }}
-                      />
-                      <button 
-                        onClick={() => {
-                          if (editingCategoryLabel.trim()) {
-                            renameCategory(editingCategoryId, editingCategoryLabel.trim());
-                          }
-                          setEditingCategoryId(null);
-                        }}
-                        className="p-1 hover:text-emerald-600 text-neutral-400 cursor-pointer"
-                      >
-                        <Check className="w-3.5 h-3.5" />
-                      </button>
-                      <button 
-                        onClick={() => setEditingCategoryId(null)}
-                        className="p-1 hover:text-rose-600 text-neutral-400 cursor-pointer"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  );
-                }
-
-                if (deletingCategoryId === c.id) {
-                  return (
-                    <div key={c.id} className="flex items-center justify-between gap-1 bg-rose-50/80 px-2 py-1 outline-none rounded-lg border border-rose-200 animate-in fade-in duration-150">
-                      <span className="text-[10px] font-bold text-rose-800 font-sans truncate flex-grow">
-                        确认删除分类 &ldquo;{c.label}&rdquo;？
-                      </span>
-                      <div className="flex items-center gap-0.5 shrink-0">
-                        <button 
-                          onClick={() => {
-                            deleteCategory(c.id);
-                            setDeletingCategoryId(null);
-                          }}
-                          className="p-0.5 hover:text-rose-700 text-rose-500 font-bold cursor-pointer"
-                          title="确定删除分类及其下属目标"
-                        >
-                          <Check className="w-3.5 h-3.5" />
-                        </button>
-                        <button 
-                          onClick={() => setDeletingCategoryId(null)}
-                          className="p-0.5 hover:text-neutral-600 text-neutral-400 cursor-pointer"
-                          title="取消"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                }
-
-                return (
-                  <div key={c.id} className="group relative flex items-center justify-between w-full">
-                    <button
-                      onClick={() => handleSelectCategory(c.id)}
-                      className={`flex-grow flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium tracking-tight transition-all cursor-pointer text-left
-                        ${isActive 
-                          ? 'bg-neutral-100/80 border-l-2 border-blue-600 text-neutral-900 font-semibold shadow-2xs' 
-                          : 'text-neutral-600 hover:text-neutral-950 hover:bg-neutral-50'
-                        }`}
-                    >
-                      <span className={isActive ? 'text-blue-600' : 'text-neutral-400 shrink-0'}>
-                        {getCategoryIcon(c.id)}
-                      </span>
-                      <span className="font-sans truncate max-w-[130px]">{c.label}</span>
-                    </button>
-
-                    {/* Hover actions */}
-                    <div className="absolute right-2 top-1.5 hidden group-hover:flex items-center gap-1 bg-white border border-neutral-200 rounded px-1 py-0.5 shadow-sm">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setEditingCategoryId(c.id);
-                          setEditingCategoryLabel(c.label);
-                        }}
-                        className="p-0.5 text-neutral-400 hover:text-neutral-700 cursor-pointer"
-                        title="重命名分类"
-                      >
-                        <Edit className="w-3 h-3" />
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setDeletingCategoryId(c.id);
-                        }}
-                        className="p-0.5 text-neutral-400 hover:text-rose-600 cursor-pointer"
-                        title="删除分类"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
+              {/* Dynamic Hierarchical Categories */}
+              {categoryTree.map((node) => renderCategoryNode(node))}
             </nav>
           </div>
         </div>

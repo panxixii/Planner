@@ -1,7 +1,50 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../store';
-import { Goal, CategoryType, Task } from '../types';
+import { Goal, CategoryType, Task, AppCategory } from '../types';
 import { Target, Layers, ArrowRight, Plus, HelpCircle, BarChart3, AlertCircle, BookOpen, Trash2, Pencil } from 'lucide-react';
+
+interface FlatCategoryItem {
+  id: string;
+  label: string;
+  level: number;
+}
+
+const flattenCategoryTree = (categories: AppCategory[]): FlatCategoryItem[] => {
+  const nodeMap: Record<string, { category: AppCategory; children: string[] }> = {};
+  const roots: string[] = [];
+
+  categories.forEach((c) => {
+    nodeMap[c.id] = { category: c, children: [] };
+  });
+
+  categories.forEach((c) => {
+    if (c.parentId && nodeMap[c.parentId]) {
+      nodeMap[c.parentId].children.push(c.id);
+    } else {
+      roots.push(c.id);
+    }
+  });
+
+  const result: FlatCategoryItem[] = [];
+  const traverse = (id: string, level: number) => {
+    const node = nodeMap[id];
+    if (!node) return;
+    result.push({
+      id: node.category.id,
+      label: node.category.label,
+      level
+    });
+    node.children.forEach((childId) => {
+      traverse(childId, level + 1);
+    });
+  };
+
+  roots.forEach((rootId) => {
+    traverse(rootId, 0);
+  });
+
+  return result;
+};
 
 export const GoalGrid: React.FC = () => {
   const goals = useAppStore((state) => state.goals);
@@ -14,6 +57,10 @@ export const GoalGrid: React.FC = () => {
   const showHelp = useAppStore((state) => state.showHelp);
   const toggleHelp = useAppStore((state) => state.toggleHelp);
   const categoriesList = useAppStore((state) => state.categories);
+
+  const flattenedCategories = React.useMemo(() => {
+    return flattenCategoryTree(categoriesList);
+  }, [categoriesList]);
 
   // Goal adding interaction state
   const [isCreating, setIsCreating] = useState(false);
@@ -176,8 +223,10 @@ export const GoalGrid: React.FC = () => {
                 onChange={(e) => setCategory(e.target.value as CategoryType)}
                 className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2.5 text-neutral-800 text-xs focus:outline-hidden focus:border-blue-500 font-mono font-semibold"
               >
-                {categoriesList.map((c) => (
-                  <option key={c.id} value={c.id}>{c.label}领域</option>
+                {flattenedCategories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {'\u00A0'.repeat(c.level * 3)}{c.level > 0 ? '└─ ' : ''}{c.label}
+                  </option>
                 ))}
               </select>
             </div>
@@ -299,8 +348,10 @@ export const GoalGrid: React.FC = () => {
                           onChange={(e) => setEditCategory(e.target.value)}
                           className="w-full bg-neutral-50 border border-neutral-200 rounded px-2 py-1 text-neutral-800 text-xs focus:outline-hidden focus:border-blue-500 font-mono font-medium"
                         >
-                          {categoriesList.map((c) => (
-                            <option key={c.id} value={c.id}>{c.label}领域</option>
+                          {flattenedCategories.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {'\u00A0'.repeat(c.level * 3)}{c.level > 0 ? '└─ ' : ''}{c.label}
+                            </option>
                           ))}
                         </select>
                       </div>

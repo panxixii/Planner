@@ -293,19 +293,30 @@ export const useAppStore = create<AppState>((set, get) => {
       isMergedView: false 
     }),
 
-    addCategory: (label) => persistSet((state: AppState) => {
+    addCategory: (label, parentId) => persistSet((state: AppState) => {
       const newId = 'cat-' + genId();
       return {
-        categories: [...state.categories, { id: newId, label }]
+        categories: [...state.categories, { id: newId, label, parentId: parentId || undefined }]
       };
     }),
 
-    renameCategory: (id, newLabel) => persistSet((state: AppState) => ({
-      categories: state.categories.map((c) => c.id === id ? { ...c, label: newLabel } : c)
+    renameCategory: (id, newLabel, parentId) => persistSet((state: AppState) => ({
+      categories: state.categories.map((c) => {
+        if (c.id === id) {
+          return {
+            ...c,
+            label: newLabel,
+            parentId: parentId === 'none' ? undefined : (parentId !== undefined ? parentId : c.parentId)
+          };
+        }
+        return c;
+      })
     })),
 
     deleteCategory: (id) => persistSet((state: AppState) => {
-      const nextCategories = state.categories.filter((c) => c.id !== id);
+      const nextCategories = state.categories
+        .filter((c) => c.id !== id)
+        .map((c) => c.parentId === id ? { ...c, parentId: undefined } : c);
       let nextSelectedCategoryId = state.selectedCategoryId;
       if (state.selectedCategoryId === id) {
         nextSelectedCategoryId = 'all';

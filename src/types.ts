@@ -42,6 +42,7 @@ export interface BOMTreeItem {
 export interface AppCategory {
   id: string;
   label: string;
+  parentId?: string;
 }
 
 export type CategoryType = string;
@@ -59,8 +60,8 @@ export interface AppState {
   
   // Actions
   setCategory: (category: CategoryType) => void;
-  addCategory: (label: string) => void;
-  renameCategory: (id: string, newLabel: string) => void;
+  addCategory: (label: string, parentId?: string) => void;
+  renameCategory: (id: string, newLabel: string, parentId?: string) => void;
   deleteCategory: (id: string) => void;
   selectGoal: (goalId: string | null) => void;
   setMergedView: (val: boolean) => void;
