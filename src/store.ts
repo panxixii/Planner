@@ -189,7 +189,8 @@ const loadSavedState = () => {
           crossGoalEdges: Array.isArray(parsed.crossGoalEdges) ? parsed.crossGoalEdges : [],
           isSidebarCollapsed: !!parsed.isSidebarCollapsed,
           showHelp: typeof parsed.showHelp === 'boolean' ? parsed.showHelp : true,
-          timelineTaskOrder: Array.isArray(parsed.timelineTaskOrder) ? parsed.timelineTaskOrder : []
+          timelineTaskOrder: Array.isArray(parsed.timelineTaskOrder) ? parsed.timelineTaskOrder : [],
+          isTimelineCollapsed: !!parsed.isTimelineCollapsed
         };
       }
     }
@@ -213,6 +214,7 @@ const initialCrossGoalEdges = savedState ? savedState.crossGoalEdges : [];
 const initialIsSidebarCollapsed = savedState ? savedState.isSidebarCollapsed : false;
 const initialShowHelp = savedState ? savedState.showHelp : true;
 const initialTimelineTaskOrder = savedState ? (savedState.timelineTaskOrder || []) : [];
+const initialIsTimelineCollapsed = savedState ? savedState.isTimelineCollapsed : false;
 
 export const useAppStore = create<AppState>((set, get) => {
   // A wrapper function that performs the state change and automatically persists it to localStorage
@@ -234,7 +236,8 @@ export const useAppStore = create<AppState>((set, get) => {
           crossGoalEdges: merged.crossGoalEdges,
           isSidebarCollapsed: merged.isSidebarCollapsed,
           showHelp: merged.showHelp,
-          timelineTaskOrder: merged.timelineTaskOrder || []
+          timelineTaskOrder: merged.timelineTaskOrder || [],
+          isTimelineCollapsed: merged.isTimelineCollapsed
         };
         localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(toSave));
       } catch (e) {
@@ -259,6 +262,7 @@ export const useAppStore = create<AppState>((set, get) => {
     isSidebarCollapsed: initialIsSidebarCollapsed,
     showHelp: initialShowHelp,
     timelineTaskOrder: initialTimelineTaskOrder,
+    isTimelineCollapsed: initialIsTimelineCollapsed,
 
     setCategory: (category) => persistSet({ 
       selectedCategoryId: category, 
@@ -559,6 +563,7 @@ export const useAppStore = create<AppState>((set, get) => {
 
     toggleSidebar: () => persistSet((state: AppState) => ({ isSidebarCollapsed: !state.isSidebarCollapsed })),
     toggleHelp: () => persistSet((state: AppState) => ({ showHelp: !state.showHelp })),
+    toggleTimeline: () => persistSet((state: AppState) => ({ isTimelineCollapsed: !state.isTimelineCollapsed })),
     setTimelineTaskOrder: (order) => persistSet({ timelineTaskOrder: order }),
     clearWorkspace: () => persistSet({
       tasks: EMPTY_TASKS,
@@ -569,7 +574,8 @@ export const useAppStore = create<AppState>((set, get) => {
       activeMergedGoalIds: [],
       crossGoalEdges: [],
       bomTree: EMPTY_BOM_TREE,
-      timelineTaskOrder: []
+      timelineTaskOrder: [],
+      isTimelineCollapsed: false
     })
   };
 });

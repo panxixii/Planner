@@ -1,19 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../store';
-import { BOMTreeItem, Task } from '../types';
-import { Folder, FolderOpen, GripVertical, FileText, Plus, HelpCircle, BookOpen, Layers } from 'lucide-react';
+import { BOMTreeItem, Task, GoalNode } from '../types';
+import { Folder, FolderOpen, GripVertical, FileText, Plus, BookOpen, Layers } from 'lucide-react';
 
 export const BOMSidebar: React.FC = () => {
-  const bomTree = useAppStore((state) => state.bomTree);
+  const goals = useAppStore((state) => state.goals);
   const tasks = useAppStore((state) => state.tasks);
-  const addBOMItem = useAppStore((state) => state.addBOMItem);
   const addTask = useAppStore((state) => state.addTask);
+  const addNodeToGoal = useAppStore((state) => state.addNodeToGoal);
   const selectedGoalId = useAppStore((state) => state.selectedGoalId);
   const isMergedView = useAppStore((state) => state.isMergedView);
+  const selectedCategoryId = useAppStore((state) => state.selectedCategoryId);
   const showHelp = useAppStore((state) => state.showHelp);
   const toggleHelp = useAppStore((state) => state.toggleHelp);
 
-  // Keep track of which folders are expanded
+  // Keep track of which folders are expanded (defaults to false / collapsed)
   const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({});
 
   // State to add customized element
@@ -21,10 +22,45 @@ export const BOMSidebar: React.FC = () => {
   const [newBOMTitle, setNewBOMTitle] = useState('');
   const [newBOMDesc, setNewBOMDesc] = useState('');
 
+  // Generate BOM tree items dynamically based on Goals and their child Tasks
+  const dynamicBOMTree = useMemo(() => {
+    const goalsToUse = Object.values(goals).filter((g) => {
+      if (isMergedView) {
+        return true;
+      }
+      if (selectedCategoryId === 'all') {
+        return true;
+      }
+      return g.category === selectedCategoryId;
+    });
+
+    return goalsToUse.map((goal) => {
+      const children: BOMTreeItem[] = (goal.nodes || [])
+        .map((node): BOMTreeItem | null => {
+          const associatedTask = tasks[node.taskId];
+          if (!associatedTask) return null;
+          return {
+            id: `bom-task-${goal.id}-${node.id}`,
+            title: associatedTask.title,
+            type: 'task',
+            taskId: node.taskId,
+          };
+        })
+        .filter((item): item is BOMTreeItem => item !== null);
+
+      return {
+        id: `bom-goal-dir-${goal.id}`,
+        title: goal.title,
+        type: 'category' as const,
+        children,
+      };
+    });
+  }, [goals, tasks, selectedCategoryId, isMergedView]);
+
   const toggleExpand = (nodeId: string) => {
     setExpandedNodes((prev) => ({
       ...prev,
-      [nodeId]: prev[nodeId] === false ? true : false,
+      [nodeId]: !prev[nodeId],
     }));
   };
 
@@ -37,26 +73,26 @@ export const BOMSidebar: React.FC = () => {
     if (!newBOMTitle.trim()) return;
 
     const newTaskId = `t-bom-${Math.random().toString(36).substring(2, 9)}`;
+    const targetGoalId = parentId.replace('bom-goal-dir-', '');
     
     // 1. Create task entry in unified tasks resource pool
     const newTask: Task = {
       id: newTaskId,
       title: newBOMTitle,
-      description: newBOMDesc || '模板蓝图描述。',
+      description: newBOMDesc || '自定义阶段任务描述。',
       duration: 4,
       isDone: false,
       color: 'indigo',
     };
     addTask(newTask);
 
-    // 2. Insert as a draggable child into the BOM Tree structure
-    const newBOMNode: BOMTreeItem = {
-      id: `bom-node-${Math.random().toString(36).substring(2, 9)}`,
-      title: newBOMTitle,
-      type: 'task',
+    // 2. Insert into the target goal directly on the canvas
+    const newGoalNode: GoalNode = {
+      id: `node-${Math.random().toString(36).substring(2, 9)}`,
       taskId: newTaskId,
+      position: { x: 150, y: 150 }, // standard starting position
     };
-    addBOMItem(parentId, newBOMNode);
+    addNodeToGoal(targetGoalId, newGoalNode);
 
     // Reset inputs
     setNewBOMTitle('');
@@ -66,7 +102,7 @@ export const BOMSidebar: React.FC = () => {
 
   const renderTreeItem = (node: BOMTreeItem, depth = 0) => {
     const isFolder = node.type === 'category';
-    const isExpanded = expandedNodes[node.id] !== false;
+    const isExpanded = !!expandedNodes[node.id];
     
     if (isFolder) {
       return (
@@ -219,7 +255,13 @@ export const BOMSidebar: React.FC = () => {
 
       {/* Actual Tree Containers */}
       <div className="space-y-1.5 max-h-[170px] overflow-y-auto pr-1">
-        {bomTree.map((topNode) => renderTreeItem(topNode))}
+        {dynamicBOMTree.length === 0 ? (
+          <div className="text-[10px] text-neutral-400 italic text-center py-6 font-mono">
+            当前分类下尚无目标计划（BOM无根目录文件夹）
+          </div>
+        ) : (
+          dynamicBOMTree.map((topNode) => renderTreeItem(topNode))
+        )}
       </div>
 
       {/* Guide notice info */}

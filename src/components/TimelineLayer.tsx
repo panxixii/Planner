@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../store';
-import { Calendar, Clock, Sparkles, SlidersHorizontal, Scale, ChevronRight, Inbox, GripVertical } from 'lucide-react';
+import { Calendar, Clock, Sparkles, SlidersHorizontal, Scale, ChevronRight, Inbox, GripVertical, ChevronUp, ChevronDown } from 'lucide-react';
 
 type ZoomScaleType = 'minutes' | 'hours' | 'days' | 'weeks' | 'months';
 
@@ -20,6 +20,8 @@ export const TimelineLayer: React.FC = () => {
   const activeMergedGoalIds = useAppStore((state) => state.activeMergedGoalIds);
   const timelineTaskOrder = useAppStore((state) => state.timelineTaskOrder);
   const setTimelineTaskOrder = useAppStore((state) => state.setTimelineTaskOrder);
+  const isTimelineCollapsed = useAppStore((state) => state.isTimelineCollapsed);
+  const toggleTimeline = useAppStore((state) => state.toggleTimeline);
 
   const [zoomScale, setZoomScale] = useState<ZoomScaleType>('days');
 
@@ -253,7 +255,7 @@ export const TimelineLayer: React.FC = () => {
   };
 
   return (
-    <div id="timeline" className="bg-white border-t border-neutral-200 flex flex-col h-80 shrink-0 select-none">
+    <div id="timeline" className={`bg-white border-t border-neutral-200 flex flex-col shrink-0 select-none transition-all duration-300 ${isTimelineCollapsed ? 'h-[45px] overflow-hidden' : 'h-80'}`}>
       
       {/* 1. Timeline Upper Control Toolbar */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between px-6 py-2.5 bg-neutral-50/50 border-b border-neutral-200">
@@ -307,11 +309,21 @@ export const TimelineLayer: React.FC = () => {
             <span className="w-2 h-2 rounded-full bg-emerald-500" /> 已毕
             <span className="w-2 h-2 rounded-full bg-blue-500" /> 推进中
           </div>
+
+          <button
+            onClick={toggleTimeline}
+            className="flex items-center gap-1 px-2.5 py-1 bg-white border border-neutral-200 hover:bg-neutral-50 text-neutral-600 hover:text-neutral-800 rounded-lg text-xs leading-none select-none transition-colors duration-200 cursor-pointer shadow-2xs shrink-0"
+            title={isTimelineCollapsed ? "展开甘特图排期" : "收起甘特图排期"}
+          >
+            {isTimelineCollapsed ? <ChevronUp className="w-3.5 h-3.5 text-neutral-500" /> : <ChevronDown className="w-3.5 h-3.5 text-neutral-500" />}
+            <span className="font-sans font-medium">{isTimelineCollapsed ? "展开" : "折叠"}</span>
+          </button>
         </div>
       </div>
 
       {/* 2. Scrollable Gantt Matrix Engine */}
-      <div className="flex-1 overflow-x-auto min-w-0 custom-scrollbar relative bg-white">
+      {!isTimelineCollapsed && (
+        <div className="flex-1 overflow-x-auto min-w-0 custom-scrollbar relative bg-white">
         <div className={`${scaleConfig.gridWidthClass} h-full flex flex-col`}>
           
           {/* A. Gantt Header Row */}
@@ -482,6 +494,7 @@ export const TimelineLayer: React.FC = () => {
           
         </div>
       </div>
+      )}
     </div>
   );
 };

@@ -101,4 +101,8 @@ export interface AppState {
   // Custom task sorting for Gantt timeline
   timelineTaskOrder: string[];
   setTimelineTaskOrder: (order: string[]) => void;
+
+  // Timeline collapse state
+  isTimelineCollapsed: boolean;
+  toggleTimeline: () => void;
 }
