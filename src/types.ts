@@ -105,4 +105,11 @@ export interface AppState {
   // Timeline collapse state
   isTimelineCollapsed: boolean;
   toggleTimeline: () => void;
+
+  // Independent Merged View state
+  mergedNodePositions: Record<string, { x: number; y: number }>;
+  mergedEdges: GoalEdge[];
+  updateMergedNodePositions: (positions: Record<string, { x: number; y: number }>) => void;
+  addMergedEdge: (edge: GoalEdge) => void;
+  deleteMergedEdge: (edgeId: string) => void;
 }

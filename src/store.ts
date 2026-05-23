@@ -190,7 +190,9 @@ const loadSavedState = () => {
           isSidebarCollapsed: !!parsed.isSidebarCollapsed,
           showHelp: typeof parsed.showHelp === 'boolean' ? parsed.showHelp : true,
           timelineTaskOrder: Array.isArray(parsed.timelineTaskOrder) ? parsed.timelineTaskOrder : [],
-          isTimelineCollapsed: !!parsed.isTimelineCollapsed
+          isTimelineCollapsed: !!parsed.isTimelineCollapsed,
+          mergedNodePositions: parsed.mergedNodePositions || {},
+          mergedEdges: Array.isArray(parsed.mergedEdges) ? parsed.mergedEdges : null
         };
       }
     }
@@ -215,6 +217,23 @@ const initialIsSidebarCollapsed = savedState ? savedState.isSidebarCollapsed : f
 const initialShowHelp = savedState ? savedState.showHelp : true;
 const initialTimelineTaskOrder = savedState ? (savedState.timelineTaskOrder || []) : [];
 const initialIsTimelineCollapsed = savedState ? savedState.isTimelineCollapsed : false;
+const initialMergedNodePositions = (savedState && savedState.mergedNodePositions) ? savedState.mergedNodePositions : {};
+
+let initialMergedEdges: GoalEdge[] = [];
+if (savedState && Array.isArray(savedState.mergedEdges)) {
+  initialMergedEdges = savedState.mergedEdges;
+} else {
+  const combinedEdges: GoalEdge[] = [];
+  Object.values(initialGoals).forEach((g) => {
+    if (g.edges) {
+      combinedEdges.push(...g.edges);
+    }
+  });
+  if (initialCrossGoalEdges.length > 0) {
+    combinedEdges.push(...initialCrossGoalEdges);
+  }
+  initialMergedEdges = combinedEdges;
+}
 
 export const useAppStore = create<AppState>((set, get) => {
   // A wrapper function that performs the state change and automatically persists it to localStorage
@@ -237,7 +256,9 @@ export const useAppStore = create<AppState>((set, get) => {
           isSidebarCollapsed: merged.isSidebarCollapsed,
           showHelp: merged.showHelp,
           timelineTaskOrder: merged.timelineTaskOrder || [],
-          isTimelineCollapsed: merged.isTimelineCollapsed
+          isTimelineCollapsed: merged.isTimelineCollapsed,
+          mergedNodePositions: merged.mergedNodePositions,
+          mergedEdges: merged.mergedEdges
         };
         localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(toSave));
       } catch (e) {
@@ -263,6 +284,8 @@ export const useAppStore = create<AppState>((set, get) => {
     showHelp: initialShowHelp,
     timelineTaskOrder: initialTimelineTaskOrder,
     isTimelineCollapsed: initialIsTimelineCollapsed,
+    mergedNodePositions: initialMergedNodePositions,
+    mergedEdges: initialMergedEdges,
 
     setCategory: (category) => persistSet({ 
       selectedCategoryId: category, 
@@ -507,12 +530,16 @@ export const useAppStore = create<AppState>((set, get) => {
       // Also prune from crossGoalEdges if any
       const nextCrossEdges = state.crossGoalEdges.filter(e => e.source !== nodeId && e.target !== nodeId);
 
+      // Sweep from independent mergedEdges as well
+      const nextMergedEdges = state.mergedEdges.filter(e => e.source !== nodeId && e.target !== nodeId);
+
       return {
         goals: {
           ...state.goals,
           [goalId]: { ...targetGoal, nodes: filteredNodes, edges: filteredEdges }
         },
-        crossGoalEdges: nextCrossEdges
+        crossGoalEdges: nextCrossEdges,
+        mergedEdges: nextMergedEdges
       };
     }),
 
@@ -565,6 +592,19 @@ export const useAppStore = create<AppState>((set, get) => {
     toggleHelp: () => persistSet((state: AppState) => ({ showHelp: !state.showHelp })),
     toggleTimeline: () => persistSet((state: AppState) => ({ isTimelineCollapsed: !state.isTimelineCollapsed })),
     setTimelineTaskOrder: (order) => persistSet({ timelineTaskOrder: order }),
+
+    updateMergedNodePositions: (positions) => persistSet((state: AppState) => ({
+      mergedNodePositions: { ...state.mergedNodePositions, ...positions }
+    })),
+
+    addMergedEdge: (edge) => persistSet((state: AppState) => ({
+      mergedEdges: [...state.mergedEdges, edge]
+    })),
+
+    deleteMergedEdge: (edgeId) => persistSet((state: AppState) => ({
+      mergedEdges: state.mergedEdges.filter((e) => e.id !== edgeId)
+    })),
+
     clearWorkspace: () => persistSet({
       tasks: EMPTY_TASKS,
       goals: {},
@@ -575,7 +615,9 @@ export const useAppStore = create<AppState>((set, get) => {
       crossGoalEdges: [],
       bomTree: EMPTY_BOM_TREE,
       timelineTaskOrder: [],
-      isTimelineCollapsed: false
+      isTimelineCollapsed: false,
+      mergedNodePositions: {},
+      mergedEdges: []
     })
   };
 });
