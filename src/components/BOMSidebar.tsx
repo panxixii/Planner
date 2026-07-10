@@ -13,6 +13,7 @@ export const BOMSidebar: React.FC = () => {
   const selectedCategoryId = useAppStore((state) => state.selectedCategoryId);
   const showHelp = useAppStore((state) => state.showHelp);
   const toggleHelp = useAppStore((state) => state.toggleHelp);
+  const mergedNodeIds = useAppStore((state) => state.mergedNodeIds);
 
   // Keep track of which folders are expanded (defaults to false / collapsed)
   const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({});
@@ -24,23 +25,35 @@ export const BOMSidebar: React.FC = () => {
 
   // Generate BOM tree items dynamically based on Goals and their child Tasks
   const dynamicBOMTree = useMemo(() => {
-    const goalsToUse = Object.values(goals).filter((g) => {
-      if (isMergedView) {
-        return true;
-      }
-      if (selectedCategoryId === 'all') {
-        return true;
-      }
-      return g.category === selectedCategoryId;
-    });
+    const goalsToUse = Object.values(goals);
 
     return goalsToUse.map((goal) => {
       const children: BOMTreeItem[] = (goal.nodes || [])
         .map((node): BOMTreeItem | null => {
           const associatedTask = tasks[node.taskId];
           if (!associatedTask) return null;
+
+          // If we are in merged view, filter based on topological dependencies
+          if (isMergedView) {
+            const incomingEdges = (goal.edges || []).filter((e) => e.target === node.id);
+            if (incomingEdges.length > 0) {
+              const allPredecessorsValid = incomingEdges.every((edge) => {
+                const sourceNode = (goal.nodes || []).find((gn) => gn.id === edge.source);
+                if (!sourceNode) return false;
+                const sourceTask = tasks[sourceNode.taskId];
+                const isDone = sourceTask?.isDone || false;
+                const isPulled = mergedNodeIds.includes(sourceNode.id);
+                return isDone || isPulled;
+              });
+
+              if (!allPredecessorsValid) {
+                return null;
+              }
+            }
+          }
+
           return {
-            id: `bom-task-${goal.id}-${node.id}`,
+            id: `bom-task___${goal.id}___${node.id}`,
             title: associatedTask.title,
             type: 'task',
             taskId: node.taskId,
@@ -55,7 +68,7 @@ export const BOMSidebar: React.FC = () => {
         children,
       };
     });
-  }, [goals, tasks, selectedCategoryId, isMergedView]);
+  }, [goals, tasks, selectedCategoryId, isMergedView, mergedNodeIds]);
 
   const toggleExpand = (nodeId: string) => {
     setExpandedNodes((prev) => ({
@@ -200,6 +213,13 @@ export const BOMSidebar: React.FC = () => {
           onDragStart={(e) => {
             if (associatedTask) {
               handleDragStart(e, associatedTask.id);
+              if (node.id.startsWith('bom-task___')) {
+                const parts = node.id.split('___');
+                const dragGoalId = parts[1];
+                const dragNodeId = parts[2];
+                e.dataTransfer.setData('application/reactflow-orgnodeid', dragNodeId);
+                e.dataTransfer.setData('application/reactflow-orggoalid', dragGoalId);
+              }
             }
           }}
           className={`group flex items-center justify-between py-1.5 px-2.5 mx-1.5 rounded-lg border text-xs font-mono transition-all text-neutral-500

@@ -192,7 +192,9 @@ const loadSavedState = () => {
           timelineTaskOrder: Array.isArray(parsed.timelineTaskOrder) ? parsed.timelineTaskOrder : [],
           isTimelineCollapsed: !!parsed.isTimelineCollapsed,
           mergedNodePositions: parsed.mergedNodePositions || {},
-          mergedEdges: Array.isArray(parsed.mergedEdges) ? parsed.mergedEdges : null
+          mergedEdges: Array.isArray(parsed.mergedEdges) ? parsed.mergedEdges : null,
+          mergedNodeIds: Array.isArray(parsed.mergedNodeIds) ? parsed.mergedNodeIds : [],
+          componentNames: parsed.componentNames || {}
         };
       }
     }
@@ -218,6 +220,8 @@ const initialShowHelp = savedState ? savedState.showHelp : true;
 const initialTimelineTaskOrder = savedState ? (savedState.timelineTaskOrder || []) : [];
 const initialIsTimelineCollapsed = savedState ? savedState.isTimelineCollapsed : false;
 const initialMergedNodePositions = (savedState && savedState.mergedNodePositions) ? savedState.mergedNodePositions : {};
+const initialMergedNodeIds = (savedState && Array.isArray(savedState.mergedNodeIds)) ? savedState.mergedNodeIds : [];
+const initialComponentNames = (savedState && savedState.componentNames) ? savedState.componentNames : {};
 
 let initialMergedEdges: GoalEdge[] = [];
 if (savedState && Array.isArray(savedState.mergedEdges)) {
@@ -258,7 +262,9 @@ export const useAppStore = create<AppState>((set, get) => {
           timelineTaskOrder: merged.timelineTaskOrder || [],
           isTimelineCollapsed: merged.isTimelineCollapsed,
           mergedNodePositions: merged.mergedNodePositions,
-          mergedEdges: merged.mergedEdges
+          mergedEdges: merged.mergedEdges,
+          mergedNodeIds: merged.mergedNodeIds,
+          componentNames: merged.componentNames
         };
         localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(toSave));
       } catch (e) {
@@ -286,6 +292,12 @@ export const useAppStore = create<AppState>((set, get) => {
     isTimelineCollapsed: initialIsTimelineCollapsed,
     mergedNodePositions: initialMergedNodePositions,
     mergedEdges: initialMergedEdges,
+    mergedNodeIds: initialMergedNodeIds,
+    componentNames: initialComponentNames,
+    updateComponentName: (id, name) => persistSet((state: AppState) => {
+      const updatedNames = { ...state.componentNames, [id]: name };
+      return { componentNames: updatedNames };
+    }),
 
     setCategory: (category) => persistSet({ 
       selectedCategoryId: category, 
@@ -687,6 +699,17 @@ export const useAppStore = create<AppState>((set, get) => {
       mergedEdges: state.mergedEdges.filter((e) => e.id !== edgeId)
     })),
 
+    addMergedNodeId: (nodeId) => persistSet((state: AppState) => {
+      if (state.mergedNodeIds.includes(nodeId)) return {};
+      return { mergedNodeIds: [...state.mergedNodeIds, nodeId] };
+    }),
+
+    deleteMergedNodeId: (nodeId) => persistSet((state: AppState) => ({
+      mergedNodeIds: state.mergedNodeIds.filter((id) => id !== nodeId)
+    })),
+
+    clearMergedNodeIds: () => persistSet({ mergedNodeIds: [] }),
+
     clearWorkspace: () => persistSet({
       tasks: EMPTY_TASKS,
       goals: {},
@@ -699,7 +722,8 @@ export const useAppStore = create<AppState>((set, get) => {
       timelineTaskOrder: [],
       isTimelineCollapsed: false,
       mergedNodePositions: {},
-      mergedEdges: []
+      mergedEdges: [],
+      mergedNodeIds: []
     })
   };
 });

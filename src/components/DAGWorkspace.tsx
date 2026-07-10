@@ -11,11 +11,13 @@ import {
   applyNodeChanges,
   applyEdgeChanges,
   NodeChange,
-  EdgeChange
+  EdgeChange,
+  MarkerType
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useAppStore } from '../store';
 import { TaskNode } from './TaskNode';
+import { ComponentHandleNode } from './ComponentHandleNode';
 import { 
   Layers2, 
   Sparkles, 
@@ -69,12 +71,53 @@ const getDescendantNodeIds = (nodeId: string, edges: any[]): Set<string> => {
   return result;
 };
 
+// Helper to find all connected components of a goal or merged workspace
+const getConnectedComponents = (nodes: any[], edges: any[]): { id: string; nodeIds: Set<string> }[] => {
+  const visited = new Set<string>();
+  const components: { id: string; nodeIds: Set<string> }[] = [];
+
+  nodes.forEach((node) => {
+    if (visited.has(node.id)) return;
+
+    const componentNodeIds = new Set<string>([node.id]);
+    const queue = [node.id];
+    visited.add(node.id);
+
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      edges.forEach((edge) => {
+        let neighbor: string | null = null;
+        if (edge.source === current) {
+          neighbor = edge.target;
+        } else if (edge.target === current) {
+          neighbor = edge.source;
+        }
+        if (neighbor && !visited.has(neighbor)) {
+          if (nodes.some((n) => n.id === neighbor)) {
+            visited.add(neighbor);
+            componentNodeIds.add(neighbor);
+            queue.push(neighbor);
+          }
+        }
+      });
+    }
+
+    components.push({
+      id: `cc-${node.id}`,
+      nodeIds: componentNodeIds
+    });
+  });
+
+  return components;
+};
+
 interface DAGInnerWorkspaceProps {
   onDrop: (event: React.DragEvent) => void;
   onDragOver: (event: React.DragEvent) => void;
 }
 
 const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOver }) => {
+  const tasks = useAppStore((state) => state.tasks);
   const isMergedView = useAppStore((state) => state.isMergedView);
   const selectedGoalId = useAppStore((state) => state.selectedGoalId);
   const goals = useAppStore((state) => state.goals);
@@ -93,9 +136,13 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
   // Independent Merged View state
   const mergedNodePositions = useAppStore((state) => state.mergedNodePositions);
   const mergedEdges = useAppStore((state) => state.mergedEdges);
+  const mergedNodeIds = useAppStore((state) => state.mergedNodeIds);
   const updateMergedNodePositions = useAppStore((state) => state.updateMergedNodePositions);
   const addMergedEdge = useAppStore((state) => state.addMergedEdge);
   const deleteMergedEdge = useAppStore((state) => state.deleteMergedEdge);
+  const addMergedNodeId = useAppStore((state) => state.addMergedNodeId);
+  const deleteMergedNodeId = useAppStore((state) => state.deleteMergedNodeId);
+  const clearMergedNodeIds = useAppStore((state) => state.clearMergedNodeIds);
 
   const showHelp = useAppStore((state) => state.showHelp);
   const toggleHelp = useAppStore((state) => state.toggleHelp);
@@ -113,7 +160,8 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
 
   // Register Custom Task Node
   const nodeTypes = useMemo(() => ({
-    taskNode: TaskNode
+    taskNode: TaskNode,
+    componentHandle: ComponentHandleNode
   }), []);
 
   // Compute final elements dynamically with local cache
@@ -123,8 +171,11 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
   // Calculate clean merged nodes and edges whenever underlying store state changes
   useEffect(() => {
     let computedNodes: Node[] = [];
+    let computedEdges: Edge[] = [];
+
     if (isMergedView) {
-      const activeGoalIds = Object.keys(goals).filter(gid => activeMergedGoalIds.includes(gid));
+      // 1. Populate task nodes
+      const activeGoalIds = Object.keys(goals);
       activeGoalIds.forEach((gid, index) => {
         const g = goals[gid];
         if (!g || !g.nodes) return;
@@ -132,6 +183,9 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
 
         g.nodes.forEach((n) => {
           if (!n) return;
+          // Only show nodes that have been pulled into the merged workspace!
+          if (!mergedNodeIds.includes(n.id)) return;
+
           const mergedPos = mergedNodePositions[n.id];
           const finalPos = mergedPos ? mergedPos : { x: n.position.x, y: n.position.y + yOffset };
           computedNodes.push({
@@ -142,6 +196,118 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
           });
         });
       });
+
+      // 2. Populate edges
+      // Predefined standard inner-goal edges if BOTH endpoints have been pulled
+      activeGoalIds.forEach((gid) => {
+        const g = goals[gid];
+        if (!g || !g.edges) return;
+        g.edges.forEach((e) => {
+          const hasSource = computedNodes.some(n => n.id === e.source);
+          const hasTarget = computedNodes.some(n => n.id === e.target);
+          if (hasSource && hasTarget) {
+            computedEdges.push({
+              id: e.id,
+              source: e.source,
+              target: e.target,
+              type: 'step',
+              animated: false,
+              style: { 
+                stroke: '#94A3B8', 
+                strokeWidth: 1.5,
+                opacity: 0.65
+              },
+              interactionWidth: 25,
+              markerEnd: {
+                type: MarkerType.ArrowClosed,
+                width: 15,
+                height: 15,
+                color: '#94A3B8',
+              }
+            });
+          }
+        });
+      });
+
+      // Custom drawn merged connections (cross-goal or custom)
+      mergedEdges.forEach((e) => {
+        const hasSource = computedNodes.some(n => n.id === e.source);
+        const hasTarget = computedNodes.some(n => n.id === e.target);
+        if (hasSource && hasTarget) {
+          const alreadyExistsIndex = computedEdges.findIndex(ce => ce.source === e.source && ce.target === e.target);
+
+          const sNode = computedNodes.find(n => n.id === e.source);
+          const tNode = computedNodes.find(n => n.id === e.target);
+          const isCross = sNode?.data?.goalId !== tNode?.data?.goalId;
+
+          const newEdgeObj: Edge = {
+            id: e.id,
+            source: e.source,
+            target: e.target,
+            type: 'step',
+            animated: true,
+            style: { 
+              stroke: '#2563EB', 
+              strokeWidth: 2.5,
+              opacity: 1,
+              strokeDasharray: isCross ? '6,6' : '0'
+            },
+            label: isCross ? '跨计划依赖' : undefined,
+            labelStyle: { fill: '#2563EB', fontSize: 9, fontFamily: 'monospace', fontWeight: 'bold' },
+            interactionWidth: 25,
+            markerEnd: {
+              type: MarkerType.ArrowClosed,
+              width: 15,
+              height: 15,
+              color: '#2563EB',
+            }
+          };
+
+          if (alreadyExistsIndex >= 0) {
+            computedEdges[alreadyExistsIndex] = newEdgeObj;
+          } else {
+            computedEdges.push(newEdgeObj);
+          }
+        }
+      });
+
+      // 3. Calculate connected components of the merged workspace's task nodes & edges, and add handles
+      const components = getConnectedComponents(computedNodes, computedEdges);
+      let ccIndex = 1;
+      components.forEach((component) => {
+        if (component.nodeIds.size >= 2) {
+          const memberNodes = computedNodes.filter((n) => component.nodeIds.has(n.id));
+          const xs = memberNodes.map((n) => n.position.x);
+          const ys = memberNodes.map((n) => n.position.y);
+          const minX = Math.min(...xs);
+          const maxX = Math.max(...xs);
+          const minY = Math.min(...ys);
+
+          const handleX = (minX + maxX) / 2 - 50;
+          const handleY = minY - 50;
+
+          const repNode = memberNodes[0];
+          const repTaskId = repNode ? (repNode.data as any)?.taskId : null;
+          const repTask = repTaskId ? tasks[repTaskId] : null;
+          const label = repTask ? `连通块: ${repTask.title.slice(0, 8)}...` : `连通块 #${ccIndex}`;
+
+          // Generate stable ID for renaming
+          const stableId = `cc-${Array.from(component.nodeIds).sort().join(',')}`;
+
+          computedNodes.push({
+            id: `handle-cc-${stableId}`,
+            type: 'componentHandle',
+            position: { x: handleX, y: handleY },
+            data: {
+              label: label,
+              memberNodeIds: Array.from(component.nodeIds),
+              stableId: stableId
+            }
+          });
+          ccIndex++;
+        }
+      });
+
     } else if (selectedGoalId && goals[selectedGoalId]) {
       const goal = goals[selectedGoalId];
       computedNodes = (goal.nodes || []).map((n) => ({
@@ -150,43 +316,11 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
         position: n.position,
         data: { taskId: n.taskId, goalColor: goal.color, goalTitle: goal.title, goalId: selectedGoalId, isMerged: false }
       }));
-    }
 
-    let computedEdges: Edge[] = [];
-    if (isMergedView) {
-      // Use independent mergedEdges in merged view
-      mergedEdges.forEach((e) => {
-        const hasSource = computedNodes.some(n => n.id === e.source);
-        const hasTarget = computedNodes.some(n => n.id === e.target);
-        if (hasSource && hasTarget) {
-          const isCustom = e.id.startsWith('edge-custom-');
-          const sNode = computedNodes.find(n => n.id === e.source);
-          const tNode = computedNodes.find(n => n.id === e.target);
-          const isCross = sNode?.data?.goalId !== tNode?.data?.goalId;
-
-          computedEdges.push({
-            id: e.id,
-            source: e.source,
-            target: e.target,
-            type: 'step',
-            animated: isCustom,
-            style: { 
-              stroke: isCustom ? '#2563EB' : '#94A3B8', 
-              strokeWidth: isCustom ? 2.5 : 1.5,
-              opacity: isCustom ? 1 : 0.65,
-              strokeDasharray: isCross ? '6,6' : '0'
-            },
-            label: isCross ? '跨计划依赖' : undefined,
-            labelStyle: { fill: '#2563EB', fontSize: 9, fontFamily: 'monospace', fontWeight: 'bold' },
-            interactionWidth: 25
-          });
-        }
-      });
-    } else if (selectedGoalId && goals[selectedGoalId]) {
-      const goal = goals[selectedGoalId];
       computedEdges = (goal.edges || []).map((e) => {
         if (!e) return {} as Edge;
         const isCustom = e.id.startsWith('edge-custom-');
+        const strokeColor = isCustom ? '#2563EB' : '#94A3B8';
         return {
           id: e.id,
           source: e.source,
@@ -194,18 +328,61 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
           type: 'step',
           animated: isCustom,
           style: { 
-            stroke: isCustom ? '#2563EB' : '#94A3B8', 
-              strokeWidth: isCustom ? 2.5 : 1.5,
+            stroke: strokeColor, 
+            strokeWidth: isCustom ? 2.5 : 1.5,
             opacity: isCustom ? 1 : 0.65
           },
-          interactionWidth: 25
+          interactionWidth: 25,
+          markerEnd: {
+            type: MarkerType.ArrowClosed,
+            width: 15,
+            height: 15,
+            color: strokeColor,
+          }
         };
+      });
+
+      // Calculate connected components of the active goal's nodes and edges
+      const components = getConnectedComponents(computedNodes, goal.edges || []);
+      let ccIndex = 1;
+      components.forEach((component) => {
+        if (component.nodeIds.size >= 2) {
+          const memberNodes = goal.nodes.filter((n) => component.nodeIds.has(n.id));
+          const xs = memberNodes.map((n) => n.position.x);
+          const ys = memberNodes.map((n) => n.position.y);
+          const minX = Math.min(...xs);
+          const maxX = Math.max(...xs);
+          const minY = Math.min(...ys);
+
+          const handleX = (minX + maxX) / 2 - 50;
+          const handleY = minY - 50;
+
+          // Find a representative task title to show on the handle
+          const repNode = memberNodes[0];
+          const repTask = repNode ? tasks[repNode.taskId] : null;
+          const label = repTask ? `连通块: ${repTask.title.slice(0, 8)}...` : `连通块 #${ccIndex}`;
+
+          // Generate stable ID for renaming
+          const stableId = `cc-${Array.from(component.nodeIds).sort().join(',')}`;
+
+          computedNodes.push({
+            id: `handle-cc-${stableId}`,
+            type: 'componentHandle',
+            position: { x: handleX, y: handleY },
+            data: {
+              label: label,
+              memberNodeIds: Array.from(component.nodeIds),
+              stableId: stableId
+            }
+          });
+          ccIndex++;
+        }
       });
     }
 
     setLocalNodes(computedNodes);
     setLocalEdges(computedEdges);
-  }, [isMergedView, selectedGoalId, goals, activeMergedGoalIds, crossGoalEdges, mergedNodePositions, mergedEdges]);
+  }, [isMergedView, selectedGoalId, goals, activeMergedGoalIds, crossGoalEdges, mergedNodePositions, mergedEdges, mergedNodeIds, tasks]);
 
   // Standard React Flow selection and state synchronization handlers
   const onNodesChange = useCallback((changes: NodeChange[]) => {
@@ -228,32 +405,44 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
     const dy = position.y - prevNode.position.y;
 
     if (dx !== 0 || dy !== 0) {
-      const descIds = getDescendantNodeIds(id, localEdges);
-      setLocalNodes((nds) =>
-        nds.map((n) => {
-          if (n.id === id) {
-            return { ...n, position };
-          } else if (descIds.has(n.id)) {
-            return {
-              ...n,
-              position: {
-                x: n.position.x + dx,
-                y: n.position.y + dy,
-              },
-            };
-          }
-          return n;
-        })
-      );
+      if (id.startsWith('handle-cc-')) {
+        // Dragging a connected component handle in either individual or merged workspace!
+        const memberNodeIds: string[] = (node.data as any)?.memberNodeIds || [];
+        const memberSet = new Set(memberNodeIds);
+        setLocalNodes((nds) =>
+          nds.map((n) => {
+            if (n.id === id) {
+              return { ...n, position };
+            } else if (memberSet.has(n.id)) {
+              return {
+                ...n,
+                position: {
+                  x: n.position.x + dx,
+                  y: n.position.y + dy,
+                },
+              };
+            }
+            return n;
+          })
+        );
+      } else {
+        // Normal dragging moves only the individual node (no other nodes moved)
+        setLocalNodes((nds) =>
+          nds.map((n) => (n.id === id ? { ...n, position } : n))
+        );
+      }
     }
-  }, [localNodes, localEdges]);
+  }, [localNodes]);
 
   // When drag is complete, compile coordinates and save them back to each corresponding goal in store
   const onNodeDragStop = useCallback((_event: React.MouseEvent, node: Node) => {
     if (isMergedView) {
       const nextPositions: Record<string, { x: number; y: number }> = {};
       localNodes.forEach((ln) => {
-        nextPositions[ln.id] = ln.position;
+        // Only persist actual task node positions, ignore helper handles
+        if (ln.type === 'taskNode') {
+          nextPositions[ln.id] = ln.position;
+        }
       });
       updateMergedNodePositions(nextPositions);
     } else if (selectedGoalId && goals[selectedGoalId]) {
@@ -328,6 +517,9 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
       };
 
       addNodeToGoal(targetGoalId, newGoalNode);
+      if (isMergedView) {
+        addMergedNodeId(newNodeId);
+      }
 
       const edgeId = `edge-custom-${Math.random().toString(36).substring(2, 9)}`;
       const newEdge = {
@@ -343,7 +535,7 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
 
       showToast('🍀 思维子分支已生成！已建立右偏对齐连线(硬直角)！');
     }
-  }, [localNodes, isMergedView, selectedGoalId, goals, addTask, addNodeToGoal, addEdgeToGoal, addMergedEdge, showToast]);
+  }, [localNodes, isMergedView, selectedGoalId, goals, addTask, addNodeToGoal, addEdgeToGoal, addMergedEdge, addMergedNodeId, showToast]);
 
   // Handle new dependency connections
   const onConnect = useCallback((connection: Connection) => {
@@ -378,17 +570,12 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
   const onNodesDelete = useCallback((nodesDeleted: Node[]) => {
     nodesDeleted.forEach((node) => {
       if (isMergedView) {
-        for (const [gid, g] of Object.entries(goals)) {
-          if (g && g.nodes && g.nodes.some(n => n.id === node.id)) {
-            deleteNodeFromGoal(gid, node.id);
-            break;
-          }
-        }
+        deleteMergedNodeId(node.id);
       } else if (selectedGoalId) {
         deleteNodeFromGoal(selectedGoalId, node.id);
       }
     });
-  }, [isMergedView, selectedGoalId, goals, deleteNodeFromGoal]);
+  }, [isMergedView, selectedGoalId, deleteMergedNodeId, deleteNodeFromGoal]);
 
   // Add brand new quick task direct to canvas
   const handleAddNewQuickTask = () => {
@@ -421,6 +608,9 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
     };
 
     addNodeToGoal(activeGoalId, newGoalNode);
+    if (isMergedView) {
+      addMergedNodeId(newNodeId);
+    }
   };
 
   const activeTitle = isMergedView 
@@ -431,7 +621,7 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
     ? '合并多套成长项目，确立跨度多维的动态跨计划拓扑依赖 (DAG) 连接，整合并排布整体甘特图。'
     : (selectedGoalId ? goals[selectedGoalId]?.description : '从具体领域类别中，选择一个目标卡片以载入并编辑前驱后继依赖拓扑关系。');
 
-  const showEmptyMergePlaceholder = isMergedView && activeMergedGoalIds.length === 0;
+  const showEmptyMergePlaceholder = isMergedView && mergedNodeIds.length === 0;
 
   return (
     <div className="flex-1 flex flex-col min-h-0 relative select-none">
@@ -446,32 +636,8 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
             <div className="space-y-1.5">
               <h3 className="text-base font-bold text-neutral-800 tracking-tight">合并工作区当前为空</h3>
               <p className="text-xs text-neutral-500 leading-relaxed font-sans">
-                这是一个干净的可视化协同画布。请在左侧仪表板中 <span className="text-neutral-800 font-medium">勾选载入计划书</span>，或者直接将下方的 <span className="text-neutral-800 font-medium">【BOM 拓扑蓝图】</span> 组件拖入此工作区来载入生涯规划的拓扑网络！
+                这是一个干净的可视化协同画布。请直接将左侧/原底下的 <span className="text-neutral-800 font-medium">【BOM 拓扑蓝图】</span> 中的任务组件拖拽入此工作区，来构建并连线您的多赛道合并拓扑网络！
               </p>
-            </div>
-            
-            <div className="pt-3 border-t border-neutral-100 space-y-2.5">
-              <span className="text-[10px] font-bold text-neutral-450 uppercase tracking-widest block font-mono">一键精选载入项目：</span>
-              <div className="flex flex-col gap-1.5">
-                {Object.entries(goals).map(([gid, g]) => {
-                  const colorClasses: Record<string, string> = {
-                    indigo: 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100',
-                    emerald: 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100',
-                    sky: 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100'
-                  };
-                  const colorClass = colorClasses[g.color] || colorClasses.indigo;
-                  return (
-                    <button
-                      key={gid}
-                      onClick={() => toggleActiveMergedGoalId(gid)}
-                      className={`text-[11px] font-medium border rounded-xl py-2 px-3 text-left transition-colors cursor-pointer flex items-center justify-between ${colorClass}`}
-                    >
-                      <span>➕ {g.title}</span>
-                      <ChevronRight className="w-3.5 h-3.5 opacity-60" />
-                    </button>
-                  );
-                })}
-              </div>
             </div>
           </div>
         </div>
@@ -521,43 +687,6 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
                 <Sparkles className="w-3 shrink-0" /> 支持跨计划跨赛道进行合并拓扑
               </span>
             )}
-          </div>
-        )}
-
-        {/* 3. Merged Workspace Active Goal Controls */}
-        {isMergedView && (
-          <div className="pt-3 border-t border-neutral-150 space-y-2">
-            <span className="text-[10px] font-bold text-neutral-450 uppercase tracking-widest block font-mono">加载的生涯规划表：</span>
-            <div className="space-y-1">
-              {Object.entries(goals).map(([gid, g]) => {
-                const isActive = activeMergedGoalIds.includes(gid);
-                
-                const dotColorClass = g.color === 'emerald' ? 'bg-emerald-500' :
-                                      g.color === 'sky' ? 'bg-blue-400' : 'bg-indigo-500';
-                                      
-                return (
-                  <button
-                    key={gid}
-                    onClick={() => toggleActiveMergedGoalId(gid)}
-                    className={`w-full flex items-center justify-between p-2 rounded-xl border text-[11px] font-sans transition-all cursor-pointer text-left
-                      ${isActive 
-                        ? 'bg-neutral-50 border-neutral-200 text-neutral-800 font-medium shadow-2xs' 
-                        : 'bg-white border-transparent text-neutral-400 hover:bg-neutral-50 hover:text-neutral-600'
-                      }`}
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColorClass}`} />
-                      <span className="truncate pr-1">{g.title}</span>
-                    </div>
-                    <div className={`w-4 h-4 rounded-md border flex items-center justify-center shrink-0 transition-colors
-                      ${isActive ? 'bg-blue-600 border-blue-600 text-white' : 'border-neutral-200 bg-white'}`}
-                    >
-                      {isActive && <span className="text-[9px] font-extrabold">✓</span>}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
           </div>
         )}
       </div>
@@ -655,6 +784,8 @@ export const DAGWorkspace: React.FC = () => {
   const goals = useAppStore((state) => state.goals);
   const activeMergedGoalIds = useAppStore((state) => state.activeMergedGoalIds);
   const toggleActiveMergedGoalId = useAppStore((state) => state.toggleActiveMergedGoalId);
+  const addMergedNodeId = useAppStore((state) => state.addMergedNodeId);
+  const updateMergedNodePositions = useAppStore((state) => state.updateMergedNodePositions);
 
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
 
@@ -669,6 +800,8 @@ export const DAGWorkspace: React.FC = () => {
       event.preventDefault();
 
       const taskId = event.dataTransfer.getData('application/reactflow-taskid');
+      const orgNodeId = event.dataTransfer.getData('application/reactflow-orgnodeid');
+      const orgGoalId = event.dataTransfer.getData('application/reactflow-orggoalid');
       if (!taskId) return;
 
       const rect = reactFlowWrapper.current?.getBoundingClientRect();
@@ -680,37 +813,37 @@ export const DAGWorkspace: React.FC = () => {
         y: event.clientY
       });
 
-      // Find which plan owns this template node task to add correctly!
-      let targetGoalId = '';
-      for (const [gid, g] of Object.entries(goals)) {
-        if (g && g.nodes && g.nodes.some((n) => n.taskId === taskId)) {
-          targetGoalId = gid;
-          break;
+      if (isMergedView && orgNodeId && orgGoalId) {
+        addMergedNodeId(orgNodeId);
+        updateMergedNodePositions({
+          [orgNodeId]: canvasPosition
+        });
+      } else {
+        // Find which plan owns this template node task to add correctly!
+        let targetGoalId = '';
+        for (const [gid, g] of Object.entries(goals)) {
+          if (g && g.nodes && g.nodes.some((n) => n.taskId === taskId)) {
+            targetGoalId = gid;
+            break;
+          }
+        }
+        
+        // Fallback if not mapped
+        if (!targetGoalId) targetGoalId = selectedGoalId || Object.keys(goals)[0] || '';
+
+        const newNodeId = `node-inst-${Math.random().toString(36).substring(2, 9)}`;
+        const newGoalNode: GoalNode = {
+          id: newNodeId,
+          taskId: taskId,
+          position: canvasPosition
+        };
+
+        if (selectedGoalId) {
+          addNodeToGoal(selectedGoalId, newGoalNode);
         }
       }
-      
-      // Fallback if not mapped
-      if (!targetGoalId) targetGoalId = selectedGoalId || Object.keys(goals)[0] || '';
-
-      // Auto load plan to workspace if dragged in while empty
-      if (isMergedView && !activeMergedGoalIds.includes(targetGoalId)) {
-        toggleActiveMergedGoalId(targetGoalId);
-      }
-
-      const newNodeId = `node-inst-${Math.random().toString(36).substring(2, 9)}`;
-      const newGoalNode: GoalNode = {
-        id: newNodeId,
-        taskId: taskId,
-        position: canvasPosition
-      };
-
-      if (isMergedView) {
-        addNodeToGoal(targetGoalId, newGoalNode);
-      } else if (selectedGoalId) {
-        addNodeToGoal(selectedGoalId, newGoalNode);
-      }
     },
-    [isMergedView, selectedGoalId, goals, activeMergedGoalIds, toggleActiveMergedGoalId, addNodeToGoal]
+    [isMergedView, selectedGoalId, goals, activeMergedGoalIds, toggleActiveMergedGoalId, addNodeToGoal, addMergedNodeId, updateMergedNodePositions]
   );
 
   return (

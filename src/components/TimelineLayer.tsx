@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../store';
 import { Calendar, Clock, Sparkles, SlidersHorizontal, Scale, ChevronRight, Inbox, GripVertical, ChevronUp, ChevronDown } from 'lucide-react';
 
-type ZoomScaleType = 'minutes' | 'hours' | 'days' | 'weeks' | 'months';
+type ZoomScaleType = 'hours' | 'days' | 'weeks' | 'months';
 
 const getTodayDateStr = (): string => {
   const d = new Date();
@@ -23,20 +23,26 @@ export const TimelineLayer: React.FC = () => {
   const isTimelineCollapsed = useAppStore((state) => state.isTimelineCollapsed);
   const toggleTimeline = useAppStore((state) => state.toggleTimeline);
 
+  const mergedNodeIds = useAppStore((state) => state.mergedNodeIds);
+
   const [zoomScale, setZoomScale] = useState<ZoomScaleType>('days');
+
+  // Custom states for hours scale view
+  const [hourStartLocalDate, setHourStartLocalDate] = useState<string>(getTodayDateStr());
+  const [hourStartLocalHour, setHourStartLocalHour] = useState<number>(22); // Default to 22:00 (入睡开始)
 
   // Drag and drop sorting state
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [dragOverTaskId, setDragOverTaskId] = useState<string | null>(null);
 
-  // 1. FILTER TASKS: Only display tasks that belong to goals currently LOADED into the merged workspace!
+  // 1. FILTER TASKS: Only display unfinished tasks whose nodes are currently LOADED into the merged workspace!
   const visibleTasks = useMemo(() => {
     const visibleTaskIds = new Set<string>();
     
     Object.entries(goals || {}).forEach(([gid, g]) => {
-      if (activeMergedGoalIds && activeMergedGoalIds.includes(gid) && g && g.nodes) {
+      if (g && g.nodes) {
         g.nodes.forEach(n => {
-          if (n && n.taskId) {
+          if (n && n.id && n.taskId && mergedNodeIds.includes(n.id)) {
             visibleTaskIds.add(n.taskId);
           }
         });
@@ -44,9 +50,9 @@ export const TimelineLayer: React.FC = () => {
     });
 
     return Object.values(tasks).filter(
-      (t) => visibleTaskIds.has(t.id) && t.startTime && t.endTime
+      (t) => visibleTaskIds.has(t.id) && !t.isDone && t.startTime && t.endTime
     );
-  }, [tasks, goals, activeMergedGoalIds]);
+  }, [tasks, goals, mergedNodeIds]);
 
   // Synchronously sort the filtered tasks based on custom sort criteria
   const orderedVisibleTasks = useMemo(() => {
@@ -109,26 +115,33 @@ export const TimelineLayer: React.FC = () => {
   // 2. DEFINE TIMELINE TIME BOUNDS & HEADERS PER SCALE
   const scaleConfig = useMemo(() => {
     switch (zoomScale) {
-      case 'minutes': {
-        const rangeStart = new Date('2026-05-22T09:00:00').getTime();
-        const rangeEnd = new Date('2026-05-18T12:00:00').getTime(); // 3 hours
-        return {
-          title: '5月22日 09:00 - 12:00 (15分钟番茄刻度)',
-          gridWidthClass: 'w-[1200px]',
-          colCount: 12,
-          rangeStart: new Date('2026-05-22T09:00:00').getTime(),
-          rangeEnd: new Date('2026-05-22T12:00:00').getTime(),
-          headers: ['09:00', '09:15', '09:30', '09:45', '10:00', '10:15', '10:30', '10:45', '11:00', '11:15', '11:30', '11:45']
-        };
-      }
       case 'hours': {
+        const parts = hourStartLocalDate.split('-');
+        const year = parseInt(parts[0], 10);
+        const month = parseInt(parts[1], 10) - 1;
+        const day = parseInt(parts[2], 10);
+        const startRawObj = new Date(year, month, day, hourStartLocalHour, 0, 0, 0);
+        const rangeStart = startRawObj.getTime();
+        const rangeEnd = rangeStart + 24 * 60 * 60 * 1000;
+
+        const headers: string[] = [];
+        for (let i = 0; i < 24; i++) {
+          const currentHour = (hourStartLocalHour + i) % 24;
+          headers.push(`${String(currentHour).padStart(2, '0')}:00`);
+        }
+
+        const startMD = `${startRawObj.getMonth() + 1}月${startRawObj.getDate()}日`;
+        const endRawObj = new Date(rangeEnd);
+        const endMD = `${endRawObj.getMonth() + 1}月${endRawObj.getDate()}日`;
+        const endHourStr = `${String(hourStartLocalHour).padStart(2, '0')}:00`;
+
         return {
-          title: '5月22日 00:00 - 24:00 (2小时日常刻度)',
-          gridWidthClass: 'w-[1200px]',
-          colCount: 12,
-          rangeStart: new Date('2026-05-22T00:00:00').getTime(),
-          rangeEnd: new Date('2026-05-22T24:00:00').getTime(),
-          headers: ['02:00', '04:00', '06:00', '08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00', '22:00', '24:00']
+          title: `${startMD} ${endHourStr} - ${endMD} ${endHourStr} (1小时高精刻度)`,
+          gridWidthClass: 'w-[1800px]',
+          colCount: 24,
+          rangeStart,
+          rangeEnd,
+          headers
         };
       }
       case 'weeks': {
@@ -190,7 +203,7 @@ export const TimelineLayer: React.FC = () => {
         };
       }
     }
-  }, [zoomScale]);
+  }, [zoomScale, hourStartLocalDate, hourStartLocalHour]);
 
   const getDayShortLabel = (dateStr: string) => {
     const [, month, day] = dateStr.split('-');
@@ -259,7 +272,7 @@ export const TimelineLayer: React.FC = () => {
       
       {/* 1. Timeline Upper Control Toolbar */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between px-6 py-2.5 bg-neutral-50/50 border-b border-neutral-200">
-        <div className="flex items-center gap-2 mb-2 sm:mb-0">
+        <div className="flex items-center gap-2 mb-2 sm:mb-0 flex-wrap">
           <Calendar className="w-4 h-4 text-blue-500" />
           <h4 className="text-xs font-bold text-neutral-800 font-sans tracking-tight">
             人生成长排期甘特图轴
@@ -267,22 +280,43 @@ export const TimelineLayer: React.FC = () => {
           <span className="text-[10px] bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded text-blue-600 font-mono font-medium uppercase">
             {scaleConfig.title}
           </span>
+          {zoomScale === 'hours' && (
+            <div className="flex items-center gap-1.5 bg-neutral-100 px-2 py-0.5 rounded-lg border border-neutral-200 text-[11px] font-sans ml-2">
+              <Clock className="w-3.5 h-3.5 text-neutral-450" />
+              <span className="text-neutral-500">起始时间:</span>
+              <input
+                type="date"
+                value={hourStartLocalDate}
+                onChange={(e) => setHourStartLocalDate(e.target.value || getTodayDateStr())}
+                className="px-1.5 py-0.5 rounded bg-white border border-neutral-300 text-neutral-800 font-mono focus:outline-none focus:border-blue-500 text-[10.5px] h-6 cursor-pointer"
+              />
+              <select
+                value={hourStartLocalHour}
+                onChange={(e) => setHourStartLocalHour(Number(e.target.value))}
+                className="px-1.5 py-0.5 rounded bg-white border border-neutral-300 text-neutral-800 font-mono focus:outline-none focus:border-blue-500 text-[10.5px] h-6 cursor-pointer"
+              >
+                {Array.from({ length: 24 }).map((_, h) => (
+                  <option key={h} value={h}>
+                    {String(h).padStart(2, '0')}:00
+                </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
         {/* Dynamic Zoom Scales Segment Controller Controls */}
         <div className="flex items-center gap-4 text-xs">
           <div className="flex items-center gap-2 bg-neutral-200/60 p-1 rounded-xl">
-            {(['minutes', 'hours', 'days', 'weeks', 'months'] as ZoomScaleType[]).map((tab) => {
+            {(['hours', 'days', 'weeks', 'months'] as ZoomScaleType[]).map((tab) => {
               const isActive = zoomScale === tab;
               const tabLabels: Record<ZoomScaleType, string> = {
-                minutes: '分',
                 hours: '时',
                 days: '天',
                 weeks: '周',
                 months: '月'
               };
               const tabTooltips: Record<ZoomScaleType, string> = {
-                minutes: '分钟视角 (Pomodoro)',
                 hours: '小时视角 (Daily Agenda)',
                 days: '天级视角',
                 weeks: '星期视角',
@@ -372,15 +406,10 @@ export const TimelineLayer: React.FC = () => {
                 // Virtual mapping for Micro/Macro views so that they populate cleanly!
                 if (zoomScale === 'hours') {
                   const seed = task.id.charCodeAt(task.id.length - 1) || 12;
-                  const startHour = (seed % 8) + 8; // Schedule during daytime 8:00 to 15:00
-                  startTs = new Date(`2026-05-22T0${startHour}:00:00`).getTime();
-                  endTs = startTs + ((seed % 4) + 2) * 3600000; // 2-5 hours
-                } else if (zoomScale === 'minutes') {
-                  const seed = task.id.charCodeAt(task.id.length - 1) || 10;
-                  const startMin = (seed % 3) * 30 + 10; // e.g. 10m, 40m, 70m
-                  const startHour = 9 + (seed % 2); // 9 or 10 o'clock
-                  startTs = new Date(`2026-05-22T0${startHour}:${startMin === 10 ? '10' : startMin}:00`).getTime();
-                  endTs = startTs + 40 * 60000; // 40-minute blocks
+                  const hourOffset = (seed % 14) + 1; // 1 to 14 hours offset
+                  const durationHours = (seed % 5) + 2; // 2 to 6 hours duration
+                  startTs = scaleConfig.rangeStart + hourOffset * 3600000;
+                  endTs = startTs + durationHours * 3600000;
                 }
 
                 const rangeTotal = scaleConfig.rangeEnd - scaleConfig.rangeStart;
@@ -471,8 +500,7 @@ export const TimelineLayer: React.FC = () => {
                           <div className="flex items-center gap-0.5 shrink-0 font-mono text-[9px] opacity-80 group-hover:opacity-100">
                             <Clock className="w-2.5 h-2.5" />
                             <span>
-                              {zoomScale === 'minutes' ? '40m' : 
-                               zoomScale === 'hours' ? `${Math.round((endTs - startTs) / 3600000)}h` : 
+                              {zoomScale === 'hours' ? `${Math.round((endTs - startTs) / 3600000)}h` : 
                                `${task.duration}h`}
                             </span>
                           </div>

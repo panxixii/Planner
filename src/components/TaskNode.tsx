@@ -1,12 +1,13 @@
 import React from 'react';
 import { Handle, Position, NodeProps } from '@xyflow/react';
 import { useAppStore } from '../store';
-import { CheckCircle2, Circle, Clock, Calendar, ArrowUpRight } from 'lucide-react';
+import { CheckCircle2, Circle, Clock, Calendar, ArrowUpRight, X } from 'lucide-react';
 
 interface TaskNodeData {
   taskId: string;
   goalColor?: string;
   goalTitle?: string;
+  goalId?: string;
   isMerged?: boolean;
 }
 
@@ -18,6 +19,22 @@ export const TaskNode: React.FC<NodeProps> = (props) => {
   const task = useAppStore((state) => state.tasks[taskId]);
   const updateTask = useAppStore((state) => state.updateTask);
   const selectTask = useAppStore((state) => state.selectTask);
+  const deleteMergedNodeId = useAppStore((state) => state.deleteMergedNodeId);
+  const categories = useAppStore((state) => state.categories);
+  const goal = useAppStore((state) => data?.goalId ? state.goals[data.goalId] : null);
+
+  // Traverse up to find the root category (first-level category)
+  const firstLevelCategoryName = React.useMemo(() => {
+    if (!goal || !goal.category) return '';
+    let currentCat = categories.find(c => c.id === goal.category);
+    if (!currentCat) return '';
+    while (currentCat.parentId) {
+      const parent = categories.find(c => c.id === currentCat.parentId);
+      if (!parent) break;
+      currentCat = parent;
+    }
+    return currentCat.label;
+  }, [goal, categories]);
 
   if (!task) {
     return (
@@ -85,13 +102,22 @@ export const TaskNode: React.FC<NodeProps> = (props) => {
           : 'bg-white border-neutral-200 hover:border-neutral-300 hover:shadow-md hover:scale-[1.015]'
         } ${scheme.glow}`}
     >
-      {/* Top handles */}
-      <Handle 
-        type="target" 
-        position={Position.Left} 
-        id="left"
-        className="!w-2.5 !h-2.5 !bg-white !border-2 !border-neutral-300 transition-colors group-hover:!bg-blue-500 group-hover:!border-blue-200"
-      />
+      {/* Target handle (incoming/predecessor) */}
+      {data.isMerged ? (
+        <Handle 
+          type="target" 
+          position={Position.Left} 
+          id="left"
+          className="!w-2.5 !h-2.5 !bg-white !border-2 !border-neutral-300 transition-colors group-hover:!bg-blue-500 group-hover:!border-blue-200"
+        />
+      ) : (
+        <Handle 
+          type="target" 
+          position={Position.Bottom} 
+          id="bottom"
+          className="!w-2.5 !h-2.5 !bg-white !border-2 !border-neutral-300 transition-colors group-hover:!bg-blue-500 group-hover:!border-blue-200"
+        />
+      )}
 
       <div className="p-4 space-y-3">
         {/* Header Ribbon / Tag */}
@@ -101,23 +127,42 @@ export const TaskNode: React.FC<NodeProps> = (props) => {
               {color || 'task'}
             </span>
             {data.isMerged && data.goalTitle && (
-              <span className="px-2 py-0.5 rounded bg-neutral-100 border border-neutral-200 text-neutral-500 text-[9px] font-mono truncate max-w-[120px]">
+              <span className="px-2 py-0.5 rounded bg-neutral-100 border border-neutral-200 text-neutral-500 text-[9px] font-mono truncate max-w-[120px]" title={data.goalTitle}>
                 {data.goalTitle}
+              </span>
+            )}
+            {data.isMerged && firstLevelCategoryName && (
+              <span className="px-2 py-0.5 rounded bg-blue-50 border border-blue-200 text-blue-600 text-[9px] font-sans font-medium truncate max-w-[80px]" title={`一级分类: ${firstLevelCategoryName}`}>
+                {firstLevelCategoryName}
               </span>
             )}
           </div>
           
-          <button 
-            onClick={handleToggleDone}
-            className="nodrag text-neutral-400 hover:text-neutral-600 transition-colors p-0.5 cursor-pointer"
-            title={isDone ? "重新开启任务" : "标记为已完成"}
-          >
-            {isDone ? (
-              <span className="text-[9px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded tracking-wider font-bold font-mono border border-emerald-200">已完成</span>
-            ) : (
-              <Circle className="w-4 h-4 hover:text-blue-500 text-neutral-300" />
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button 
+              onClick={handleToggleDone}
+              className="nodrag text-neutral-400 hover:text-neutral-600 transition-colors p-0.5 cursor-pointer"
+              title={isDone ? "重新开启任务" : "标记为已完成"}
+            >
+              {isDone ? (
+                <span className="text-[9px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded tracking-wider font-bold font-mono border border-emerald-200">已完成</span>
+              ) : (
+                <Circle className="w-4 h-4 hover:text-blue-500 text-neutral-300" />
+              )}
+            </button>
+            {data.isMerged && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  deleteMergedNodeId(props.id);
+                }}
+                className="nodrag text-rose-500 hover:text-rose-700 transition-colors p-0.5 cursor-pointer flex items-center justify-center p-1 rounded-full hover:bg-rose-50 shrink-0"
+                title="从合并工作区中移除此节点"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
             )}
-          </button>
+          </div>
         </div>
 
         {/* Title & Desc */}
@@ -153,12 +198,22 @@ export const TaskNode: React.FC<NodeProps> = (props) => {
         <ArrowUpRight className="w-3.5 h-3.5 text-neutral-400" />
       </div>
 
-      <Handle 
-        type="source" 
-        position={Position.Right} 
-        id="right"
-        className="!w-2.5 !h-2.5 !bg-white !border-2 !border-neutral-300 transition-colors group-hover:!bg-blue-500 group-hover:!border-blue-200"
-      />
+      {/* Source handle (outgoing/successor) */}
+      {data.isMerged ? (
+        <Handle 
+          type="source" 
+          position={Position.Right} 
+          id="right"
+          className="!w-2.5 !h-2.5 !bg-white !border-2 !border-neutral-300 transition-colors group-hover:!bg-blue-500 group-hover:!border-blue-200"
+        />
+      ) : (
+        <Handle 
+          type="source" 
+          position={Position.Top} 
+          id="top"
+          className="!w-2.5 !h-2.5 !bg-white !border-2 !border-neutral-300 transition-colors group-hover:!bg-blue-500 group-hover:!border-blue-200"
+        />
+      )}
     </div>
   );
 };

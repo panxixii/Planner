@@ -112,7 +112,13 @@ export interface AppState {
   // Independent Merged View state
   mergedNodePositions: Record<string, { x: number; y: number }>;
   mergedEdges: GoalEdge[];
+  mergedNodeIds: string[];
   updateMergedNodePositions: (positions: Record<string, { x: number; y: number }>) => void;
   addMergedEdge: (edge: GoalEdge) => void;
   deleteMergedEdge: (edgeId: string) => void;
+  addMergedNodeId: (nodeId: string) => void;
+  deleteMergedNodeId: (nodeId: string) => void;
+  clearMergedNodeIds: () => void;
+  componentNames: Record<string, string>;
+  updateComponentName: (id: string, name: string) => void;
 }
