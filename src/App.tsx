@@ -356,12 +356,14 @@ export default function App() {
             {/* Logo Branding with collapse button */}
             <div className="flex items-center justify-between px-1 py-1 select-none">
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center shadow-md relative">
-                  <span className="w-4 h-4 text-white rotate-12 font-black text-sm text-center flex items-center justify-center">L</span>
-                  <span className="absolute -inset-0.5 rounded-lg border border-white/20 animate-pulse" />
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#6366f1] via-[#a855f7] to-[#ec4899] flex items-center justify-center shadow-md relative overflow-hidden group select-none shrink-0">
+                  {/* Glassy circular reflection overlay */}
+                  <div className="absolute -top-1/2 -left-1/2 w-full h-full rounded-full bg-white/10 blur-[1px] pointer-events-none" />
+                  {/* Thick checkmark with soft lighting and drop shadow */}
+                  <Check className="w-5 h-5 text-white stroke-[3.5] drop-shadow-[0_1.5px_2px_rgba(0,0,0,0.3)] select-none transform transition-transform group-hover:scale-110 duration-200" />
                 </div>
                 <div>
-                  <h2 className="text-sm font-semibold tracking-tight text-neutral-800 font-sans">
+                  <h2 className="text-sm font-bold tracking-tight text-neutral-800 font-sans">
                     规划调度器
                   </h2>
                   <span className="text-[10px] text-neutral-450 uppercase font-mono tracking-widest block">
@@ -385,9 +387,9 @@ export default function App() {
             </span>
             <button
               onClick={handleActivateMergedView}
-              className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl transition-all cursor-pointer text-left text-xs font-medium border
+              className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl transition-all cursor-pointer text-left text-xs font-semibold border
                 ${isMergedView 
-                  ? 'bg-blue-600 border-blue-600 text-white shadow-xs' 
+                  ? 'bg-gradient-to-r from-[#6366f1] to-[#ec4899] border-transparent text-white shadow-xs' 
                   : 'bg-neutral-50 hover:bg-neutral-100 border-neutral-200 text-neutral-600 hover:text-neutral-800'
                 }`}
             >
@@ -513,13 +515,13 @@ export default function App() {
                     }}
                     className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium tracking-tight transition-all cursor-pointer text-left
                       ${isActive 
-                        ? 'bg-neutral-100/80 border-l-2 border-blue-600 text-neutral-900 font-semibold shadow-2xs' 
+                        ? 'bg-neutral-100/80 border-l-2 border-purple-600 text-neutral-900 font-semibold shadow-2xs' 
                         : 'text-neutral-600 hover:text-neutral-950 hover:bg-neutral-50'
                       }
-                      ${dragOverState?.id === 'all' ? 'bg-blue-50 border border-dashed border-blue-400 shadow-2xs' : ''}
+                      ${dragOverState?.id === 'all' ? 'bg-purple-50 border border-dashed border-purple-400 shadow-2xs' : ''}
                     `}
                   >
-                    <span className={isActive ? 'text-blue-600 font-bold' : 'text-neutral-400 shrink-0'}>
+                    <span className={isActive ? 'text-purple-600 font-bold' : 'text-neutral-400 shrink-0'}>
                       <Compass className="w-4 h-4" />
                     </span>
                     <span className="font-sans">全部</span>
@@ -547,7 +549,7 @@ export default function App() {
             {isSidebarCollapsed && (
               <button
                 onClick={toggleSidebar}
-                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 border border-blue-200 text-blue-600 hover:bg-blue-100 font-sans text-xs font-bold transition-all mr-2 cursor-pointer shadow-sm shrink-0"
+                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-purple-50 border border-purple-200 text-purple-600 hover:bg-purple-100 font-sans text-xs font-bold transition-all mr-2 cursor-pointer shadow-sm shrink-0"
                 title="展开左侧操作栏 (Drawer)"
               >
                 <ChevronRight className="w-3.5 h-3.5" />
@@ -561,14 +563,14 @@ export default function App() {
             <ChevronRight className="w-3.5 h-3.5 text-neutral-300 shrink-0" />
             
             {isMergedView ? (
-              <span className="text-xs font-semibold text-blue-600 font-mono flex items-center gap-1.5 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-md">
+              <span className="text-xs font-semibold text-purple-600 font-mono flex items-center gap-1.5 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-md animate-pulse">
                 <Layers2 className="w-3.5 h-3.5" /> 合并工作区
               </span>
             ) : selectedGoalId && activeGoalObject ? (
               <div className="flex items-center gap-2">
                 <button 
                   onClick={() => selectGoal(null)}
-                  className="text-xs text-blue-600 hover:text-blue-500 font-mono flex items-center gap-1 cursor-pointer font-medium"
+                  className="text-xs text-purple-600 hover:text-purple-500 font-mono flex items-center gap-1 cursor-pointer font-medium"
                 >
                   <ArrowLeft className="w-3.5 h-3.5" /> 计划网格
                 </button>
@@ -594,12 +596,12 @@ export default function App() {
               onClick={toggleHelp}
               className={`flex items-center gap-1.5 px-3 py-1 border rounded-lg text-xs font-bold transition-all cursor-pointer shadow-2xs select-none
                 ${showHelp 
-                  ? 'bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100 hover:text-blue-700' 
+                  ? 'bg-purple-50 text-purple-600 border-purple-200 hover:bg-purple-100 hover:text-purple-700' 
                   : 'bg-neutral-50 text-neutral-400 border-neutral-200 hover:bg-neutral-100 hover:text-neutral-600'
                 }`}
-              title="一键开启或闭合整站的所有规则说明、拖曳提示和警告卡片"
+              title="一键开启或闭合整站的所有规则说明、拖曳提示 and 警告卡片"
             >
-              <Sparkles className={`w-3.5 h-3.5 ${showHelp ? 'text-blue-600 animate-pulse' : 'text-neutral-400'}`} />
+              <Sparkles className={`w-3.5 h-3.5 ${showHelp ? 'text-purple-600 animate-pulse' : 'text-neutral-400'}`} />
               <span className="font-sans">提示: {showHelp ? '已显示' : '已隐藏'}</span>
             </button>
 

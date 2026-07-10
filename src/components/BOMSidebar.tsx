@@ -135,7 +135,7 @@ export const BOMSidebar: React.FC = () => {
           >
             <div className="flex items-center gap-1.5 min-w-0">
               {isExpanded ? (
-                <FolderOpen className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                <FolderOpen className="w-3.5 h-3.5 text-purple-500 shrink-0" />
               ) : (
                 <Folder className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
               )}
@@ -160,20 +160,20 @@ export const BOMSidebar: React.FC = () => {
               style={{ marginLeft: `${(depth + 1) * 12 + 8}px` }}
               className="p-3 bg-white border border-neutral-200 shadow-xs rounded-xl space-y-2 mt-1 mb-2"
             >
-              <h5 className="text-[10px] font-bold text-blue-600 uppercase tracking-wider font-mono">创建蓝图模板</h5>
+              <h5 className="text-[10px] font-bold text-purple-600 uppercase tracking-wider font-mono">创建蓝图模板</h5>
               <input
                 type="text"
                 placeholder="模板标题..."
                 value={newBOMTitle}
                 onChange={(e) => setNewBOMTitle(e.target.value)}
-                className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-2.5 py-1 text-xs text-neutral-800 placeholder-neutral-400 focus:outline-hidden focus:border-blue-500"
+                className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-2.5 py-1 text-xs text-neutral-800 placeholder-neutral-400 focus:outline-hidden focus:border-purple-500"
               />
               <input
                 type="text"
                 placeholder="快速说明..."
                 value={newBOMDesc}
                 onChange={(e) => setNewBOMDesc(e.target.value)}
-                className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-2.5 py-1 text-[10px] text-neutral-500 placeholder-neutral-400 focus:outline-hidden focus:border-blue-500"
+                className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-2.5 py-1 text-[10px] text-neutral-500 placeholder-neutral-400 focus:outline-hidden focus:border-purple-500"
               />
               <div className="flex justify-end gap-1.5 pt-1">
                 <button
@@ -184,7 +184,7 @@ export const BOMSidebar: React.FC = () => {
                 </button>
                 <button
                   onClick={() => handleCreateBOMItem(node.id)}
-                  className="px-2 py-0.5 rounded text-[10px] bg-blue-600 text-white hover:bg-blue-500 cursor-pointer font-mono"
+                  className="px-2 py-0.5 rounded text-[10px] bg-gradient-to-r from-purple-600 to-pink-500 text-white hover:opacity-90 cursor-pointer font-mono border-0"
                 >
                   保存项
                 </button>
@@ -250,7 +250,7 @@ export const BOMSidebar: React.FC = () => {
       <div className="space-y-1">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5 animate-in fade-in duration-200">
-            <Layers className="w-4 h-4 text-blue-500" />
+            <Layers className="w-4 h-4 text-purple-500" />
             <h4 className="text-xs font-bold text-neutral-800 tracking-wider font-mono uppercase">
               BOM 拓扑蓝图库
             </h4>
@@ -259,7 +259,7 @@ export const BOMSidebar: React.FC = () => {
             onClick={toggleHelp}
             className={`text-[9px] font-bold font-sans px-1.5 py-0.5 rounded cursor-pointer transition-all border
               ${showHelp 
-                ? 'bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100' 
+                ? 'bg-purple-50 text-purple-600 border-purple-200 hover:bg-purple-100' 
                 : 'bg-neutral-150 text-neutral-500 border-neutral-200 hover:bg-neutral-200'}`}
             title="快捷控制整站操作说明卡片"
           >

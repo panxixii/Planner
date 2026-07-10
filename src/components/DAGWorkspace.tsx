@@ -630,7 +630,7 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
       {showEmptyMergePlaceholder && (
         <div className="absolute inset-0 bg-neutral-100/60 z-10 flex flex-col items-center justify-center p-8 text-center select-none backdrop-blur-3xs">
           <div className="max-w-md bg-white p-8 rounded-3xl border border-neutral-200/80 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-300">
-            <div className="w-16 h-16 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto shadow-xs border border-blue-100">
+            <div className="w-16 h-16 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center mx-auto shadow-xs border border-purple-100">
               <Layers2 className="w-8 h-8" />
             </div>
             <div className="space-y-1.5">
@@ -649,9 +649,9 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
           <div className="flex items-center justify-between gap-3 select-none">
             <div className="flex items-center gap-1.5 min-w-0">
               {isMergedView ? (
-                <Layers2 className="w-4 h-4 text-blue-600 shrink-0" />
+                <Layers2 className="w-4 h-4 text-purple-600 shrink-0" />
               ) : (
-                <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0 animate-pulse" />
+                <span className="w-2 h-2 rounded-full bg-purple-500 shrink-0 animate-pulse" />
               )}
               <h2 className="text-xs font-bold text-neutral-800 font-sans uppercase tracking-wider truncate max-w-[140px]">
                 {activeTitle}
@@ -661,7 +661,7 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
               onClick={toggleHelp}
               className={`text-[9px] font-bold font-sans px-1.5 py-0.5 rounded cursor-pointer transition-all border shrink-0
                 ${showHelp 
-                  ? 'bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100' 
+                  ? 'bg-purple-50 text-purple-600 border-purple-200 hover:bg-purple-100' 
                   : 'bg-neutral-100 text-neutral-500 border-neutral-200 hover:bg-neutral-200'}`}
               title="隐藏/显示画布底部的拓扑连线手册"
             >
@@ -677,13 +677,13 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
         {showHelp && (
           <div className="flex flex-col gap-1 text-[10px] text-neutral-450 font-mono border-t border-neutral-100 pt-2.5 animate-in fade-in duration-200">
             <span className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-blue-500" /> 拖曳圆圈点：创建前驱后继依赖键
+              <span className="w-1.5 h-1.5 rounded-full bg-purple-500" /> 拖曳圆圈点：创建前驱后继依赖键
             </span>
             <span className="flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> 双击连接线：断开/解除对齐约束
             </span>
             {isMergedView && (
-              <span className="flex items-center gap-1.5 text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md font-sans text-[10px] font-semibold border border-blue-100 mt-1">
+              <span className="flex items-center gap-1.5 text-purple-600 bg-purple-50 px-2 py-0.5 rounded-md font-sans text-[10px] font-semibold border border-purple-100 mt-1">
                 <Sparkles className="w-3 shrink-0" /> 支持跨计划跨赛道进行合并拓扑
               </span>
             )}
@@ -695,7 +695,7 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
       <div className="absolute top-5 right-5 z-20 flex gap-2 pointer-events-auto">
         <button
           onClick={handleAddNewQuickTask}
-          className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold cursor-pointer shadow-sm transition-all shadow-blue-500/10"
+          className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-[#6366f1] to-[#ec4899] hover:opacity-90 text-white text-xs font-semibold cursor-pointer shadow-md transition-all"
         >
           <Plus className="w-3.5 h-3.5" />
           <span>新建约束节点</span>
@@ -703,33 +703,33 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
       </div>
 
       {/* 5. Apple Style Highly Prominent Zoom Control Panel with Button labels */}
-      <div className="absolute bottom-6 right-6 z-20 flex items-center gap-1.5 bg-white border-2 border-blue-600/30 p-2 rounded-2xl shadow-xl pointer-events-auto select-none">
-        <span className="text-[10px] font-bold text-blue-600 font-mono tracking-wider px-2.5 uppercase border-r border-neutral-200">
+      <div className="absolute bottom-6 right-6 z-20 flex items-center gap-1.5 bg-white border-2 border-purple-600/30 p-2 rounded-2xl shadow-xl pointer-events-auto select-none">
+        <span className="text-[10px] font-bold text-purple-600 font-mono tracking-wider px-2.5 uppercase border-r border-neutral-200">
           画布控制
         </span>
         <button 
           onClick={() => zoomIn()}
-          className="flex items-center justify-center p-2 rounded-xl bg-neutral-100 hover:bg-blue-600 hover:text-white text-neutral-700 transition-all cursor-pointer font-bold gap-1 shadow-sm"
+          className="flex items-center justify-center p-2 rounded-xl bg-neutral-100 hover:bg-purple-600 hover:text-white text-neutral-700 transition-all cursor-pointer font-bold gap-1 shadow-sm group"
           title="放大画布 (Zoom In)"
         >
-          <ZoomIn className="w-4 h-4 text-blue-600 group-hover:text-white" />
+          <ZoomIn className="w-4 h-4 text-purple-600 group-hover:text-white" />
           <span className="text-[11px] px-0.5">放大</span>
         </button>
         <button 
           onClick={() => zoomOut()}
-          className="flex items-center justify-center p-2 rounded-xl bg-neutral-100 hover:bg-blue-600 hover:text-white text-neutral-700 transition-all cursor-pointer font-bold gap-1 shadow-sm"
+          className="flex items-center justify-center p-2 rounded-xl bg-neutral-100 hover:bg-purple-600 hover:text-white text-neutral-700 transition-all cursor-pointer font-bold gap-1 shadow-sm group"
           title="缩小画布 (Zoom Out)"
         >
-          <ZoomOut className="w-4 h-4 text-blue-600 group-hover:text-white" />
+          <ZoomOut className="w-4 h-4 text-purple-600 group-hover:text-white" />
           <span className="text-[11px] px-0.5">缩小</span>
         </button>
         <div className="w-px h-6 bg-neutral-200 mx-1.5" />
         <button 
           onClick={() => fitView({ padding: 0.25, duration: 500 })}
-          className="flex items-center justify-center py-2 px-3 rounded-xl bg-blue-105 hover:bg-blue-600 hover:text-white text-blue-600 transition-all cursor-pointer font-extrabold text-xs gap-1 shadow-sm"
+          className="flex items-center justify-center py-2 px-3 rounded-xl bg-purple-50 hover:bg-purple-600 hover:text-white text-purple-600 transition-all cursor-pointer font-extrabold text-xs gap-1 shadow-sm"
           title="重置缩放以展示所有节点 (Fit View)"
         >
-          <Maximize className="w-4 h-4" />
+          <Maximize className="w-4 h-4 animate-in" />
           <span>适应全屏</span>
         </button>
       </div>

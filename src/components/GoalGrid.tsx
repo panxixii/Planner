@@ -158,14 +158,14 @@ export const GoalGrid: React.FC = () => {
         <div>
           <div className="flex items-center gap-2.5">
             <h1 className="text-xl font-semibold tracking-tight text-neutral-800 flex items-center gap-2">
-              <Target className="w-5 h-5 text-blue-600 animate-pulse" />
+              <Target className="w-5 h-5 text-purple-600 animate-pulse" />
               <span>{categoryLabels[selectedCategoryId]}</span>
             </h1>
             <button
               onClick={toggleHelp}
               className={`text-[9px] font-bold font-sans px-1.5 py-0.5 rounded cursor-pointer transition-all border shrink-0
                 ${showHelp 
-                  ? 'bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100' 
+                  ? 'bg-purple-50 text-purple-600 border-purple-200 hover:bg-purple-100' 
                   : 'bg-neutral-100 text-neutral-500 border-neutral-200 hover:bg-neutral-200'}`}
               title="切换显示当前页面的规划说明卡片"
             >
@@ -181,18 +181,18 @@ export const GoalGrid: React.FC = () => {
           onClick={() => setIsCreating(!isCreating)}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-neutral-200 text-xs text-neutral-700 hover:text-neutral-900 hover:bg-neutral-50 shadow-2xs transition-all cursor-pointer font-bold font-mono uppercase"
         >
-          <Plus className="w-4 h-4 text-blue-600" />
+          <Plus className="w-4 h-4 text-purple-600" />
           <span>新建目标计划</span>
         </button>
       </div>
 
       {/* Conditional Quick Help banner on dashboard */}
       {showHelp && (
-        <div className="p-4 rounded-xl bg-blue-50/70 border border-blue-100 flex items-start gap-3 shadow-2xs animate-in fade-in slide-in-from-top-1.5 duration-250 select-none">
-          <BookOpen className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
+        <div className="p-4 rounded-xl bg-purple-50/70 border border-purple-100 flex items-start gap-3 shadow-2xs animate-in fade-in slide-in-from-top-1.5 duration-250 select-none">
+          <BookOpen className="w-4 h-4 text-purple-500 shrink-0 mt-0.5" />
           <div className="space-y-1">
-            <h4 className="text-xs font-bold text-blue-900 font-sans uppercase">📌 生涯蓝图调度指引手册</h4>
-            <p className="text-[11px] text-blue-800 leading-relaxed font-sans">
+            <h4 className="text-xs font-bold text-purple-900 font-sans uppercase">📌 生涯蓝图调度指引手册</h4>
+            <p className="text-[11px] text-purple-800 leading-relaxed font-sans">
               在<strong>职业、健康、财富、成长</strong>各领域目标卡片中，点击可进入 <strong>DAG 连线拓扑画布</strong>。您可以直接拖拉左侧 <strong>BOM 库</strong> 以快速部署预设蓝图组件，亦可通过连线调整计划先后驱，双击连线自动拆卸移除自定义依赖，随时掌控生涯路线。
             </p>
           </div>
@@ -212,7 +212,7 @@ export const GoalGrid: React.FC = () => {
                 placeholder="例如：产品设计冲刺计划..."
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2.5 text-neutral-800 text-xs focus:outline-hidden focus:bg-white focus:border-blue-500 font-medium"
+                className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2.5 text-neutral-800 text-xs focus:outline-hidden focus:bg-white focus:border-purple-500 font-medium"
               />
             </div>
             
@@ -221,7 +221,7 @@ export const GoalGrid: React.FC = () => {
               <select
                 value={category}
                 onChange={(e) => setCategory(e.target.value as CategoryType)}
-                className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2.5 text-neutral-800 text-xs focus:outline-hidden focus:border-blue-500 font-mono font-semibold"
+                className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2.5 text-neutral-800 text-xs focus:outline-hidden focus:border-purple-500 font-mono font-semibold"
               >
                 {flattenedCategories.map((c) => (
                   <option key={c.id} value={c.id}>
@@ -239,7 +239,7 @@ export const GoalGrid: React.FC = () => {
               placeholder="简要列出达成该人生蓝图所需的关键里程碑成效..."
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2.5 text-neutral-800 text-xs focus:outline-hidden focus:bg-white focus:border-blue-500 font-medium"
+              className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2.5 text-neutral-800 text-xs focus:outline-hidden focus:bg-white focus:border-purple-500 font-medium"
             />
           </div>
 
@@ -252,7 +252,7 @@ export const GoalGrid: React.FC = () => {
             </button>
             <button
               onClick={handleCreateGoal}
-              className="px-4 py-2 rounded-lg text-xs bg-blue-600 hover:bg-blue-500 text-white font-bold font-mono cursor-pointer uppercase shadow-xs border border-blue-500/20"
+              className="px-4 py-2 rounded-lg text-xs bg-gradient-to-r from-[#6366f1] to-[#ec4899] hover:opacity-90 text-white font-bold font-mono cursor-pointer uppercase shadow-xs border-0"
             >
               保存计划蓝图
             </button>
@@ -320,7 +320,7 @@ export const GoalGrid: React.FC = () => {
                     className="absolute inset-0 bg-white border border-neutral-200 flex flex-col justify-between p-4 z-15 animate-in fade-in zoom-in-95 duration-150 select-none shadow-sm"
                   >
                     <div className="space-y-2.5">
-                      <div className="flex items-center gap-1.5 text-blue-600 font-bold text-xs uppercase font-mono">
+                      <div className="flex items-center gap-1.5 text-purple-600 font-bold text-xs uppercase font-mono">
                         <Pencil className="w-3.5 h-3.5 animate-pulse" />
                         <span>编辑目标计划详情</span>
                       </div>
@@ -330,7 +330,7 @@ export const GoalGrid: React.FC = () => {
                           value={editTitle}
                           onChange={(e) => setEditTitle(e.target.value)}
                           placeholder="计划标题"
-                          className="w-full bg-neutral-50 border border-neutral-200 rounded px-2 py-1 text-neutral-800 text-xs focus:outline-hidden focus:bg-white focus:border-blue-500 font-medium font-sans"
+                          className="w-full bg-neutral-50 border border-neutral-200 rounded px-2 py-1 text-neutral-800 text-xs focus:outline-hidden focus:bg-white focus:border-purple-500 font-medium font-sans"
                         />
                       </div>
                       <div className="space-y-1">
@@ -339,14 +339,14 @@ export const GoalGrid: React.FC = () => {
                           value={editDescription}
                           onChange={(e) => setEditDescription(e.target.value)}
                           placeholder="具体目标说明"
-                          className="w-full bg-neutral-50 border border-neutral-200 rounded px-2 py-1 text-neutral-850 text-[11px] focus:outline-hidden focus:bg-white focus:border-blue-500 font-medium font-sans resize-none"
+                          className="w-full bg-neutral-50 border border-neutral-200 rounded px-2 py-1 text-neutral-850 text-[11px] focus:outline-hidden focus:bg-white focus:border-purple-500 font-medium font-sans resize-none"
                         />
                       </div>
                       <div className="space-y-1">
                         <select
                           value={editCategory}
                           onChange={(e) => setEditCategory(e.target.value)}
-                          className="w-full bg-neutral-50 border border-neutral-200 rounded px-2 py-1 text-neutral-800 text-xs focus:outline-hidden focus:border-blue-500 font-mono font-medium"
+                          className="w-full bg-neutral-50 border border-neutral-200 rounded px-2 py-1 text-neutral-800 text-xs focus:outline-hidden focus:border-purple-500 font-mono font-medium"
                         >
                           {flattenedCategories.map((c) => (
                             <option key={c.id} value={c.id}>
@@ -368,7 +368,7 @@ export const GoalGrid: React.FC = () => {
                             setEditingGoalId(null);
                           }
                         }}
-                        className="flex-1 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold font-sans transition-all cursor-pointer text-center shadow-2xs border border-blue-500"
+                        className="flex-1 py-1 rounded bg-gradient-to-r from-[#6366f1] to-[#ec4899] hover:opacity-90 text-white text-[11px] font-bold font-sans transition-all cursor-pointer text-center shadow-2xs border-0"
                       >
                         保存
                       </button>
@@ -385,7 +385,7 @@ export const GoalGrid: React.FC = () => {
                 <div className="space-y-3">
                   {/* Tag Indicator & Actions */}
                   <div className="flex items-center justify-between">
-                    <span className="px-2 py-0.5 rounded bg-blue-50 border border-blue-200 text-[9.5px] text-blue-600 font-bold font-mono tracking-wide uppercase">
+                    <span className="px-2 py-0.5 rounded bg-purple-50 border border-purple-200 text-[9.5px] text-purple-600 font-bold font-mono tracking-wide uppercase">
                       {categoriesList.find(c => c.id === g.category)?.label || g.category}
                     </span>
 
@@ -401,7 +401,7 @@ export const GoalGrid: React.FC = () => {
                           setEditDescription(g.description);
                           setEditCategory(g.category);
                         }}
-                        className="p-1 text-neutral-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-all cursor-pointer opacity-0 group-hover:opacity-100"
+                        className="p-1 text-neutral-400 hover:text-purple-600 hover:bg-purple-50 rounded transition-all cursor-pointer opacity-0 group-hover:opacity-100"
                         title="编辑此目标计划"
                       >
                         <Pencil className="w-3 h-3" />
@@ -434,17 +434,17 @@ export const GoalGrid: React.FC = () => {
                 <div className="space-y-2.5">
                   <div className="flex items-center justify-between text-[10px] font-mono text-neutral-400">
                     <span className="font-bold">进度指标</span>
-                    <span className="text-blue-600 font-bold">{percent}% ({done}/{total})</span>
+                    <span className="text-purple-600 font-bold">{percent}% ({done}/{total})</span>
                   </div>
 
                   <div className="w-full h-1.5 rounded-full bg-neutral-100 overflow-hidden border border-neutral-200/50">
                     <div 
-                      className="h-full bg-gradient-to-r from-blue-600 to-sky-500 rounded-full transition-all duration-500"
+                      className="h-full bg-gradient-to-r from-[#6366f1] via-[#a855f7] to-[#ec4899] rounded-full transition-all duration-500"
                       style={{ width: `${percent}%` }}
                     />
                   </div>
 
-                  <div className="flex items-center justify-end font-mono text-[9px] text-neutral-400 group-hover:text-blue-600 transition-colors pt-1 font-bold uppercase">
+                  <div className="flex items-center justify-end font-mono text-[9px] text-neutral-400 group-hover:text-purple-600 transition-colors pt-1 font-bold uppercase">
                     <span className="flex items-center gap-1">
                       开启拓扑白板
                       <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-1" />

@@ -108,8 +108,8 @@ export const TimelineLayer: React.FC = () => {
     const toIdx = taskIds.indexOf(taskId);
     if (fromIdx === -1 || toIdx === -1) return '';
     return fromIdx > toIdx 
-      ? 'border-t-2 border-t-blue-500 bg-blue-50/10' 
-      : 'border-b-2 border-b-blue-500 bg-blue-50/10';
+      ? 'border-t-2 border-t-purple-500 bg-purple-50/10' 
+      : 'border-b-2 border-b-purple-500 bg-purple-50/10';
   };
 
   // 2. DEFINE TIMELINE TIME BOUNDS & HEADERS PER SCALE
@@ -273,11 +273,11 @@ export const TimelineLayer: React.FC = () => {
       {/* 1. Timeline Upper Control Toolbar */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between px-6 py-2.5 bg-neutral-50/50 border-b border-neutral-200">
         <div className="flex items-center gap-2 mb-2 sm:mb-0 flex-wrap">
-          <Calendar className="w-4 h-4 text-blue-500" />
+          <Calendar className="w-4 h-4 text-purple-500" />
           <h4 className="text-xs font-bold text-neutral-800 font-sans tracking-tight">
             人生成长排期甘特图轴
           </h4>
-          <span className="text-[10px] bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded text-blue-600 font-mono font-medium uppercase">
+          <span className="text-[10px] bg-purple-50 border border-purple-100 px-1.5 py-0.5 rounded text-purple-600 font-mono font-medium uppercase">
             {scaleConfig.title}
           </span>
           {zoomScale === 'hours' && (
@@ -288,12 +288,12 @@ export const TimelineLayer: React.FC = () => {
                 type="date"
                 value={hourStartLocalDate}
                 onChange={(e) => setHourStartLocalDate(e.target.value || getTodayDateStr())}
-                className="px-1.5 py-0.5 rounded bg-white border border-neutral-300 text-neutral-800 font-mono focus:outline-none focus:border-blue-500 text-[10.5px] h-6 cursor-pointer"
+                className="px-1.5 py-0.5 rounded bg-white border border-neutral-300 text-neutral-800 font-mono focus:outline-none focus:border-purple-500 text-[10.5px] h-6 cursor-pointer"
               />
               <select
                 value={hourStartLocalHour}
                 onChange={(e) => setHourStartLocalHour(Number(e.target.value))}
-                className="px-1.5 py-0.5 rounded bg-white border border-neutral-300 text-neutral-800 font-mono focus:outline-none focus:border-blue-500 text-[10.5px] h-6 cursor-pointer"
+                className="px-1.5 py-0.5 rounded bg-white border border-neutral-300 text-neutral-800 font-mono focus:outline-none focus:border-purple-500 text-[10.5px] h-6 cursor-pointer"
               >
                 {Array.from({ length: 24 }).map((_, h) => (
                   <option key={h} value={h}>
@@ -341,7 +341,7 @@ export const TimelineLayer: React.FC = () => {
 
           <div className="hidden md:flex items-center gap-1.5 text-neutral-400 text-[10px] font-mono">
             <span className="w-2 h-2 rounded-full bg-emerald-500" /> 已毕
-            <span className="w-2 h-2 rounded-full bg-blue-500" /> 推进中
+            <span className="w-2 h-2 rounded-full bg-purple-500" /> 推进中
           </div>
 
           <button
@@ -374,7 +374,7 @@ export const TimelineLayer: React.FC = () => {
                 <div 
                   key={idx} 
                   className={`p-2 text-center flex flex-col justify-center items-center gap-0.5 min-w-0 
-                    ${isToday ? 'bg-blue-50/75 text-blue-600 font-bold border-x border-blue-200' : ''}`}
+                    ${isToday ? 'bg-purple-50/75 text-purple-600 font-bold border-x border-purple-200' : ''}`}
                 >
                   {zoomScale === 'days' ? (
                     <>
@@ -452,7 +452,7 @@ export const TimelineLayer: React.FC = () => {
                       <div className="flex flex-col justify-center min-w-0 flex-1">
                         <button
                           onClick={() => selectTask(task.id)}
-                          className="text-xs font-semibold text-neutral-800 hover:text-blue-600 truncate text-left transition-colors cursor-pointer font-sans"
+                          className="text-xs font-semibold text-neutral-800 hover:text-purple-600 truncate text-left transition-colors cursor-pointer font-sans"
                         >
                           {task.title}
                         </button>

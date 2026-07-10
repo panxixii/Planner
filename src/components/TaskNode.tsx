@@ -108,14 +108,14 @@ export const TaskNode: React.FC<NodeProps> = (props) => {
           type="target" 
           position={Position.Left} 
           id="left"
-          className="!w-2.5 !h-2.5 !bg-white !border-2 !border-neutral-300 transition-colors group-hover:!bg-blue-500 group-hover:!border-blue-200"
+          className="!w-2.5 !h-2.5 !bg-white !border-2 !border-neutral-300 transition-colors group-hover:!bg-purple-500 group-hover:!border-purple-200"
         />
       ) : (
         <Handle 
           type="target" 
           position={Position.Bottom} 
           id="bottom"
-          className="!w-2.5 !h-2.5 !bg-white !border-2 !border-neutral-300 transition-colors group-hover:!bg-blue-500 group-hover:!border-blue-200"
+          className="!w-2.5 !h-2.5 !bg-white !border-2 !border-neutral-300 transition-colors group-hover:!bg-purple-500 group-hover:!border-purple-200"
         />
       )}
 
@@ -132,7 +132,7 @@ export const TaskNode: React.FC<NodeProps> = (props) => {
               </span>
             )}
             {data.isMerged && firstLevelCategoryName && (
-              <span className="px-2 py-0.5 rounded bg-blue-50 border border-blue-200 text-blue-600 text-[9px] font-sans font-medium truncate max-w-[80px]" title={`一级分类: ${firstLevelCategoryName}`}>
+              <span className="px-2 py-0.5 rounded bg-purple-50 border border-purple-200 text-purple-600 text-[9px] font-sans font-medium truncate max-w-[80px]" title={`一级分类: ${firstLevelCategoryName}`}>
                 {firstLevelCategoryName}
               </span>
             )}
@@ -147,7 +147,7 @@ export const TaskNode: React.FC<NodeProps> = (props) => {
               {isDone ? (
                 <span className="text-[9px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded tracking-wider font-bold font-mono border border-emerald-200">已完成</span>
               ) : (
-                <Circle className="w-4 h-4 hover:text-blue-500 text-neutral-300" />
+                <Circle className="w-4 h-4 hover:text-purple-500 text-neutral-300" />
               )}
             </button>
             {data.isMerged && (
@@ -204,14 +204,14 @@ export const TaskNode: React.FC<NodeProps> = (props) => {
           type="source" 
           position={Position.Right} 
           id="right"
-          className="!w-2.5 !h-2.5 !bg-white !border-2 !border-neutral-300 transition-colors group-hover:!bg-blue-500 group-hover:!border-blue-200"
+          className="!w-2.5 !h-2.5 !bg-white !border-2 !border-neutral-300 transition-colors group-hover:!bg-purple-500 group-hover:!border-purple-200"
         />
       ) : (
         <Handle 
           type="source" 
           position={Position.Top} 
           id="top"
-          className="!w-2.5 !h-2.5 !bg-white !border-2 !border-neutral-300 transition-colors group-hover:!bg-blue-500 group-hover:!border-blue-200"
+          className="!w-2.5 !h-2.5 !bg-white !border-2 !border-neutral-300 transition-colors group-hover:!bg-purple-500 group-hover:!border-purple-200"
         />
       )}
     </div>
