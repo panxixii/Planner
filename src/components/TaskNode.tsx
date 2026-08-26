@@ -52,37 +52,37 @@ export const TaskNode: React.FC<NodeProps> = (props) => {
       bg: 'bg-emerald-50', 
       border: 'border-emerald-200 group-hover:border-emerald-500/50', 
       text: 'text-emerald-600',
-      glow: 'shadow-[0_4px_15px_rgba(16,185,129,0.06)]'
+      glow: 'shadow-[0_4px_15px_rgba(103,200,189,0.12)]'
     },
     rose: { 
       bg: 'bg-rose-50', 
       border: 'border-rose-200 group-hover:border-rose-500/50', 
       text: 'text-rose-600',
-      glow: 'shadow-[0_4px_15px_rgba(244,63,94,0.06)]'
+      glow: 'shadow-[0_4px_15px_rgba(215,143,181,0.12)]'
     },
     sky: { 
       bg: 'bg-blue-50', 
       border: 'border-blue-200 group-hover:border-blue-500/50', 
       text: 'text-blue-600',
-      glow: 'shadow-[0_4px_15px_rgba(59,130,246,0.06)]'
+      glow: 'shadow-[0_4px_15px_rgba(121,191,213,0.12)]'
     },
     amber: { 
       bg: 'bg-amber-50', 
       border: 'border-amber-200 group-hover:border-amber-500/50', 
       text: 'text-amber-600',
-      glow: 'shadow-[0_4px_15px_rgba(245,158,11,0.06)]'
+      glow: 'shadow-[0_4px_15px_rgba(217,185,88,0.12)]'
     },
     violet: { 
       bg: 'bg-purple-50', 
       border: 'border-purple-200 group-hover:border-purple-500/50', 
       text: 'text-purple-600',
-      glow: 'shadow-[0_4px_15px_rgba(139,92,246,0.06)]'
+      glow: 'shadow-[0_4px_15px_rgba(155,138,228,0.12)]'
     },
     indigo: { 
       bg: 'bg-indigo-50', 
       border: 'border-indigo-200 group-hover:border-indigo-500/50', 
       text: 'text-indigo-600',
-      glow: 'shadow-[0_4px_15px_rgba(99,102,241,0.06)]'
+      glow: 'shadow-[0_4px_15px_rgba(147,135,209,0.12)]'
     }
   };
 
@@ -108,14 +108,14 @@ export const TaskNode: React.FC<NodeProps> = (props) => {
           type="target" 
           position={Position.Left} 
           id="left"
-          className="!w-2.5 !h-2.5 !bg-white !border-2 !border-neutral-300 transition-colors group-hover:!bg-purple-500 group-hover:!border-purple-200"
+          className="!w-2.5 !h-2.5 !bg-white !border-2 !border-neutral-300 transition-colors group-hover:!bg-[#9b8ae4] group-hover:!border-[#c9b9f1]"
         />
       ) : (
         <Handle 
           type="target" 
           position={Position.Bottom} 
           id="bottom"
-          className="!w-2.5 !h-2.5 !bg-white !border-2 !border-neutral-300 transition-colors group-hover:!bg-purple-500 group-hover:!border-purple-200"
+          className="!w-2.5 !h-2.5 !bg-white !border-2 !border-neutral-300 transition-colors group-hover:!bg-[#9b8ae4] group-hover:!border-[#c9b9f1]"
         />
       )}
 
@@ -204,14 +204,14 @@ export const TaskNode: React.FC<NodeProps> = (props) => {
           type="source" 
           position={Position.Right} 
           id="right"
-          className="!w-2.5 !h-2.5 !bg-white !border-2 !border-neutral-300 transition-colors group-hover:!bg-purple-500 group-hover:!border-purple-200"
+          className="!w-2.5 !h-2.5 !bg-white !border-2 !border-neutral-300 transition-colors group-hover:!bg-[#9b8ae4] group-hover:!border-[#c9b9f1]"
         />
       ) : (
         <Handle 
           type="source" 
           position={Position.Top} 
           id="top"
-          className="!w-2.5 !h-2.5 !bg-white !border-2 !border-neutral-300 transition-colors group-hover:!bg-purple-500 group-hover:!border-purple-200"
+          className="!w-2.5 !h-2.5 !bg-white !border-2 !border-neutral-300 transition-colors group-hover:!bg-[#9b8ae4] group-hover:!border-[#c9b9f1]"
         />
       )}
     </div>

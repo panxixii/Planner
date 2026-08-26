@@ -48,7 +48,7 @@ export const ComponentHandleNode: React.FC<{ id: string; data: ComponentHandleNo
 
   return (
     <div 
-      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-[#6366f1] via-[#a855f7] to-[#ec4899] text-white border border-transparent shadow-md text-[11px] font-sans tracking-wide font-medium cursor-grab active:cursor-grabbing hover:opacity-90 transition-all group"
+      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-[#79dce7] via-[#c9b9f1] to-[#efb5d4] text-white border border-transparent shadow-md text-[11px] font-sans tracking-wide font-medium cursor-grab active:cursor-grabbing hover:opacity-90 transition-all group"
       style={{ pointerEvents: 'all' }}
     >
       <GripHorizontal className="w-3.5 h-3.5 shrink-0 text-purple-100" />

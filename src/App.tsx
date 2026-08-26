@@ -44,8 +44,6 @@ export default function App() {
   
   const isSidebarCollapsed = useAppStore((state) => state.isSidebarCollapsed);
   const toggleSidebar = useAppStore((state) => state.toggleSidebar);
-  const showHelp = useAppStore((state) => state.showHelp);
-  const toggleHelp = useAppStore((state) => state.toggleHelp);
 
   const categories = useAppStore((state) => state.categories);
   const addCategory = useAppStore((state) => state.addCategory);
@@ -91,11 +89,11 @@ export default function App() {
 
   const getCategoryIcon = (id: string, sizeClass = "w-4 h-4") => {
     switch (id) {
-      case 'career': return <Target className={`${sizeClass} text-violet-400`} />;
-      case 'health': return <Heart className={`${sizeClass} text-emerald-400`} />;
-      case 'finance': return <Workflow className={`${sizeClass} text-amber-400`} />;
-      case 'personal': return <FolderGit2 className={`${sizeClass} text-sky-400`} />;
-      default: return <Tag className={`${sizeClass} text-indigo-400`} />;
+      case 'career': return <Target className={`${sizeClass} text-[#9b8ae4]`} />;
+      case 'health': return <Heart className={`${sizeClass} text-[#67c8bd]`} />;
+      case 'finance': return <Workflow className={`${sizeClass} text-[#d9b958]`} />;
+      case 'personal': return <FolderGit2 className={`${sizeClass} text-[#df9fc5]`} />;
+      default: return <Tag className={`${sizeClass} text-[#79bfd5]`} />;
     }
   };
 
@@ -272,10 +270,10 @@ export default function App() {
         >
           <button
             onClick={() => handleSelectCategory(c.id)}
-            className={`flex-grow flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium tracking-tight transition-all cursor-pointer text-left
+            className={`planner-category-row flex-grow flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium tracking-tight transition-all cursor-pointer text-left
               ${isActive
-                ? 'bg-neutral-100/80 border-l-2 border-blue-600 text-neutral-900 font-semibold shadow-2xs'
-                : 'text-neutral-600 hover:text-neutral-950 hover:bg-neutral-50'
+                ? 'planner-category-active font-semibold'
+                : ''
               }`}
           >
             {/* Drag Handle */}
@@ -299,7 +297,7 @@ export default function App() {
             ) : (
               <span className="w-3.5 h-3.5 shrink-0" />
             )}
-            <span className={isActive ? 'text-blue-600 shrink-0' : 'text-neutral-400 shrink-0'}>
+            <span className="shrink-0">
               {getCategoryIcon(c.id, "w-3.5 h-3.5")}
             </span>
             <span className="font-sans truncate max-w-[130px]">{c.label}</span>
@@ -343,6 +341,9 @@ export default function App() {
   };
 
   const activeGoalObject = selectedGoalId ? goals[selectedGoalId] : null;
+  const selectedCategoryLabel = selectedCategoryId === 'all'
+    ? '全部计划'
+    : categories.find((category) => category.id === selectedCategoryId)?.label || '计划';
 
   return (
     <div className="min-h-screen bg-neutral-100 text-neutral-800 flex flex-row overflow-hidden font-sans selection:bg-blue-500/10 antialiased">
@@ -356,7 +357,7 @@ export default function App() {
             {/* Logo Branding with collapse button */}
             <div className="flex items-center justify-between px-1 py-1 select-none">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#6366f1] via-[#a855f7] to-[#ec4899] flex items-center justify-center shadow-md relative overflow-hidden group select-none shrink-0">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#79dce7] via-[#c9b9f1] to-[#efb5d4] flex items-center justify-center shadow-md relative overflow-hidden group select-none shrink-0">
                   {/* Glassy circular reflection overlay */}
                   <div className="absolute -top-1/2 -left-1/2 w-full h-full rounded-full bg-white/10 blur-[1px] pointer-events-none" />
                   {/* Thick checkmark with soft lighting and drop shadow */}
@@ -364,11 +365,8 @@ export default function App() {
                 </div>
                 <div>
                   <h2 className="text-sm font-bold tracking-tight text-neutral-800 font-sans">
-                    规划调度器
+                    规划工作台
                   </h2>
-                  <span className="text-[10px] text-neutral-450 uppercase font-mono tracking-widest block">
-                    DAG 蓝图引擎
-                  </span>
                 </div>
               </div>
               <button
@@ -383,19 +381,19 @@ export default function App() {
           {/* Special Workspace Mode - Unified Merged Canvas Selector */}
           <div className="space-y-1.5">
             <span className="text-[10px] font-bold text-neutral-450 uppercase font-mono tracking-widest px-2 block select-none">
-              统一工作区
+              工作区
             </span>
             <button
               onClick={handleActivateMergedView}
               className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl transition-all cursor-pointer text-left text-xs font-semibold border
                 ${isMergedView 
-                  ? 'bg-gradient-to-r from-[#6366f1] to-[#ec4899] border-transparent text-white shadow-xs' 
+                  ? 'bg-gradient-to-r from-[#79dce7] via-[#c9b9f1] to-[#efb5d4] border-transparent text-white shadow-xs' 
                   : 'bg-neutral-50 hover:bg-neutral-100 border-neutral-200 text-neutral-600 hover:text-neutral-800'
                 }`}
             >
               <div className="flex items-center gap-2">
                 <Layers2 className={`w-4 h-4 ${isMergedView ? 'text-white' : 'text-neutral-400 shrink-0'}`} />
-                <span className="font-sans">合并目标工作区</span>
+                <span className="font-sans">合并画布</span>
               </div>
               <Sparkles className={`w-3.5 h-3.5 ${isMergedView ? 'text-white' : 'text-neutral-400'}`} />
             </button>
@@ -513,16 +511,16 @@ export default function App() {
                       }
                       setDragOverState(null);
                     }}
-                    className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium tracking-tight transition-all cursor-pointer text-left
+                    className={`planner-category-row w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium tracking-tight transition-all cursor-pointer text-left
                       ${isActive 
-                        ? 'bg-neutral-100/80 border-l-2 border-purple-600 text-neutral-900 font-semibold shadow-2xs' 
-                        : 'text-neutral-600 hover:text-neutral-950 hover:bg-neutral-50'
+                        ? 'planner-category-active font-semibold' 
+                        : ''
                       }
                       ${dragOverState?.id === 'all' ? 'bg-purple-50 border border-dashed border-purple-400 shadow-2xs' : ''}
                     `}
                   >
-                    <span className={isActive ? 'text-purple-600 font-bold' : 'text-neutral-400 shrink-0'}>
-                      <Compass className="w-4 h-4" />
+                    <span className="shrink-0">
+                      <Compass className="w-4 h-4 text-[#9b8ae4]" />
                     </span>
                     <span className="font-sans">全部</span>
                   </button>
@@ -558,7 +556,7 @@ export default function App() {
             )}
 
             <span className="text-[11px] text-neutral-450 font-mono tracking-wide">
-              人生工作区
+              工作区
             </span>
             <ChevronRight className="w-3.5 h-3.5 text-neutral-300 shrink-0" />
             
@@ -572,7 +570,7 @@ export default function App() {
                   onClick={() => selectGoal(null)}
                   className="text-xs text-purple-600 hover:text-purple-500 font-mono flex items-center gap-1 cursor-pointer font-medium"
                 >
-                  <ArrowLeft className="w-3.5 h-3.5" /> 计划网格
+                  <ArrowLeft className="w-3.5 h-3.5" /> 计划列表
                 </button>
                 <ChevronRight className="w-3.5 h-3.5 text-neutral-300 shrink-0" />
                 <span className="text-xs font-bold text-neutral-700 uppercase font-mono">
@@ -581,30 +579,12 @@ export default function App() {
               </div>
             ) : (
               <span className="text-xs font-bold text-neutral-700 uppercase font-mono">
-                {selectedCategoryId === 'all' ? '所有目标看板' :
-                 selectedCategoryId === 'career' ? '职业领航看板' :
-                 selectedCategoryId === 'health' ? '身心健康看板' :
-                 selectedCategoryId === 'finance' ? '财务自由看板' :
-                 '心智成长看板'}
+                {selectedCategoryLabel}
               </span>
             )}
           </div>
  
           <div className="flex items-center gap-3 text-xs font-mono">
-            {/* Show/Hide guidelines toggle */}
-            <button
-              onClick={toggleHelp}
-              className={`flex items-center gap-1.5 px-3 py-1 border rounded-lg text-xs font-bold transition-all cursor-pointer shadow-2xs select-none
-                ${showHelp 
-                  ? 'bg-purple-50 text-purple-600 border-purple-200 hover:bg-purple-100 hover:text-purple-700' 
-                  : 'bg-neutral-50 text-neutral-400 border-neutral-200 hover:bg-neutral-100 hover:text-neutral-600'
-                }`}
-              title="一键开启或闭合整站的所有规则说明、拖曳提示 and 警告卡片"
-            >
-              <Sparkles className={`w-3.5 h-3.5 ${showHelp ? 'text-purple-600 animate-pulse' : 'text-neutral-400'}`} />
-              <span className="font-sans">提示: {showHelp ? '已显示' : '已隐藏'}</span>
-            </button>
-
             {/* Clear all custom goals/plans */}
             <button
               onClick={() => {
@@ -612,16 +592,13 @@ export default function App() {
                   clearWorkspace();
                 }
               }}
-              className="flex items-center gap-1.5 px-3 py-1 bg-rose-50 hover:bg-rose-100 border border-rose-205 text-rose-600 hover:text-rose-700 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-2xs select-none"
+              className="planner-danger-button flex items-center gap-1.5 px-3 py-1 border rounded-lg text-xs font-bold transition-all cursor-pointer shadow-2xs select-none"
               title="清空所有的自定义目标与计划"
             >
               <Trash2 className="w-3.5 h-3.5" />
               <span className="font-sans">清空计划</span>
             </button>
 
-            <span className="text-[11px] text-neutral-550 uppercase tracking-widest bg-neutral-100 px-2.5 py-1 rounded border border-neutral-200">
-              开发纪元: 2026-Q2
-            </span>
           </div>
         </header>
  
@@ -637,7 +614,7 @@ export default function App() {
                     onClick={() => selectGoal(null)}
                     className="text-[10.5px] hover:underline text-neutral-450 hover:text-neutral-700 cursor-pointer flex items-center gap-1 font-mono uppercase"
                   >
-                    ← 退出 DAG 工作区并返回计划蓝图概览
+                    ← 返回计划列表
                   </button>
                 </div>
               )}

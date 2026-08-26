@@ -259,12 +259,12 @@ export const TimelineLayer: React.FC = () => {
 
   // 3. COLOR CLASSES MAPPING
   const colorClasses: Record<string, string> = {
-    emerald: 'from-emerald-500 to-emerald-600 border-emerald-400/30 text-white shadow-emerald-500/10',
-    rose: 'from-rose-500 to-rose-600 border-rose-400/30 text-white shadow-rose-500/10',
-    sky: 'from-blue-500 to-blue-600 border-blue-400/30 text-white shadow-blue-500/10',
-    amber: 'from-amber-500 to-amber-600 border-amber-400/30 text-white shadow-amber-500/10',
-    violet: 'from-purple-500 to-purple-600 border-purple-400/30 text-white shadow-purple-500/10',
-    indigo: 'from-indigo-400 to-indigo-600 border-indigo-400/30 text-white shadow-indigo-500/10'
+    emerald: 'from-[#67c8bd] to-[#8ed9cf] border-[#9adbd2] text-white shadow-[#67c8bd]/10',
+    rose: 'from-[#d78fb5] to-[#e5abc9] border-[#e8b5d0] text-white shadow-[#d78fb5]/10',
+    sky: 'from-[#79bfd5] to-[#9bd5e0] border-[#a8dce5] text-white shadow-[#79bfd5]/10',
+    amber: 'from-[#d9b958] to-[#e7cf82] border-[#ead797] text-white shadow-[#d9b958]/10',
+    violet: 'from-[#9b8ae4] to-[#c2a9e7] border-[#c9b6e9] text-white shadow-[#9b8ae4]/10',
+    indigo: 'from-[#9387d1] to-[#b7a8df] border-[#c3b8e5] text-white shadow-[#9387d1]/10'
   };
 
   return (
@@ -275,7 +275,7 @@ export const TimelineLayer: React.FC = () => {
         <div className="flex items-center gap-2 mb-2 sm:mb-0 flex-wrap">
           <Calendar className="w-4 h-4 text-purple-500" />
           <h4 className="text-xs font-bold text-neutral-800 font-sans tracking-tight">
-            人生成长排期甘特图轴
+            任务排期
           </h4>
           <span className="text-[10px] bg-purple-50 border border-purple-100 px-1.5 py-0.5 rounded text-purple-600 font-mono font-medium uppercase">
             {scaleConfig.title}
@@ -366,7 +366,7 @@ export const TimelineLayer: React.FC = () => {
             className="grid border-b border-neutral-100 bg-neutral-50/40 text-neutral-400 text-[10px] font-mono select-none divide-x divide-neutral-100"
           >
             <div className="p-3 font-bold text-neutral-600 uppercase tracking-wider pl-6 font-sans">
-              已实例化计划下的阶段节点
+              排期任务
             </div>
             {scaleConfig.headers.map((h, idx) => {
               const isToday = zoomScale === 'days' && h === getTodayDateStr();
@@ -394,8 +394,7 @@ export const TimelineLayer: React.FC = () => {
             {orderedVisibleTasks.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-neutral-450 text-xs py-12 gap-2 font-mono">
                 <Inbox className="w-8 h-8 text-neutral-350 stroke-1" />
-                <span>当前合并画布没有载入任何拓扑节点，时间轴无排期指标。</span>
-                <span className="text-[10px] text-neutral-400">请勾选载入成长计划，或拖拽左下角 BOM 里程碑至画布。</span>
+                <span>暂无排期任务</span>
               </div>
             ) : (
               orderedVisibleTasks.map((task) => {
@@ -510,7 +509,7 @@ export const TimelineLayer: React.FC = () => {
                       {/* Not scheduled inside this index */}
                       {!showBar && (
                         <div className="text-[9px] text-neutral-400 italic px-4 font-mono">
-                          不在此排期视野。双击画布微调具体周期约束。
+                          超出当前视野
                         </div>
                       )}
                     </div>

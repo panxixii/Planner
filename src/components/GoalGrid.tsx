@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../store';
 import { Goal, CategoryType, Task, AppCategory } from '../types';
-import { Target, Layers, ArrowRight, Plus, HelpCircle, BarChart3, AlertCircle, BookOpen, Trash2, Pencil } from 'lucide-react';
+import { Target, ArrowRight, Plus, AlertCircle, Trash2, Pencil } from 'lucide-react';
 
 interface FlatCategoryItem {
   id: string;
@@ -54,8 +54,6 @@ export const GoalGrid: React.FC = () => {
   const addGoal = useAppStore((state) => state.addGoal);
   const deleteGoal = useAppStore((state) => state.deleteGoal);
   const updateGoal = useAppStore((state) => state.updateGoal);
-  const showHelp = useAppStore((state) => state.showHelp);
-  const toggleHelp = useAppStore((state) => state.toggleHelp);
   const categoriesList = useAppStore((state) => state.categories);
 
   const flattenedCategories = React.useMemo(() => {
@@ -100,7 +98,7 @@ export const GoalGrid: React.FC = () => {
     const newGoal: Goal = {
       id: newGoalId,
       title,
-      description: description || 'New plan descriptions.',
+      description: description || '暂无描述',
       category: category === 'all' ? 'career' : category,
       color,
       nodes: [],
@@ -138,9 +136,9 @@ export const GoalGrid: React.FC = () => {
   };
 
   const categoryLabels = categoriesList.reduce((acc, c) => {
-    acc[c.id] = `${c.label}赛道`;
+    acc[c.id] = c.label;
     return acc;
-  }, { all: '全局规划蓝图概览' } as Record<string, string>);
+  }, { all: '全部计划' } as Record<string, string>);
 
   const colorClasses: Record<string, string> = {
     indigo: 'text-indigo-400 border-indigo-500/20 bg-indigo-500/5 hover:border-indigo-500/40',
@@ -161,20 +159,7 @@ export const GoalGrid: React.FC = () => {
               <Target className="w-5 h-5 text-purple-600 animate-pulse" />
               <span>{categoryLabels[selectedCategoryId]}</span>
             </h1>
-            <button
-              onClick={toggleHelp}
-              className={`text-[9px] font-bold font-sans px-1.5 py-0.5 rounded cursor-pointer transition-all border shrink-0
-                ${showHelp 
-                  ? 'bg-purple-50 text-purple-600 border-purple-200 hover:bg-purple-100' 
-                  : 'bg-neutral-100 text-neutral-500 border-neutral-200 hover:bg-neutral-200'}`}
-              title="切换显示当前页面的规划说明卡片"
-            >
-              <span>提示:{showHelp ? '显示' : '隐藏'}</span>
-            </button>
           </div>
-          <p className="text-xs text-neutral-500 font-mono mt-1">
-            浏览规划周期调度的人生成长赛道与 DAG 起始图谱
-          </p>
         </div>
 
         <button
@@ -182,34 +167,21 @@ export const GoalGrid: React.FC = () => {
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-neutral-200 text-xs text-neutral-700 hover:text-neutral-900 hover:bg-neutral-50 shadow-2xs transition-all cursor-pointer font-bold font-mono uppercase"
         >
           <Plus className="w-4 h-4 text-purple-600" />
-          <span>新建目标计划</span>
+          <span>新建计划</span>
         </button>
       </div>
-
-      {/* Conditional Quick Help banner on dashboard */}
-      {showHelp && (
-        <div className="p-4 rounded-xl bg-purple-50/70 border border-purple-100 flex items-start gap-3 shadow-2xs animate-in fade-in slide-in-from-top-1.5 duration-250 select-none">
-          <BookOpen className="w-4 h-4 text-purple-500 shrink-0 mt-0.5" />
-          <div className="space-y-1">
-            <h4 className="text-xs font-bold text-purple-900 font-sans uppercase">📌 生涯蓝图调度指引手册</h4>
-            <p className="text-[11px] text-purple-800 leading-relaxed font-sans">
-              在<strong>职业、健康、财富、成长</strong>各领域目标卡片中，点击可进入 <strong>DAG 连线拓扑画布</strong>。您可以直接拖拉左侧 <strong>BOM 库</strong> 以快速部署预设蓝图组件，亦可通过连线调整计划先后驱，双击连线自动拆卸移除自定义依赖，随时掌控生涯路线。
-            </p>
-          </div>
-        </div>
-      )}
 
       {/* Goal creation Form */}
       {isCreating && (
         <div className="p-6 bg-white border border-neutral-200 rounded-xl space-y-4 shadow-sm">
-          <h3 className="text-xs font-bold text-neutral-800 uppercase tracking-wider font-mono">创建人生成长计划</h3>
+          <h3 className="text-xs font-bold text-neutral-800 uppercase tracking-wider font-mono">新建计划</h3>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <span className="text-[10px] text-neutral-500 font-mono uppercase font-bold">计划标题</span>
+              <span className="text-[10px] text-neutral-500 font-mono uppercase font-bold">计划名称</span>
               <input
                 type="text"
-                placeholder="例如：产品设计冲刺计划..."
+                placeholder="计划名称"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2.5 text-neutral-800 text-xs focus:outline-hidden focus:bg-white focus:border-purple-500 font-medium"
@@ -217,7 +189,7 @@ export const GoalGrid: React.FC = () => {
             </div>
             
             <div className="space-y-1.5">
-              <span className="text-[10px] text-neutral-500 font-mono uppercase font-bold">所属领域赛道</span>
+              <span className="text-[10px] text-neutral-500 font-mono uppercase font-bold">所属分类</span>
               <select
                 value={category}
                 onChange={(e) => setCategory(e.target.value as CategoryType)}
@@ -233,10 +205,10 @@ export const GoalGrid: React.FC = () => {
           </div>
 
           <div className="space-y-1.5">
-            <span className="text-[10px] text-neutral-500 font-mono uppercase font-bold">具体目标说明</span>
+            <span className="text-[10px] text-neutral-500 font-mono uppercase font-bold">计划描述</span>
             <input
               type="text"
-              placeholder="简要列出达成该人生蓝图所需的关键里程碑成效..."
+              placeholder="补充计划描述"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2.5 text-neutral-800 text-xs focus:outline-hidden focus:bg-white focus:border-purple-500 font-medium"
@@ -252,9 +224,9 @@ export const GoalGrid: React.FC = () => {
             </button>
             <button
               onClick={handleCreateGoal}
-              className="px-4 py-2 rounded-lg text-xs bg-gradient-to-r from-[#6366f1] to-[#ec4899] hover:opacity-90 text-white font-bold font-mono cursor-pointer uppercase shadow-xs border-0"
+              className="px-4 py-2 rounded-lg text-xs bg-gradient-to-r from-[#79dce7] via-[#c9b9f1] to-[#efb5d4] hover:opacity-90 text-white font-bold font-mono cursor-pointer uppercase shadow-xs border-0"
             >
-              保存计划蓝图
+              创建计划
             </button>
           </div>
         </div>
@@ -263,7 +235,7 @@ export const GoalGrid: React.FC = () => {
       {/* Grid List */}
       {filteredGoals.length === 0 ? (
         <div className="p-12 text-center rounded-lg bg-white border border-neutral-200 border-dashed text-neutral-400 text-xs font-mono select-none">
-          该领域下暂无已登记的目标计划，立即新建一个开启您的人生图谱吧！
+          暂无计划
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -291,7 +263,7 @@ export const GoalGrid: React.FC = () => {
                         <span>确认彻底删除吗？</span>
                       </div>
                       <h4 className="text-[11px] font-semibold text-neutral-800 leading-normal font-sans">
-                        确定永久清除计划 “{g.title}” 吗？此操作将彻底销毁该计划名下的所有规划节点、拓扑连线，且无法撤销！
+                        删除“{g.title}”及其任务节点？此操作不可撤销。
                       </h4>
                     </div>
                     <div className="flex items-center gap-2">
@@ -322,7 +294,7 @@ export const GoalGrid: React.FC = () => {
                     <div className="space-y-2.5">
                       <div className="flex items-center gap-1.5 text-purple-600 font-bold text-xs uppercase font-mono">
                         <Pencil className="w-3.5 h-3.5 animate-pulse" />
-                        <span>编辑目标计划详情</span>
+                        <span>编辑计划</span>
                       </div>
                       <div className="space-y-1">
                         <input
@@ -338,7 +310,7 @@ export const GoalGrid: React.FC = () => {
                           rows={2}
                           value={editDescription}
                           onChange={(e) => setEditDescription(e.target.value)}
-                          placeholder="具体目标说明"
+                          placeholder="计划描述"
                           className="w-full bg-neutral-50 border border-neutral-200 rounded px-2 py-1 text-neutral-850 text-[11px] focus:outline-hidden focus:bg-white focus:border-purple-500 font-medium font-sans resize-none"
                         />
                       </div>
@@ -368,7 +340,7 @@ export const GoalGrid: React.FC = () => {
                             setEditingGoalId(null);
                           }
                         }}
-                        className="flex-1 py-1 rounded bg-gradient-to-r from-[#6366f1] to-[#ec4899] hover:opacity-90 text-white text-[11px] font-bold font-sans transition-all cursor-pointer text-center shadow-2xs border-0"
+                        className="flex-1 py-1 rounded bg-gradient-to-r from-[#79dce7] via-[#c9b9f1] to-[#efb5d4] hover:opacity-90 text-white text-[11px] font-bold font-sans transition-all cursor-pointer text-center shadow-2xs border-0"
                       >
                         保存
                       </button>
@@ -433,20 +405,20 @@ export const GoalGrid: React.FC = () => {
                 {/* Progress bar and open workspace */}
                 <div className="space-y-2.5">
                   <div className="flex items-center justify-between text-[10px] font-mono text-neutral-400">
-                    <span className="font-bold">进度指标</span>
+                    <span className="font-bold">完成度</span>
                     <span className="text-purple-600 font-bold">{percent}% ({done}/{total})</span>
                   </div>
 
                   <div className="w-full h-1.5 rounded-full bg-neutral-100 overflow-hidden border border-neutral-200/50">
                     <div 
-                      className="h-full bg-gradient-to-r from-[#6366f1] via-[#a855f7] to-[#ec4899] rounded-full transition-all duration-500"
+                      className="h-full bg-gradient-to-r from-[#79dce7] via-[#c9b9f1] to-[#efb5d4] rounded-full transition-all duration-500"
                       style={{ width: `${percent}%` }}
                     />
                   </div>
 
                   <div className="flex items-center justify-end font-mono text-[9px] text-neutral-400 group-hover:text-purple-600 transition-colors pt-1 font-bold uppercase">
                     <span className="flex items-center gap-1">
-                      开启拓扑白板
+                      打开画布
                       <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-1" />
                     </span>
                   </div>

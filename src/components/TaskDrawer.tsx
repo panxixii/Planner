@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useAppStore } from '../store';
-import { X, Check, Trash2, Calendar, Clock, AlertCircle, Sparkles } from 'lucide-react';
+import { X, Check, Trash2, Calendar, Clock, AlertCircle } from 'lucide-react';
 
 export const TaskDrawer: React.FC = () => {
   const selectedTaskId = useAppStore((state) => state.selectedTaskId);
@@ -8,7 +8,6 @@ export const TaskDrawer: React.FC = () => {
   const tasks = useAppStore((state) => state.tasks);
   const updateTask = useAppStore((state) => state.updateTask);
   const deleteTask = useAppStore((state) => state.deleteTask);
-  const showHelp = useAppStore((state) => state.showHelp);
 
   const task = selectedTaskId ? tasks[selectedTaskId] : null;
 
@@ -87,7 +86,7 @@ export const TaskDrawer: React.FC = () => {
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" />
               <h3 className="text-sm font-semibold text-neutral-800 font-sans tracking-tight uppercase">
-                审查任务节点
+                编辑任务
               </h3>
             </div>
             <button 
@@ -97,16 +96,6 @@ export const TaskDrawer: React.FC = () => {
               <X className="w-4 h-4" />
             </button>
           </div>
-
-          {/* Quick Notice */}
-          {showHelp && (
-            <div className="p-3.5 rounded-lg bg-blue-50 border border-blue-200 flex items-start gap-2.5 animate-in fade-in duration-205">
-              <Sparkles className="w-3.5 h-3.5 text-blue-600 shrink-0 mt-0.5" />
-              <p className="text-[11px] text-blue-800 leading-relaxed font-sans">
-                标准化节点引用：所有的修改都会自动且同构地应用到每一个链接了此 taskId: <span className="text-blue-900 bg-blue-50 border border-blue-300 px-1 py-0.5 rounded text-[10px] font-bold font-mono">{selectedTaskId}</span> 的成长计划实例中。
-              </p>
-            </div>
-          )}
 
           {errorMsg && (
             <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 flex items-center gap-2 text-rose-700 text-xs font-mono">
@@ -124,19 +113,19 @@ export const TaskDrawer: React.FC = () => {
                 value={title} 
                 onChange={(e) => setTitle(e.target.value)}
                 className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-3.5 py-2.5 text-neutral-800 placeholder-neutral-400 focus:outline-hidden focus:bg-white focus:border-blue-500 font-medium"
-                placeholder="给此阶段目标拟定名称..."
+                placeholder="任务名称"
               />
             </div>
 
             {/* Description */}
             <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest font-mono">说明备注</label>
+              <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest font-mono">描述</label>
               <textarea 
                 value={description} 
                 onChange={(e) => setDescription(e.target.value)}
                 rows={3}
                 className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-3.5 py-2.5 text-neutral-800 placeholder-neutral-400 focus:outline-hidden focus:bg-white focus:border-blue-500 leading-relaxed"
-                placeholder="列出关于此里程碑的详细指导指令、规格指标或备忘建议..."
+                placeholder="任务描述"
               />
             </div>
 
@@ -175,7 +164,7 @@ export const TaskDrawer: React.FC = () => {
             {/* Dates range */}
             <div className="space-y-2">
               <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest font-mono flex items-center gap-1">
-                <Calendar className="w-3 text-neutral-400" /> 排期排程约束 (甘特图轴映射)
+                <Calendar className="w-3 text-neutral-400" /> 日期
               </label>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
@@ -205,12 +194,12 @@ export const TaskDrawer: React.FC = () => {
               <div className="flex gap-2.5">
                 {colors.map((c) => {
                   const colorBg: Record<string, string> = {
-                    indigo: 'bg-indigo-500',
-                    emerald: 'bg-emerald-500',
-                    sky: 'bg-blue-500',
-                    rose: 'bg-rose-500',
-                    amber: 'bg-amber-400',
-                    violet: 'bg-purple-500'
+                    indigo: 'bg-[#9387d1]',
+                    emerald: 'bg-[#67c8bd]',
+                    sky: 'bg-[#79bfd5]',
+                    rose: 'bg-[#d78fb5]',
+                    amber: 'bg-[#d9b958]',
+                    violet: 'bg-[#9b8ae4]'
                   };
                   return (
                     <button
@@ -238,10 +227,10 @@ export const TaskDrawer: React.FC = () => {
                 ? 'bg-rose-600 text-white border-rose-600 hover:bg-rose-700 font-extrabold animate-pulse' 
                 : 'text-rose-600 hover:bg-rose-50 hover:text-rose-700 border-transparent hover:border-rose-200'
               }`}
-            title="彻底从任务资源池中销毁此任务资产"
+            title="删除任务"
           >
             <Trash2 className="w-3.5 h-3.5" />
-            <span>{isConfirmingDelete ? '再次点击确认' : '彻底销毁'}</span>
+            <span>{isConfirmingDelete ? '再次确认' : '删除'}</span>
           </button>
 
           <div className="flex items-center gap-2 font-mono">
@@ -256,7 +245,7 @@ export const TaskDrawer: React.FC = () => {
               className="px-4 py-2 rounded-lg text-xs bg-blue-600 text-white font-semibold hover:bg-blue-500 transition-all shadow-xs flex items-center gap-1.5 cursor-pointer border border-blue-500/20"
             >
               <Check className="w-4 h-4" />
-              <span>更新拓扑</span>
+              <span>保存</span>
             </button>
           </div>
         </div>

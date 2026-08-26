@@ -25,11 +25,8 @@ import {
   ZoomIn, 
   ZoomOut, 
   Maximize, 
-  BookOpen, 
   FileCode, 
-  ChevronRight,
-  HelpCircle,
-  Inbox
+  ChevronRight
 } from 'lucide-react';
 import { Task, GoalNode } from '../types';
 
@@ -144,8 +141,6 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
   const deleteMergedNodeId = useAppStore((state) => state.deleteMergedNodeId);
   const clearMergedNodeIds = useAppStore((state) => state.clearMergedNodeIds);
 
-  const showHelp = useAppStore((state) => state.showHelp);
-  const toggleHelp = useAppStore((state) => state.toggleHelp);
 
   const { screenToFlowPosition, zoomIn, zoomOut, fitView } = useReactFlow();
 
@@ -213,7 +208,7 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
               type: 'step',
               animated: false,
               style: { 
-                stroke: '#94A3B8', 
+                stroke: '#a9aec5', 
                 strokeWidth: 1.5,
                 opacity: 0.65
               },
@@ -222,7 +217,7 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
                 type: MarkerType.ArrowClosed,
                 width: 15,
                 height: 15,
-                color: '#94A3B8',
+                color: '#a9aec5',
               }
             });
           }
@@ -247,19 +242,19 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
             type: 'step',
             animated: true,
             style: { 
-              stroke: '#2563EB', 
+              stroke: '#8d78d5', 
               strokeWidth: 2.5,
               opacity: 1,
               strokeDasharray: isCross ? '6,6' : '0'
             },
             label: isCross ? '跨计划依赖' : undefined,
-            labelStyle: { fill: '#2563EB', fontSize: 9, fontFamily: 'monospace', fontWeight: 'bold' },
+            labelStyle: { fill: '#8d78d5', fontSize: 9, fontFamily: 'monospace', fontWeight: 'bold' },
             interactionWidth: 25,
             markerEnd: {
               type: MarkerType.ArrowClosed,
               width: 15,
               height: 15,
-              color: '#2563EB',
+              color: '#8d78d5',
             }
           };
 
@@ -320,7 +315,7 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
       computedEdges = (goal.edges || []).map((e) => {
         if (!e) return {} as Edge;
         const isCustom = e.id.startsWith('edge-custom-');
-        const strokeColor = isCustom ? '#2563EB' : '#94A3B8';
+        const strokeColor = isCustom ? '#8d78d5' : '#a9aec5';
         return {
           id: e.id,
           source: e.source,
@@ -548,10 +543,10 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
 
     if (isMergedView) {
       addMergedEdge(newEdge);
-      showToast('已在合并工作区中创建独立拓扑连线！');
+      showToast('已添加跨计划连线');
     } else if (selectedGoalId) {
       addEdgeToGoal(selectedGoalId, newEdge);
-      showToast('已在当前画板中添加拓扑连线！');
+      showToast('已添加连线');
     }
   }, [isMergedView, selectedGoalId, addMergedEdge, addEdgeToGoal, showToast]);
 
@@ -559,10 +554,10 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
   const onEdgeDoubleClick = useCallback((_event: React.MouseEvent, edge: Edge) => {
     if (isMergedView) {
       deleteMergedEdge(edge.id);
-      showToast('已在合并工作区中解除相关拓扑依赖！');
+      showToast('已移除跨计划连线');
     } else if (selectedGoalId) {
       deleteEdgeFromGoal(selectedGoalId, edge.id);
-      showToast('已成功断开选中的拓扑连线！');
+      showToast('已移除连线');
     }
   }, [isMergedView, selectedGoalId, deleteMergedEdge, deleteEdgeFromGoal, showToast]);
 
@@ -614,12 +609,10 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
   };
 
   const activeTitle = isMergedView 
-    ? '多领域合并蓝图可视化画布' 
+    ? '合并画布' 
     : (selectedGoalId ? goals[selectedGoalId]?.title : '选择计划');
 
-  const activeDescription = isMergedView
-    ? '合并多套成长项目，确立跨度多维的动态跨计划拓扑依赖 (DAG) 连接，整合并排布整体甘特图。'
-    : (selectedGoalId ? goals[selectedGoalId]?.description : '从具体领域类别中，选择一个目标卡片以载入并编辑前驱后继依赖拓扑关系。');
+  const activeDescription = selectedGoalId ? goals[selectedGoalId]?.description : '';
 
   const showEmptyMergePlaceholder = isMergedView && mergedNodeIds.length === 0;
 
@@ -634,17 +627,15 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
               <Layers2 className="w-8 h-8" />
             </div>
             <div className="space-y-1.5">
-              <h3 className="text-base font-bold text-neutral-800 tracking-tight">合并工作区当前为空</h3>
-              <p className="text-xs text-neutral-500 leading-relaxed font-sans">
-                这是一个干净的可视化协同画布。请直接将左侧/原底下的 <span className="text-neutral-800 font-medium">【BOM 拓扑蓝图】</span> 中的任务组件拖拽入此工作区，来构建并连线您的多赛道合并拓扑网络！
-              </p>
+              <h3 className="text-base font-bold text-neutral-800 tracking-tight">画布为空</h3>
+              <p className="text-xs text-neutral-500 leading-relaxed font-sans">拖入任务节点开始。</p>
             </div>
           </div>
         </div>
       )}
 
       {/* 2. Topology Left Info Board & Checklist */}
-      <div className="absolute top-5 left-5 z-20 max-w-xs bg-white/95 border border-neutral-200 rounded-2xl shadow-lg p-4 pointer-events-auto space-y-3">
+      <div className="absolute top-5 left-5 z-20 max-w-xs bg-white/95 border border-neutral-200 rounded-2xl shadow-lg p-4 pointer-events-auto space-y-2">
         <div className="space-y-1">
           <div className="flex items-center justify-between gap-3 select-none">
             <div className="flex items-center gap-1.5 min-w-0">
@@ -657,48 +648,23 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
                 {activeTitle}
               </h2>
             </div>
-            <button
-              onClick={toggleHelp}
-              className={`text-[9px] font-bold font-sans px-1.5 py-0.5 rounded cursor-pointer transition-all border shrink-0
-                ${showHelp 
-                  ? 'bg-purple-50 text-purple-600 border-purple-200 hover:bg-purple-100' 
-                  : 'bg-neutral-100 text-neutral-500 border-neutral-200 hover:bg-neutral-200'}`}
-              title="隐藏/显示画布底部的拓扑连线手册"
-            >
-              <span>提示:{showHelp ? '显示' : '隐藏'}</span>
-            </button>
           </div>
-          <p className="text-[10.5px] text-neutral-500 leading-relaxed font-sans">
-            {activeDescription}
-          </p>
+          {activeDescription && (
+            <p className="text-[10.5px] text-neutral-500 leading-relaxed font-sans">
+              {activeDescription}
+            </p>
+          )}
         </div>
-        
-        {/* Floating Contextual Instruction Helpers */}
-        {showHelp && (
-          <div className="flex flex-col gap-1 text-[10px] text-neutral-450 font-mono border-t border-neutral-100 pt-2.5 animate-in fade-in duration-200">
-            <span className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-purple-500" /> 拖曳圆圈点：创建前驱后继依赖键
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> 双击连接线：断开/解除对齐约束
-            </span>
-            {isMergedView && (
-              <span className="flex items-center gap-1.5 text-purple-600 bg-purple-50 px-2 py-0.5 rounded-md font-sans text-[10px] font-semibold border border-purple-100 mt-1">
-                <Sparkles className="w-3 shrink-0" /> 支持跨计划跨赛道进行合并拓扑
-              </span>
-            )}
-          </div>
-        )}
       </div>
 
       {/* 4. Top Right Quick Canvas Controls (Plus milestone) */}
       <div className="absolute top-5 right-5 z-20 flex gap-2 pointer-events-auto">
         <button
           onClick={handleAddNewQuickTask}
-          className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-[#6366f1] to-[#ec4899] hover:opacity-90 text-white text-xs font-semibold cursor-pointer shadow-md transition-all"
+          className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-[#79dce7] via-[#c9b9f1] to-[#efb5d4] hover:opacity-90 text-white text-xs font-semibold cursor-pointer shadow-md transition-all"
         >
           <Plus className="w-3.5 h-3.5" />
-          <span>新建约束节点</span>
+          <span>新建节点</span>
         </button>
       </div>
 
@@ -759,7 +725,7 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
         >
           <Background 
             variant={BackgroundVariant.Dots} 
-            color="#DCDCDC" 
+            color="#d9ddea" 
             gap={24} 
             size={1.5} 
           />
