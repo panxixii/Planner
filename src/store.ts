@@ -6,6 +6,34 @@ const genId = () => Math.random().toString(36).substring(2, 11);
 
 const LOCAL_STORAGE_KEY = 'lifeprint-blueprints-state-v1';
 
+const getNodeCategoryIds = (state: AppState, nodeId: string): string[] => {
+  const categoryIds = new Set<string>();
+  const workspaceNode = state.workspaceNodes.find((node) => node.id === nodeId);
+  const workspaceTask = workspaceNode ? state.tasks[workspaceNode.taskId] : undefined;
+  workspaceTask?.categoryIds?.forEach((categoryId) => categoryIds.add(categoryId));
+
+  Object.values(state.goals).forEach((goal) => {
+    if (goal.nodes.some((node) => node.id === nodeId)) {
+      categoryIds.add(goal.category);
+    }
+  });
+
+  return Array.from(categoryIds);
+};
+
+const getEdgeCategoryIds = (state: AppState, edge: GoalEdge): string[] => {
+  if (edge.categoryIds) return edge.categoryIds;
+
+  const sourceCategoryIds = getNodeCategoryIds(state, edge.source);
+  const targetCategoryIds = getNodeCategoryIds(state, edge.target);
+  const targetCategorySet = new Set(targetCategoryIds);
+  const sharedCategoryIds = sourceCategoryIds.filter((categoryId) => targetCategorySet.has(categoryId));
+
+  return sharedCategoryIds.length > 0
+    ? sharedCategoryIds
+    : Array.from(new Set([...sourceCategoryIds, ...targetCategoryIds]));
+};
+
 // Preconfigured showcase database values (to populate with rich blueprints & timelines on first load)
 const DEMO_TASKS: Record<string, Task> = {
   // SaaS plan tasks
@@ -148,7 +176,12 @@ const loadSavedState = () => {
           if (isLegacyBOMDemo) return;
 
           if (task && typeof task === 'object') {
-            validatedTasks[tid] = task;
+            validatedTasks[tid] = {
+              ...task,
+              categoryIds: Array.isArray(task.categoryIds)
+                ? task.categoryIds.filter((id: unknown) => typeof id === 'string' && safeCategories.some((category: AppCategory) => category.id === id))
+                : undefined
+            };
           }
         });
 
@@ -186,12 +219,26 @@ const loadSavedState = () => {
           selectedGoalId: parsed.selectedGoalId || null,
           isMergedView: parsed.isMergedView || false,
           activeMergedGoalIds: Array.isArray(parsed.activeMergedGoalIds) ? parsed.activeMergedGoalIds : [],
+          workspaceCategoryFilter: Array.isArray(parsed.workspaceCategoryFilter)
+            ? parsed.workspaceCategoryFilter.filter((id: unknown) => typeof id === 'string' && safeCategories.some((category: AppCategory) => category.id === id))
+            : null,
           crossGoalEdges: Array.isArray(parsed.crossGoalEdges) ? parsed.crossGoalEdges : [],
           isSidebarCollapsed: !!parsed.isSidebarCollapsed,
           showHelp: typeof parsed.showHelp === 'boolean' ? parsed.showHelp : true,
           timelineTaskOrder: Array.isArray(parsed.timelineTaskOrder) ? parsed.timelineTaskOrder : [],
           isTimelineCollapsed: !!parsed.isTimelineCollapsed,
           mergedNodePositions: parsed.mergedNodePositions || {},
+          workspaceNodes: Array.isArray(parsed.workspaceNodes)
+            ? parsed.workspaceNodes.filter((node: unknown) => {
+                if (!node || typeof node !== 'object') return false;
+                const candidate = node as GoalNode;
+                return typeof candidate.id === 'string'
+                  && typeof candidate.taskId === 'string'
+                  && candidate.position
+                  && typeof candidate.position.x === 'number'
+                  && typeof candidate.position.y === 'number';
+              })
+            : [],
           mergedEdges: Array.isArray(parsed.mergedEdges) ? parsed.mergedEdges : null,
           mergedNodeIds: Array.isArray(parsed.mergedNodeIds) ? parsed.mergedNodeIds : [],
           componentNames: parsed.componentNames || {}
@@ -214,12 +261,14 @@ const initialSelectedCategoryId = savedState ? savedState.selectedCategoryId : '
 const initialSelectedGoalId = savedState ? savedState.selectedGoalId : null;
 const initialIsMergedView = savedState ? savedState.isMergedView : false;
 const initialActiveMergedGoalIds = savedState ? savedState.activeMergedGoalIds : [];
+const initialWorkspaceCategoryFilter = savedState ? savedState.workspaceCategoryFilter : null;
 const initialCrossGoalEdges = savedState ? savedState.crossGoalEdges : [];
 const initialIsSidebarCollapsed = savedState ? savedState.isSidebarCollapsed : false;
 const initialShowHelp = savedState ? savedState.showHelp : true;
 const initialTimelineTaskOrder = savedState ? (savedState.timelineTaskOrder || []) : [];
 const initialIsTimelineCollapsed = savedState ? savedState.isTimelineCollapsed : false;
 const initialMergedNodePositions = (savedState && savedState.mergedNodePositions) ? savedState.mergedNodePositions : {};
+const initialWorkspaceNodes = (savedState && Array.isArray(savedState.workspaceNodes)) ? savedState.workspaceNodes : [];
 const initialMergedNodeIds = (savedState && Array.isArray(savedState.mergedNodeIds)) ? savedState.mergedNodeIds : [];
 const initialComponentNames = (savedState && savedState.componentNames) ? savedState.componentNames : {};
 
@@ -256,12 +305,14 @@ export const useAppStore = create<AppState>((set, get) => {
           selectedGoalId: merged.selectedGoalId,
           isMergedView: merged.isMergedView,
           activeMergedGoalIds: merged.activeMergedGoalIds,
+          workspaceCategoryFilter: merged.workspaceCategoryFilter,
           crossGoalEdges: merged.crossGoalEdges,
           isSidebarCollapsed: merged.isSidebarCollapsed,
           showHelp: merged.showHelp,
           timelineTaskOrder: merged.timelineTaskOrder || [],
           isTimelineCollapsed: merged.isTimelineCollapsed,
           mergedNodePositions: merged.mergedNodePositions,
+          workspaceNodes: merged.workspaceNodes,
           mergedEdges: merged.mergedEdges,
           mergedNodeIds: merged.mergedNodeIds,
           componentNames: merged.componentNames
@@ -284,13 +335,16 @@ export const useAppStore = create<AppState>((set, get) => {
     selectedGoalId: initialSelectedGoalId,
     isMergedView: initialIsMergedView,
     selectedTaskId: null,
+    activeNodeActionsId: null,
     activeMergedGoalIds: initialActiveMergedGoalIds,
+    workspaceCategoryFilter: initialWorkspaceCategoryFilter,
     crossGoalEdges: initialCrossGoalEdges,
     isSidebarCollapsed: initialIsSidebarCollapsed,
     showHelp: initialShowHelp,
     timelineTaskOrder: initialTimelineTaskOrder,
     isTimelineCollapsed: initialIsTimelineCollapsed,
     mergedNodePositions: initialMergedNodePositions,
+    workspaceNodes: initialWorkspaceNodes,
     mergedEdges: initialMergedEdges,
     mergedNodeIds: initialMergedNodeIds,
     componentNames: initialComponentNames,
@@ -346,7 +400,22 @@ export const useAppStore = create<AppState>((set, get) => {
         categories: nextCategories,
         selectedCategoryId: nextSelectedCategoryId,
         goals: nextGoals,
-        selectedGoalId: nextSelectedGoalId
+        tasks: Object.fromEntries(Object.entries(state.tasks).map(([taskId, task]) => [
+          taskId,
+          task.categoryIds ? { ...task, categoryIds: task.categoryIds.filter((categoryId) => categoryId !== id) } : task
+        ])),
+        mergedEdges: state.mergedEdges.flatMap((edge) => {
+          const remainingCategoryIds = getEdgeCategoryIds(state, edge).filter((categoryId) => categoryId !== id);
+          return remainingCategoryIds.length > 0 ? [{ ...edge, categoryIds: remainingCategoryIds }] : [];
+        }),
+        crossGoalEdges: state.crossGoalEdges.flatMap((edge) => {
+          const remainingCategoryIds = getEdgeCategoryIds(state, edge).filter((categoryId) => categoryId !== id);
+          return remainingCategoryIds.length > 0 ? [{ ...edge, categoryIds: remainingCategoryIds }] : [];
+        }),
+        selectedGoalId: nextSelectedGoalId,
+        workspaceCategoryFilter: state.workspaceCategoryFilter === null
+          ? null
+          : state.workspaceCategoryFilter.filter((categoryId) => categoryId !== id)
       };
     }),
 
@@ -417,7 +486,10 @@ export const useAppStore = create<AppState>((set, get) => {
 
     setActiveMergedGoalIds: (goalIds) => persistSet({ activeMergedGoalIds: goalIds }),
 
+    setWorkspaceCategoryFilter: (categoryIds) => persistSet({ workspaceCategoryFilter: categoryIds }),
+
     selectTask: (taskId) => persistSet({ selectedTaskId: taskId }),
+    setActiveNodeActionsId: (nodeId) => set({ activeNodeActionsId: nodeId }),
 
     // TASK ACTIONS (Normalized changes reflect everywhere instantly!)
     addTask: (task) => persistSet((state: AppState) => ({
@@ -435,6 +507,10 @@ export const useAppStore = create<AppState>((set, get) => {
       const nextTasks = { ...state.tasks };
       delete nextTasks[taskId];
 
+      const removedWorkspaceNodeIds = new Set(
+        state.workspaceNodes.filter((node) => node.taskId === taskId).map((node) => node.id)
+      );
+
       // Also prune from goal nodes if it is removed entirely
       const nextGoals = { ...state.goals };
       Object.keys(nextGoals).forEach((gid) => {
@@ -444,7 +520,80 @@ export const useAppStore = create<AppState>((set, get) => {
       return {
         tasks: nextTasks,
         goals: nextGoals,
+        workspaceNodes: state.workspaceNodes.filter((node) => node.taskId !== taskId),
+        mergedEdges: state.mergedEdges.filter(
+          (edge) => !removedWorkspaceNodeIds.has(edge.source) && !removedWorkspaceNodeIds.has(edge.target)
+        ),
         selectedTaskId: state.selectedTaskId === taskId ? null : state.selectedTaskId
+      };
+    }),
+
+    removeTaskFromWorkspace: (taskId, categoryIds) => persistSet((state: AppState) => {
+      const task = state.tasks[taskId];
+      if (!task) return {};
+
+      const removeFromAll = categoryIds === null;
+      const categoryIdSet = new Set(categoryIds || []);
+      const affectedNodeIds = new Set(
+        state.workspaceNodes.filter((node) => node.taskId === taskId).map((node) => node.id),
+      );
+      Object.values(state.goals).forEach((goal) => {
+        if (removeFromAll || categoryIdSet.has(goal.category)) {
+          goal.nodes.forEach((node) => {
+            if (node.taskId === taskId) affectedNodeIds.add(node.id);
+          });
+        }
+      });
+      const remainingTaskCategoryIds = removeFromAll
+        ? []
+        : (task.categoryIds || []).filter((categoryId) => !categoryIdSet.has(categoryId));
+
+      const nextGoals = Object.fromEntries(Object.entries(state.goals).map(([goalId, goal]) => {
+        if (!removeFromAll && !categoryIdSet.has(goal.category)) return [goalId, goal];
+
+        const removedNodeIds = new Set(
+          goal.nodes.filter((node) => node.taskId === taskId).map((node) => node.id),
+        );
+        if (removedNodeIds.size === 0) return [goalId, goal];
+
+        return [goalId, {
+          ...goal,
+          nodes: goal.nodes.filter((node) => node.taskId !== taskId),
+          edges: goal.edges.filter(
+            (edge) => !removedNodeIds.has(edge.source) && !removedNodeIds.has(edge.target),
+          ),
+        }];
+      }));
+
+      const remainsInGoal = Object.values(nextGoals).some(
+        (goal) => goal.nodes.some((node) => node.taskId === taskId),
+      );
+      const keepSharedTask = remainingTaskCategoryIds.length > 0 || remainsInGoal;
+      const nextTasks = { ...state.tasks };
+      if (keepSharedTask) {
+        nextTasks[taskId] = { ...task, categoryIds: remainingTaskCategoryIds };
+      } else {
+        delete nextTasks[taskId];
+      }
+
+      const nextWorkspaceNodes = keepSharedTask
+        ? state.workspaceNodes
+        : state.workspaceNodes.filter((node) => node.taskId !== taskId);
+      const nextMergedEdges = state.mergedEdges.flatMap((edge) => {
+        if (!affectedNodeIds.has(edge.source) && !affectedNodeIds.has(edge.target)) return [edge];
+        const edgeCategoryIds = getEdgeCategoryIds(state, edge);
+        const remainingCategoryIds = removeFromAll
+          ? []
+          : edgeCategoryIds.filter((categoryId) => !categoryIdSet.has(categoryId));
+        return remainingCategoryIds.length > 0 ? [{ ...edge, categoryIds: remainingCategoryIds }] : [];
+      });
+
+      return {
+        tasks: nextTasks,
+        goals: nextGoals,
+        workspaceNodes: nextWorkspaceNodes,
+        mergedEdges: nextMergedEdges,
+        selectedTaskId: state.selectedTaskId === taskId ? null : state.selectedTaskId,
       };
     }),
 
@@ -620,12 +769,15 @@ export const useAppStore = create<AppState>((set, get) => {
       const filteredNodes = targetGoal.nodes.filter(n => n.id !== nodeId);
       // Also sweep downstream edges associated with this node ID
       const filteredEdges = targetGoal.edges.filter(e => e.source !== nodeId && e.target !== nodeId);
-      
-      // Also prune from crossGoalEdges if any
-      const nextCrossEdges = state.crossGoalEdges.filter(e => e.source !== nodeId && e.target !== nodeId);
-
-      // Sweep from independent mergedEdges as well
-      const nextMergedEdges = state.mergedEdges.filter(e => e.source !== nodeId && e.target !== nodeId);
+      const removeCategoryMembership = (edge: GoalEdge): GoalEdge[] => {
+        if (edge.source !== nodeId && edge.target !== nodeId) return [edge];
+        const remainingCategoryIds = getEdgeCategoryIds(state, edge).filter(
+          (categoryId) => categoryId !== targetGoal.category,
+        );
+        return remainingCategoryIds.length > 0 ? [{ ...edge, categoryIds: remainingCategoryIds }] : [];
+      };
+      const nextCrossEdges = state.crossGoalEdges.flatMap(removeCategoryMembership);
+      const nextMergedEdges = state.mergedEdges.flatMap(removeCategoryMembership);
 
       return {
         goals: {
@@ -691,6 +843,13 @@ export const useAppStore = create<AppState>((set, get) => {
       mergedNodePositions: { ...state.mergedNodePositions, ...positions }
     })),
 
+    addWorkspaceNode: (node) => persistSet((state: AppState) => {
+      if (state.workspaceNodes.some((existingNode) => existingNode.id === node.id || existingNode.taskId === node.taskId)) {
+        return {};
+      }
+      return { workspaceNodes: [...state.workspaceNodes, node] };
+    }),
+
     addMergedEdge: (edge) => persistSet((state: AppState) => ({
       mergedEdges: [...state.mergedEdges, edge]
     })),
@@ -698,6 +857,36 @@ export const useAppStore = create<AppState>((set, get) => {
     deleteMergedEdge: (edgeId) => persistSet((state: AppState) => ({
       mergedEdges: state.mergedEdges.filter((e) => e.id !== edgeId)
     })),
+
+    removeEdgeFromWorkspace: (edgeId, categoryIds) => persistSet((state: AppState) => {
+      const removeFromAll = categoryIds === null;
+      const categoryIdSet = new Set(categoryIds || []);
+      const nextMergedEdges = state.mergedEdges.flatMap((edge) => {
+        if (edge.id !== edgeId) return [edge];
+        const remainingCategoryIds = removeFromAll
+          ? []
+          : getEdgeCategoryIds(state, edge).filter((categoryId) => !categoryIdSet.has(categoryId));
+        return remainingCategoryIds.length > 0 ? [{ ...edge, categoryIds: remainingCategoryIds }] : [];
+      });
+      const nextGoals = Object.fromEntries(Object.entries(state.goals).map(([goalId, goal]) => {
+        const shouldRemove = removeFromAll || categoryIdSet.has(goal.category);
+        return [goalId, shouldRemove
+          ? { ...goal, edges: goal.edges.filter((edge) => edge.id !== edgeId) }
+          : goal];
+      }));
+
+      return {
+        mergedEdges: nextMergedEdges,
+        goals: nextGoals,
+        crossGoalEdges: state.crossGoalEdges.flatMap((edge) => {
+          if (edge.id !== edgeId) return [edge];
+          const remainingCategoryIds = removeFromAll
+            ? []
+            : getEdgeCategoryIds(state, edge).filter((categoryId) => !categoryIdSet.has(categoryId));
+          return remainingCategoryIds.length > 0 ? [{ ...edge, categoryIds: remainingCategoryIds }] : [];
+        }),
+      };
+    }),
 
     addMergedNodeId: (nodeId) => persistSet((state: AppState) => {
       if (state.mergedNodeIds.includes(nodeId)) return {};
@@ -715,13 +904,16 @@ export const useAppStore = create<AppState>((set, get) => {
       goals: {},
       selectedGoalId: null,
       selectedTaskId: null,
+      activeNodeActionsId: null,
       isMergedView: false,
       activeMergedGoalIds: [],
+      workspaceCategoryFilter: null,
       crossGoalEdges: [],
       bomTree: EMPTY_BOM_TREE,
       timelineTaskOrder: [],
       isTimelineCollapsed: false,
       mergedNodePositions: {},
+      workspaceNodes: [],
       mergedEdges: [],
       mergedNodeIds: []
     })

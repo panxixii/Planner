@@ -2,10 +2,11 @@ export interface Task {
   id: string;
   title: string;
   description: string;
-  duration: number; // in hours/days
+  duration: number; // estimated hours, decimals supported
   isDone: boolean;
-  startTime?: string; // YYYY-MM-DD
-  endTime?: string; // YYYY-MM-DD
+  categoryIds?: string[]; // A workspace task can belong to multiple categories.
+  startTime?: string; // YYYY-MM-DD or YYYY-MM-DDTHH:mm
+  endTime?: string; // YYYY-MM-DD or YYYY-MM-DDTHH:mm
   color?: string; // e.g. 'emerald', 'sky', 'rose', 'violet', 'amber'
 }
 
@@ -19,6 +20,7 @@ export interface GoalEdge {
   id: string; // react-flow edge ID
   source: string; // React flow node id
   target: string; // React flow node id
+  categoryIds?: string[]; // Workspaces that currently include this shared edge.
 }
 
 export interface Goal {
@@ -56,7 +58,9 @@ export interface AppState {
   selectedGoalId: string | null; // null means Category Overview or Merged View
   isMergedView: boolean;
   selectedTaskId: string | null; // active task for Right Side Drawer
+  activeNodeActionsId: string | null; // transient node action popover owner
   activeMergedGoalIds: string[]; // Goals pulled into the consolidated merged workspace (initially empty)
+  workspaceCategoryFilter: string[] | null; // null means all categories
   
   // Actions
   setCategory: (category: CategoryType) => void;
@@ -68,12 +72,15 @@ export interface AppState {
   setMergedView: (val: boolean) => void;
   toggleActiveMergedGoalId: (goalId: string) => void;
   setActiveMergedGoalIds: (goalIds: string[]) => void;
+  setWorkspaceCategoryFilter: (categoryIds: string[] | null) => void;
   selectTask: (taskId: string | null) => void;
+  setActiveNodeActionsId: (nodeId: string | null) => void;
   
   // Task Actions
   addTask: (task: Task) => void;
   updateTask: (taskId: string, updates: Partial<Task>) => void;
   deleteTask: (taskId: string) => void;
+  removeTaskFromWorkspace: (taskId: string, categoryIds: string[] | null) => void;
   
   // Goal Actions
   addGoal: (goal: Goal) => void;
@@ -111,11 +118,14 @@ export interface AppState {
 
   // Independent Merged View state
   mergedNodePositions: Record<string, { x: number; y: number }>;
+  workspaceNodes: GoalNode[];
   mergedEdges: GoalEdge[];
   mergedNodeIds: string[];
   updateMergedNodePositions: (positions: Record<string, { x: number; y: number }>) => void;
+  addWorkspaceNode: (node: GoalNode) => void;
   addMergedEdge: (edge: GoalEdge) => void;
   deleteMergedEdge: (edgeId: string) => void;
+  removeEdgeFromWorkspace: (edgeId: string, categoryIds: string[] | null) => void;
   addMergedNodeId: (nodeId: string) => void;
   deleteMergedNodeId: (nodeId: string) => void;
   clearMergedNodeIds: () => void;
