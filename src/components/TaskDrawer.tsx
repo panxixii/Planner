@@ -1,15 +1,60 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useAppStore } from '../store';
-import { X, Check, Trash2, Calendar, Clock, AlertCircle } from 'lucide-react';
+import { X, Check, Trash2, Calendar, Clock, AlertCircle, Tags } from 'lucide-react';
+
+const COLORS = ['indigo', 'emerald', 'sky', 'rose', 'amber', 'violet'];
+
+const COLOR_STYLES: Record<string, string> = {
+  indigo: 'bg-[#9387d1]',
+  emerald: 'bg-[#67c8bd]',
+  sky: 'bg-[#79bfd5]',
+  rose: 'bg-[#d78fb5]',
+  amber: 'bg-[#d9b958]',
+  violet: 'bg-[#9b8ae4]',
+};
+
+const COLOR_LABELS: Record<string, string> = {
+  indigo: '靛青',
+  emerald: '青绿',
+  sky: '天蓝',
+  rose: '玫红',
+  amber: '琥珀',
+  violet: '紫罗兰',
+};
+
+const fieldClassName = 'h-10 w-full rounded-lg border border-neutral-200 bg-[#ffffff] px-3 text-sm text-neutral-800 outline-none transition-colors placeholder:text-neutral-400 focus:border-purple-300 focus:ring-2 focus:ring-purple-100';
+const labelClassName = 'text-xs font-semibold text-neutral-600';
+
+const toDateTimeLocal = (value: string | undefined, isEnd = false) => {
+  if (!value) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return `${value}T${isEnd ? '23:59' : '00:00'}`;
+  }
+  return value.slice(0, 16);
+};
 
 export const TaskDrawer: React.FC = () => {
   const selectedTaskId = useAppStore((state) => state.selectedTaskId);
   const selectTask = useAppStore((state) => state.selectTask);
   const tasks = useAppStore((state) => state.tasks);
+  const categories = useAppStore((state) => state.categories);
+  const goals = useAppStore((state) => state.goals);
   const updateTask = useAppStore((state) => state.updateTask);
   const deleteTask = useAppStore((state) => state.deleteTask);
 
   const task = selectedTaskId ? tasks[selectedTaskId] : null;
+  const assignedCategories = useMemo(() => {
+    if (!selectedTaskId || !task) return [];
+
+    const categoryIds = new Set(task.categoryIds || []);
+    Object.values(goals).forEach((goal) => {
+      if (goal.nodes.some((node) => node.taskId === selectedTaskId)) {
+        categoryIds.add(goal.category);
+      }
+    });
+
+    return categories.filter((category) => categoryIds.has(category.id));
+  }, [categories, goals, selectedTaskId, task]);
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -29,8 +74,8 @@ export const TaskDrawer: React.FC = () => {
       setDescription(task.description || '');
       setDuration(task.duration !== undefined ? task.duration : 0);
       setIsDone(task.isDone || false);
-      setStartTime(task.startTime || '');
-      setEndTime(task.endTime || '');
+      setStartTime(toDateTimeLocal(task.startTime));
+      setEndTime(toDateTimeLocal(task.endTime, true));
       setColor(task.color || 'indigo');
       setErrorMsg('');
       setIsConfirmingDelete(false);
@@ -38,8 +83,6 @@ export const TaskDrawer: React.FC = () => {
   }, [task, selectedTaskId]);
 
   if (!selectedTaskId || !task) return null;
-
-  const colors = ['indigo', 'emerald', 'sky', 'rose', 'amber', 'violet'];
 
   const handleSave = () => {
     if (startTime && endTime && startTime > endTime) {
@@ -72,184 +115,206 @@ export const TaskDrawer: React.FC = () => {
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
-      {/* Backdrop glass blur overlay */}
-      <div 
+      <button
+        type="button"
+        aria-label="关闭任务详情"
         onClick={() => selectTask(null)}
-        className="absolute inset-0 bg-black/60 backdrop-blur-xs transition-opacity"
+        className="absolute inset-0 cursor-default bg-neutral-900/30 backdrop-blur-[2px]"
       />
 
-      {/* Floating Panel (Apple Modern Card look) */}
-      <div id="task-drawer-panel" className="relative w-full max-w-md h-full bg-white border-l border-neutral-200 p-6 flex flex-col justify-between shadow-2xl overflow-y-auto">
-        <div className="space-y-6">
-          {/* Header */}
-          <div className="flex items-center justify-between pb-4 border-b border-neutral-200">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" />
-              <h3 className="text-sm font-semibold text-neutral-800 font-sans tracking-tight uppercase">
-                编辑任务
-              </h3>
-            </div>
-            <button 
-              onClick={() => selectTask(null)}
-              className="p-1 rounded-full text-neutral-450 hover:text-neutral-700 hover:bg-neutral-100 transition-colors cursor-pointer"
-            >
-              <X className="w-4 h-4" />
-            </button>
+      <aside
+        id="task-drawer-panel"
+        aria-label="任务详情"
+        className="relative flex h-full w-full flex-col border-l border-neutral-200 bg-[#fbfcfe] shadow-2xl sm:w-[460px]"
+      >
+        <header className="flex h-16 shrink-0 items-center justify-between border-b border-neutral-200 px-5">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-[#79bfd5]" />
+            <h2 className="truncate text-sm font-semibold text-neutral-800">任务详情</h2>
           </div>
+          <button
+            type="button"
+            onClick={() => selectTask(null)}
+            className="flex h-8 w-8 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-700"
+            aria-label="关闭"
+            title="关闭"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </header>
 
-          {errorMsg && (
-            <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 flex items-center gap-2 text-rose-700 text-xs font-mono">
-              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 custom-scrollbar">
+          {errorMsg ? (
+            <div className="mb-5 flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2.5 text-xs text-rose-700">
+              <AlertCircle className="h-4 w-4 shrink-0 text-rose-600" />
               <span>{errorMsg}</span>
             </div>
-          )}
+          ) : null}
 
-          {/* Inputs */}
-          <div className="space-y-4 text-xs text-neutral-700">
-            {/* Title */}
+          <section className="space-y-4">
             <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest font-mono">任务标题</label>
-              <input 
-                value={title} 
-                onChange={(e) => setTitle(e.target.value)}
-                className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-3.5 py-2.5 text-neutral-800 placeholder-neutral-400 focus:outline-hidden focus:bg-white focus:border-blue-500 font-medium"
+              <label htmlFor="task-title" className={labelClassName}>任务标题</label>
+              <input
+                id="task-title"
+                value={title}
+                onChange={(event) => setTitle(event.target.value)}
+                className={fieldClassName}
                 placeholder="任务名称"
               />
             </div>
 
-            {/* Description */}
             <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest font-mono">描述</label>
-              <textarea 
-                value={description} 
-                onChange={(e) => setDescription(e.target.value)}
-                rows={3}
-                className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-3.5 py-2.5 text-neutral-800 placeholder-neutral-400 focus:outline-hidden focus:bg-white focus:border-blue-500 leading-relaxed"
+              <label htmlFor="task-description" className={labelClassName}>描述</label>
+              <textarea
+                id="task-description"
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
+                rows={4}
+                className="w-full resize-y rounded-lg border border-neutral-200 bg-[#ffffff] px-3 py-2.5 text-sm leading-6 text-neutral-800 outline-none transition-colors placeholder:text-neutral-400 focus:border-purple-300 focus:ring-2 focus:ring-purple-100"
                 placeholder="任务描述"
               />
             </div>
+          </section>
 
-            {/* Two Column details: Duration & Status */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest font-mono flex items-center gap-1">
-                  <Clock className="w-3 text-neutral-400" /> 预估时间 (小时)
-                </label>
-                <input 
-                  type="number"
-                  min="0"
-                  value={duration || ''} 
-                  onChange={(e) => setDuration(Math.max(0, Number(e.target.value)))}
-                  className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-3.5 py-2.5 text-neutral-800 focus:outline-hidden focus:bg-white focus:border-blue-500 font-mono"
-                  placeholder="未设定工时..."
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest font-mono">进度审核</label>
-                <button
-                  onClick={() => setIsDone(!isDone)}
-                  className={`w-full flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 transition-all text-xs font-semibold cursor-pointer font-mono
-                    ${isDone 
-                      ? 'bg-emerald-50 border-emerald-300 text-emerald-700 font-bold' 
-                      : 'bg-neutral-50 border-neutral-200 text-neutral-500 hover:bg-neutral-100 hover:border-neutral-300'
-                    }`}
+          <section className="mt-5 border-t border-neutral-200 pt-5">
+            <div className="mb-2 flex items-center gap-1.5">
+              <Tags className="h-3.5 w-3.5 text-neutral-400" />
+              <h3 className={labelClassName}>所属分类</h3>
+            </div>
+            <div className="flex min-h-8 flex-wrap items-center gap-1.5">
+              {assignedCategories.length > 0 ? assignedCategories.map((category) => (
+                <span
+                  key={category.id}
+                  className="inline-flex h-7 items-center rounded-md border border-purple-200 bg-purple-50 px-2.5 text-xs font-medium text-purple-600"
                 >
-                  <Check className={`w-3.5 h-3.5 transition-transform ${isDone ? 'scale-110 text-emerald-600' : 'scale-0'}`} />
-                  <span>{isDone ? '已完成' : '未完成'}</span>
-                </button>
-              </div>
+                  {category.label}
+                </span>
+              )) : (
+                <span className="text-xs text-neutral-400">未关联分类</span>
+              )}
             </div>
+          </section>
 
-            {/* Dates range */}
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest font-mono flex items-center gap-1">
-                <Calendar className="w-3 text-neutral-400" /> 日期
+          <section className="mt-5 grid grid-cols-2 gap-3 border-t border-neutral-200 pt-5">
+            <div className="min-w-0 space-y-1.5">
+              <label htmlFor="task-duration" className={`flex items-center gap-1.5 ${labelClassName}`}>
+                <Clock className="h-3.5 w-3.5 text-neutral-400" />
+                预期（小时）
               </label>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <span className="text-[10px] text-neutral-500 font-mono">开始日期</span>
-                  <input 
-                    type="date"
-                    value={startTime}
-                    onChange={(e) => setStartTime(e.target.value)}
-                    className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2 text-neutral-800 focus:outline-hidden focus:bg-white focus:border-blue-500 font-mono"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <span className="text-[10px] text-neutral-500 font-mono">结束日期</span>
-                  <input 
-                    type="date"
-                    value={endTime}
-                    onChange={(e) => setEndTime(e.target.value)}
-                    className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2 text-neutral-800 focus:outline-hidden focus:bg-white focus:border-blue-500 font-mono"
-                  />
-                </div>
-              </div>
+              <input
+                id="task-duration"
+                type="number"
+                min="0"
+                step="0.25"
+                value={duration || ''}
+                onChange={(event) => setDuration(Math.max(0, Number(event.target.value)))}
+                className={fieldClassName}
+                placeholder="未设置"
+              />
             </div>
 
-            {/* Color tags */}
-            <div className="space-y-2 pt-2">
-              <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest font-mono">节点视觉色块主色</label>
-              <div className="flex gap-2.5">
-                {colors.map((c) => {
-                  const colorBg: Record<string, string> = {
-                    indigo: 'bg-[#9387d1]',
-                    emerald: 'bg-[#67c8bd]',
-                    sky: 'bg-[#79bfd5]',
-                    rose: 'bg-[#d78fb5]',
-                    amber: 'bg-[#d9b958]',
-                    violet: 'bg-[#9b8ae4]'
-                  };
-                  return (
-                    <button
-                      key={c}
-                      onClick={() => setColor(c)}
-                      className={`w-6 h-6 rounded-full flex items-center justify-center transition-all ${colorBg[c]} relative hover:scale-110 cursor-pointer`}
-                    >
-                      {color === c && (
-                        <span className="absolute inset-0 rounded-full border border-neutral-600 scale-110 shadow-xs animate-pulse" />
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
+            <div className="min-w-0 space-y-1.5">
+              <span className={labelClassName}>状态</span>
+              <button
+                type="button"
+                aria-pressed={isDone}
+                onClick={() => setIsDone((value) => !value)}
+                className={`flex h-10 w-full items-center justify-center gap-2 rounded-lg border text-xs font-semibold transition-colors ${
+                  isDone
+                    ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+                    : 'border-neutral-200 bg-[#ffffff] text-neutral-500 hover:bg-neutral-50'
+                }`}
+              >
+                <Check className={`h-3.5 w-3.5 ${isDone ? 'opacity-100' : 'opacity-35'}`} />
+                <span>{isDone ? '已完成' : '未完成'}</span>
+              </button>
             </div>
-          </div>
+          </section>
+
+          <section className="mt-5 space-y-3 border-t border-neutral-200 pt-5">
+            <div className="flex items-center gap-1.5">
+              <Calendar className="h-3.5 w-3.5 text-neutral-400" />
+              <h3 className={labelClassName}>日期与时间</h3>
+            </div>
+
+            <div className="space-y-1.5">
+              <label htmlFor="task-start-time" className="text-[11px] font-medium text-neutral-500">开始时间</label>
+              <input
+                id="task-start-time"
+                type="datetime-local"
+                step="60"
+                value={startTime}
+                onChange={(event) => setStartTime(event.target.value)}
+                className={fieldClassName}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label htmlFor="task-end-time" className="text-[11px] font-medium text-neutral-500">结束时间</label>
+              <input
+                id="task-end-time"
+                type="datetime-local"
+                step="60"
+                value={endTime}
+                onChange={(event) => setEndTime(event.target.value)}
+                className={fieldClassName}
+              />
+            </div>
+          </section>
+
+          <section className="mt-5 border-t border-neutral-200 pt-5">
+            <h3 className={labelClassName}>节点颜色</h3>
+            <div className="mt-2.5 flex items-center gap-2.5">
+              {COLORS.map((colorOption) => (
+                <button
+                  key={colorOption}
+                  type="button"
+                  onClick={() => setColor(colorOption)}
+                  className={`flex h-7 w-7 items-center justify-center rounded-full ${COLOR_STYLES[colorOption]} transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-neutral-300 focus:ring-offset-2`}
+                  aria-label={COLOR_LABELS[colorOption]}
+                  title={COLOR_LABELS[colorOption]}
+                >
+                  {color === colorOption ? <Check className="h-3.5 w-3.5 text-white" /> : null}
+                </button>
+              ))}
+            </div>
+          </section>
         </div>
 
-        {/* Footer Actions */}
-        <div className="pt-6 border-t border-neutral-200 flex items-center justify-between gap-3">
+        <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-neutral-200 bg-[#ffffff] px-5 py-4">
           <button
+            type="button"
             onClick={handleDelete}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-[11px] font-bold font-mono transition-all cursor-pointer border uppercase
-              ${isConfirmingDelete 
-                ? 'bg-rose-600 text-white border-rose-600 hover:bg-rose-700 font-extrabold animate-pulse' 
-                : 'text-rose-600 hover:bg-rose-50 hover:text-rose-700 border-transparent hover:border-rose-200'
-              }`}
-            title="删除任务"
+            className={`flex h-9 items-center gap-1.5 rounded-md border px-3 text-xs font-semibold transition-colors ${
+              isConfirmingDelete
+                ? 'border-rose-600 bg-rose-600 text-white hover:bg-rose-700'
+                : 'border-transparent text-rose-600 hover:border-rose-200 hover:bg-rose-50'
+            }`}
+            title={isConfirmingDelete ? '再次点击确认删除' : '删除任务'}
           >
-            <Trash2 className="w-3.5 h-3.5" />
-            <span>{isConfirmingDelete ? '再次确认' : '删除'}</span>
+            <Trash2 className="h-3.5 w-3.5" />
+            <span>{isConfirmingDelete ? '确认删除' : '删除'}</span>
           </button>
 
-          <div className="flex items-center gap-2 font-mono">
+          <div className="flex items-center gap-2">
             <button
+              type="button"
               onClick={() => selectTask(null)}
-              className="px-4 py-2 rounded-lg text-xs bg-neutral-155 text-neutral-700 hover:bg-neutral-200 transition-colors cursor-pointer border border-neutral-200/50"
+              className="h-9 rounded-md border border-neutral-200 bg-[#ffffff] px-4 text-xs font-semibold text-neutral-600 transition-colors hover:bg-neutral-50"
             >
               取消
             </button>
             <button
+              type="button"
               onClick={handleSave}
-              className="px-4 py-2 rounded-lg text-xs bg-blue-600 text-white font-semibold hover:bg-blue-500 transition-all shadow-xs flex items-center gap-1.5 cursor-pointer border border-blue-500/20"
+              className="flex h-9 items-center gap-1.5 rounded-md border border-purple-500 bg-purple-600 px-4 text-xs font-semibold text-white transition-colors hover:bg-purple-700"
             >
-              <Check className="w-4 h-4" />
+              <Check className="h-3.5 w-3.5" />
               <span>保存</span>
             </button>
           </div>
-        </div>
-      </div>
+        </footer>
+      </aside>
     </div>
   );
 };
