@@ -335,3 +335,47 @@ body {
   border-color: rgba(203, 120, 164, 0.62);
   background-color: rgba(247, 211, 231, 0.78);
 }
+
+.planner-mind-node {
+  cursor: pointer;
+}
+
+.planner-mind-node:hover {
+  border-color: #9da8b7 !important;
+  box-shadow: 0 7px 18px rgba(71, 85, 105, 0.14) !important;
+  transform: translateY(-1px);
+}
+
+.planner-mind-node-selected {
+  transform: translateY(-1px);
+}
+
+.react-flow__handle.planner-mind-handle {
+  width: 9px;
+  height: 9px;
+  border: 2px solid #fff;
+  background: #a8b1c0;
+  opacity: 0;
+  transition: opacity 150ms ease, background-color 150ms ease, width 150ms ease, height 150ms ease;
+}
+
+.planner-mind-node:hover .planner-mind-handle,
+.react-flow__node.selected .planner-mind-handle {
+  opacity: 1;
+}
+
+.react-flow__handle.planner-mind-handle:hover {
+  background: #8d78d5;
+  width: 12px;
+  height: 12px;
+}
+
+.react-flow__edge-path {
+  stroke-linecap: round;
+}
+
+.react-flow__edge:hover .react-flow__edge-path,
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: #8d78d5 !important;
+  stroke-width: 3 !important;
+}

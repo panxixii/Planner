@@ -1,219 +1,210 @@
-import React from 'react';
-import { Handle, Position, NodeProps } from '@xyflow/react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Handle, NodeProps, Position } from '@xyflow/react';
+import { Check, PanelRightOpen, Trash2, X } from 'lucide-react';
 import { useAppStore } from '../store';
-import { CheckCircle2, Circle, Clock, Calendar, ArrowUpRight, X } from 'lucide-react';
 
 interface TaskNodeData {
   taskId: string;
-  goalColor?: string;
-  goalTitle?: string;
-  goalId?: string;
+  goalId?: string | null;
   isMerged?: boolean;
 }
 
-export const TaskNode: React.FC<NodeProps> = (props) => {
-  const data = props.data as unknown as TaskNodeData;
-  const taskId = data?.taskId;
-  
-  // Directly subscribe to this specific task from normalized store to achieve instant reactive synchrony
-  const task = useAppStore((state) => state.tasks[taskId]);
-  const updateTask = useAppStore((state) => state.updateTask);
-  const selectTask = useAppStore((state) => state.selectTask);
-  const deleteMergedNodeId = useAppStore((state) => state.deleteMergedNodeId);
-  const categories = useAppStore((state) => state.categories);
-  const goal = useAppStore((state) => data?.goalId ? state.goals[data.goalId] : null);
+const colorMap: Record<string, { accent: string; surface: string; border: string }> = {
+  emerald: { accent: '#67c8bd', surface: '#f0fbf8', border: '#b9e5df' },
+  rose: { accent: '#d78fb5', surface: '#fff5fa', border: '#efc9dc' },
+  sky: { accent: '#79bfd5', surface: '#f2fbfd', border: '#bedfe8' },
+  amber: { accent: '#d9b958', surface: '#fffbed', border: '#eadb9f' },
+  violet: { accent: '#9b8ae4', surface: '#f8f5ff', border: '#d6ccf1' },
+  indigo: { accent: '#9387d1', surface: '#f6f5fc', border: '#d1cbea' },
+};
 
-  // Traverse up to find the root category (first-level category)
-  const firstLevelCategoryName = React.useMemo(() => {
-    if (!goal || !goal.category) return '';
-    let currentCat = categories.find(c => c.id === goal.category);
-    if (!currentCat) return '';
-    while (currentCat.parentId) {
-      const parent = categories.find(c => c.id === currentCat.parentId);
-      if (!parent) break;
-      currentCat = parent;
+export const TaskNode = React.memo(({ id, data, selected }: NodeProps) => {
+  const { taskId, goalId, isMerged } = data as unknown as TaskNodeData;
+  const task = useAppStore((state) => state.tasks[taskId]);
+  const selectTask = useAppStore((state) => state.selectTask);
+  const updateTask = useAppStore((state) => state.updateTask);
+  const deleteTask = useAppStore((state) => state.deleteTask);
+  const removeTaskFromWorkspace = useAppStore((state) => state.removeTaskFromWorkspace);
+  const deleteNodeFromGoal = useAppStore((state) => state.deleteNodeFromGoal);
+  const workspaceCategoryFilter = useAppStore((state) => state.workspaceCategoryFilter);
+  const showActions = useAppStore((state) => state.activeNodeActionsId === id);
+  const setActiveNodeActionsId = useAppStore((state) => state.setActiveNodeActionsId);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const skipBlurCommitRef = useRef(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [draftTitle, setDraftTitle] = useState('');
+  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+
+  useEffect(() => {
+    if (isEditing) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
     }
-    return currentCat.label;
-  }, [goal, categories]);
+  }, [isEditing]);
 
   if (!task) {
     return (
-      <div className="px-4 py-3 rounded-xl bg-neutral-100 border border-neutral-200 text-neutral-500 text-xs shadow-xs">
+      <div className="min-w-28 rounded-full border border-neutral-200 bg-neutral-100 px-4 py-2 text-center text-xs text-neutral-500">
         任务未定义
       </div>
     );
   }
 
-  const { title, description, duration, isDone, startTime, endTime, color } = task;
+  const scheme = colorMap[task.color || 'indigo'] || colorMap.indigo;
 
-  // Render color tag classes
-  const colorMap: Record<string, { bg: string; border: string; text: string; glow: string }> = {
-    emerald: { 
-      bg: 'bg-emerald-50', 
-      border: 'border-emerald-200 group-hover:border-emerald-500/50', 
-      text: 'text-emerald-600',
-      glow: 'shadow-[0_4px_15px_rgba(103,200,189,0.12)]'
-    },
-    rose: { 
-      bg: 'bg-rose-50', 
-      border: 'border-rose-200 group-hover:border-rose-500/50', 
-      text: 'text-rose-600',
-      glow: 'shadow-[0_4px_15px_rgba(215,143,181,0.12)]'
-    },
-    sky: { 
-      bg: 'bg-blue-50', 
-      border: 'border-blue-200 group-hover:border-blue-500/50', 
-      text: 'text-blue-600',
-      glow: 'shadow-[0_4px_15px_rgba(121,191,213,0.12)]'
-    },
-    amber: { 
-      bg: 'bg-amber-50', 
-      border: 'border-amber-200 group-hover:border-amber-500/50', 
-      text: 'text-amber-600',
-      glow: 'shadow-[0_4px_15px_rgba(217,185,88,0.12)]'
-    },
-    violet: { 
-      bg: 'bg-purple-50', 
-      border: 'border-purple-200 group-hover:border-purple-500/50', 
-      text: 'text-purple-600',
-      glow: 'shadow-[0_4px_15px_rgba(155,138,228,0.12)]'
-    },
-    indigo: { 
-      bg: 'bg-indigo-50', 
-      border: 'border-indigo-200 group-hover:border-indigo-500/50', 
-      text: 'text-indigo-600',
-      glow: 'shadow-[0_4px_15px_rgba(147,135,209,0.12)]'
-    }
+  const startEditing = () => {
+    if (isEditing) return;
+    setDraftTitle(task.title);
+    setIsEditing(true);
   };
 
-  const scheme = colorMap[color || 'indigo'] || colorMap.indigo;
-
-  const handleToggleDone = (e: React.MouseEvent) => {
-    e.stopPropagation(); // halt canvas selection drag triggers
-    updateTask(taskId, { isDone: !isDone });
+  const commitTitle = () => {
+    if (draftTitle !== task.title) {
+      updateTask(taskId, { title: draftTitle });
+    }
+    setIsEditing(false);
   };
 
   return (
-    <div 
-      onClick={() => selectTask(taskId)}
-      className={`relative group w-72 rounded-xl border transition-all duration-300 cursor-pointer text-left shadow-xs
-        ${isDone 
-          ? 'bg-neutral-50/90 border-neutral-200/60 opacity-60 grayscale' 
-          : 'bg-white border-neutral-200 hover:border-neutral-300 hover:shadow-md hover:scale-[1.015]'
-        } ${scheme.glow}`}
+    <div
+      onClick={startEditing}
+      onDoubleClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (isEditing) {
+          commitTitle();
+        }
+        setIsConfirmingDelete(false);
+        setActiveNodeActionsId(showActions ? null : id);
+      }}
+      title="单击改名，双击显示节点操作"
+      className={`planner-mind-node group relative flex h-10 min-w-28 max-w-52 items-center justify-center rounded-full border px-5 text-center transition-[box-shadow,border-color,transform,opacity] duration-150 ${
+        task.isDone ? 'opacity-55' : ''
+      } ${selected ? 'planner-mind-node-selected' : ''}`}
+      style={{
+        backgroundColor: task.isDone ? '#f7f8fa' : scheme.surface,
+        borderColor: task.isDone ? (selected ? '#9ca3af' : '#d1d5db') : (selected ? scheme.accent : scheme.border),
+        boxShadow: task.isDone
+          ? (selected ? '0 0 0 3px #9ca3af26, 0 4px 12px #9ca3af20' : '0 2px 8px #9ca3af18')
+          : selected
+            ? `0 0 0 3px ${scheme.accent}26, 0 6px 16px ${scheme.accent}24`
+            : `0 3px 10px ${scheme.accent}1c`,
+      }}
     >
-      {/* Target handle (incoming/predecessor) */}
-      {data.isMerged ? (
-        <Handle 
-          type="target" 
-          position={Position.Left} 
-          id="left"
-          className="!w-2.5 !h-2.5 !bg-white !border-2 !border-neutral-300 transition-colors group-hover:!bg-[#9b8ae4] group-hover:!border-[#c9b9f1]"
-        />
-      ) : (
-        <Handle 
-          type="target" 
-          position={Position.Bottom} 
-          id="bottom"
-          className="!w-2.5 !h-2.5 !bg-white !border-2 !border-neutral-300 transition-colors group-hover:!bg-[#9b8ae4] group-hover:!border-[#c9b9f1]"
-        />
-      )}
+      {showActions ? (
+        <div
+          className="nodrag nopan nowheel absolute bottom-full left-1/2 z-50 mb-2 flex h-10 -translate-x-1/2 items-center gap-1.5 rounded-lg border border-neutral-200 bg-white p-1 shadow-lg"
+          onClick={(event) => event.stopPropagation()}
+          onDoubleClick={(event) => event.stopPropagation()}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              if (isConfirmingDelete) {
+                setActiveNodeActionsId(null);
+                if (isMerged) {
+                  removeTaskFromWorkspace(taskId, workspaceCategoryFilter);
+                } else if (goalId) {
+                  deleteNodeFromGoal(goalId, id);
+                } else {
+                  deleteTask(taskId);
+                }
+                return;
+              }
+              setIsConfirmingDelete(true);
+            }}
+            className={`flex h-8 w-[68px] items-center justify-center gap-1.5 rounded-md border text-[11px] font-semibold transition-colors ${
+              isConfirmingDelete
+                ? 'border-rose-500 bg-rose-600 text-white hover:bg-rose-700'
+                : 'border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100'
+            }`}
+            aria-label={isConfirmingDelete ? '确认从当前工作区移除' : '从当前工作区移除'}
+            title={isConfirmingDelete ? '再次点击确认移除' : '从当前工作区移除'}
+          >
+            {isConfirmingDelete ? <Check className="h-3.5 w-3.5" /> : <Trash2 className="h-3.5 w-3.5" />}
+            <span>{isConfirmingDelete ? '确认' : '删除'}</span>
+          </button>
 
-      <div className="p-4 space-y-3">
-        {/* Header Ribbon / Tag */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5 font-mono">
-            <span className={`px-2 py-0.5 rounded bg-[#F1F3F5] text-[9.5px] font-semibold tracking-wide uppercase ${scheme.text} border border-neutral-200`}>
-              {color || 'task'}
-            </span>
-            {data.isMerged && data.goalTitle && (
-              <span className="px-2 py-0.5 rounded bg-neutral-100 border border-neutral-200 text-neutral-500 text-[9px] font-mono truncate max-w-[120px]" title={data.goalTitle}>
-                {data.goalTitle}
-              </span>
-            )}
-            {data.isMerged && firstLevelCategoryName && (
-              <span className="px-2 py-0.5 rounded bg-purple-50 border border-purple-200 text-purple-600 text-[9px] font-sans font-medium truncate max-w-[80px]" title={`一级分类: ${firstLevelCategoryName}`}>
-                {firstLevelCategoryName}
-              </span>
-            )}
-          </div>
-          
-          <div className="flex items-center gap-1.5 shrink-0">
-            <button 
-              onClick={handleToggleDone}
-              className="nodrag text-neutral-400 hover:text-neutral-600 transition-colors p-0.5 cursor-pointer"
-              title={isDone ? "重新开启任务" : "标记为已完成"}
-            >
-              {isDone ? (
-                <span className="text-[9px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded tracking-wider font-bold font-mono border border-emerald-200">已完成</span>
-              ) : (
-                <Circle className="w-4 h-4 hover:text-purple-500 text-neutral-300" />
-              )}
-            </button>
-            {data.isMerged && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  deleteMergedNodeId(props.id);
-                }}
-                className="nodrag text-rose-500 hover:text-rose-700 transition-colors p-0.5 cursor-pointer flex items-center justify-center p-1 rounded-full hover:bg-rose-50 shrink-0"
-                title="从合并工作区中移除此节点"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setIsConfirmingDelete(false);
+              setActiveNodeActionsId(null);
+              selectTask(taskId);
+            }}
+            className="flex h-8 w-[68px] items-center justify-center gap-1.5 rounded-md border border-neutral-200 bg-neutral-50 text-[11px] font-semibold text-neutral-600 transition-colors hover:border-purple-200 hover:bg-purple-50 hover:text-purple-600"
+            aria-label="打开任务详情"
+            title="打开任务详情"
+          >
+            <PanelRightOpen className="h-3.5 w-3.5" />
+            <span>详情</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setIsConfirmingDelete(false);
+              setActiveNodeActionsId(null);
+            }}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-neutral-200 bg-neutral-50 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-700"
+            aria-label="关闭全部节点操作"
+            title="关闭全部节点操作"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
         </div>
+      ) : null}
 
-        {/* Title & Desc */}
-        <div className="space-y-1">
-          <h4 className={`text-xs font-semibold tracking-tight text-neutral-800 transition-colors underline-offset-4 decoration-1 ${isDone ? 'line-through text-neutral-400' : ''}`}>
-            {title || '未命名任务'}
-          </h4>
-          <p className={`text-[11px] line-clamp-2 leading-relaxed ${isDone ? 'text-neutral-400' : 'text-neutral-500'}`}>
-            {description || '暂无详细描述信息。'}
-          </p>
-        </div>
+      <span
+        className="absolute inset-y-2 left-1.5 w-1 rounded-full"
+        style={{ backgroundColor: task.isDone ? '#b8c0cc' : scheme.accent }}
+      />
 
-        {/* Footer Meta Metrics */}
-        <div className="flex items-center justify-between pt-2 border-t border-neutral-100 text-[10px] text-neutral-500 font-mono">
-          <div className="flex items-center gap-1.5">
-            <Clock className="w-3 h-3 text-neutral-400" />
-            <span>{duration} 工时/小时</span>
-          </div>
+      <input
+        ref={inputRef}
+        value={isEditing ? draftTitle : task.title}
+        readOnly={!isEditing}
+        aria-label="任务标题"
+        onChange={(event) => setDraftTitle(event.target.value)}
+        onBlur={() => {
+          if (skipBlurCommitRef.current) {
+            skipBlurCommitRef.current = false;
+            return;
+          }
+          if (isEditing) commitTitle();
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            commitTitle();
+            event.currentTarget.blur();
+          } else if (event.key === 'Escape') {
+            event.preventDefault();
+            skipBlurCommitRef.current = true;
+            setDraftTitle(task.title);
+            setIsEditing(false);
+            event.currentTarget.blur();
+          }
+        }}
+        className={`${isEditing ? 'nodrag nopan cursor-text' : 'cursor-pointer'} max-w-44 bg-transparent p-0 text-center text-xs font-semibold text-neutral-700 outline-none ${task.isDone ? 'line-through text-neutral-400' : ''}`}
+        style={{ width: `${Math.max(4, Math.min((isEditing ? draftTitle : task.title).length, 20))}ch` }}
+      />
 
-          {startTime && endTime ? (
-            <div className="flex items-center gap-1 text-neutral-500">
-              <Calendar className="w-3 h-3 text-neutral-400" />
-              <span>{startTime.substring(5)} → {endTime.substring(5)}</span>
-            </div>
-          ) : (
-            <span className="text-neutral-400 italic text-[9px]">暂无排程日期</span>
-          )}
-        </div>
-      </div>
-
-      {/* Detail Arrow */}
-      <div className="absolute right-3.5 top-3.5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-        <ArrowUpRight className="w-3.5 h-3.5 text-neutral-400" />
-      </div>
-
-      {/* Source handle (outgoing/successor) */}
-      {data.isMerged ? (
-        <Handle 
-          type="source" 
-          position={Position.Right} 
-          id="right"
-          className="!w-2.5 !h-2.5 !bg-white !border-2 !border-neutral-300 transition-colors group-hover:!bg-[#9b8ae4] group-hover:!border-[#c9b9f1]"
-        />
-      ) : (
-        <Handle 
-          type="source" 
-          position={Position.Top} 
-          id="top"
-          className="!w-2.5 !h-2.5 !bg-white !border-2 !border-neutral-300 transition-colors group-hover:!bg-[#9b8ae4] group-hover:!border-[#c9b9f1]"
-        />
-      )}
+      <Handle
+        type="target"
+        position={Position.Left}
+        id="left"
+        className="planner-mind-handle planner-mind-handle-target"
+      />
+      <Handle
+        type="source"
+        position={Position.Right}
+        id="right"
+        className="planner-mind-handle planner-mind-handle-source"
+      />
     </div>
   );
-};
+});
+
+TaskNode.displayName = 'TaskNode';

@@ -12,7 +12,7 @@ import {
   applyEdgeChanges,
   NodeChange,
   EdgeChange,
-  MarkerType
+  ConnectionLineType
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useAppStore } from '../store';
@@ -21,52 +21,12 @@ import { ComponentHandleNode } from './ComponentHandleNode';
 import { 
   Layers2, 
   Sparkles, 
-  Plus, 
+  MousePointerClick,
   ZoomIn, 
   ZoomOut, 
-  Maximize, 
-  FileCode, 
-  ChevronRight
+  Maximize
 } from 'lucide-react';
 import { Task, GoalNode } from '../types';
-
-// Helper to find all connected nodes to move synchronously if the nodeId is the terminal (last) node in the relationship
-const getDescendantNodeIds = (nodeId: string, edges: any[]): Set<string> => {
-  const result = new Set<string>();
-  
-  // First, check if the node has outgoing edges (meaning it's a preceding node)
-  const hasOutgoing = edges.some(e => e.source === nodeId);
-  if (hasOutgoing) {
-    // If it is a preceding node, its movement does not affect others
-    return result;
-  }
-  
-  // Second, check if the node has incoming edges (confirming it's connected and is indeed a terminal "last node")
-  const hasIncoming = edges.some(e => e.target === nodeId);
-  if (!hasIncoming) {
-    // Isolated node, starts no chain, is not the "last node" of any chain
-    return result;
-  }
-  
-  // N is a "last node" - find all nodes in its connected component using undirected BFS
-  const queue = [nodeId];
-  while (queue.length > 0) {
-    const current = queue.shift()!;
-    // Get all neighboring node IDs regardless of direction
-    const neighbors = edges
-      .filter((e) => e.source === current || e.target === current)
-      .map((e) => e.source === current ? e.target : e.source);
-      
-    for (const neighbor of neighbors) {
-      if (neighbor !== nodeId && !result.has(neighbor)) {
-        result.add(neighbor);
-        queue.push(neighbor);
-      }
-    }
-  }
-  
-  return result;
-};
 
 // Helper to find all connected components of a goal or merged workspace
 const getConnectedComponents = (nodes: any[], edges: any[]): { id: string; nodeIds: Set<string> }[] => {
@@ -108,43 +68,34 @@ const getConnectedComponents = (nodes: any[], edges: any[]): { id: string; nodeI
   return components;
 };
 
-interface DAGInnerWorkspaceProps {
-  onDrop: (event: React.DragEvent) => void;
-  onDragOver: (event: React.DragEvent) => void;
-}
-
-const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOver }) => {
+const DAGInnerWorkspace: React.FC = () => {
   const tasks = useAppStore((state) => state.tasks);
   const isMergedView = useAppStore((state) => state.isMergedView);
   const selectedGoalId = useAppStore((state) => state.selectedGoalId);
   const goals = useAppStore((state) => state.goals);
-  const crossGoalEdges = useAppStore((state) => state.crossGoalEdges);
   const updateGoalNodes = useAppStore((state) => state.updateGoalNodes);
   const addEdgeToGoal = useAppStore((state) => state.addEdgeToGoal);
-  const addCrossGoalEdge = useAppStore((state) => state.addCrossGoalEdge);
   const deleteEdgeFromGoal = useAppStore((state) => state.deleteEdgeFromGoal);
-  const deleteCrossGoalEdge = useAppStore((state) => state.deleteCrossGoalEdge);
   const deleteNodeFromGoal = useAppStore((state) => state.deleteNodeFromGoal);
   const addTask = useAppStore((state) => state.addTask);
   const addNodeToGoal = useAppStore((state) => state.addNodeToGoal);
-  const activeMergedGoalIds = useAppStore((state) => state.activeMergedGoalIds);
-  const toggleActiveMergedGoalId = useAppStore((state) => state.toggleActiveMergedGoalId);
+  const workspaceCategoryFilter = useAppStore((state) => state.workspaceCategoryFilter);
+  const categories = useAppStore((state) => state.categories);
 
   // Independent Merged View state
   const mergedNodePositions = useAppStore((state) => state.mergedNodePositions);
+  const workspaceNodes = useAppStore((state) => state.workspaceNodes);
   const mergedEdges = useAppStore((state) => state.mergedEdges);
-  const mergedNodeIds = useAppStore((state) => state.mergedNodeIds);
   const updateMergedNodePositions = useAppStore((state) => state.updateMergedNodePositions);
+  const addWorkspaceNode = useAppStore((state) => state.addWorkspaceNode);
   const addMergedEdge = useAppStore((state) => state.addMergedEdge);
-  const deleteMergedEdge = useAppStore((state) => state.deleteMergedEdge);
-  const addMergedNodeId = useAppStore((state) => state.addMergedNodeId);
+  const removeEdgeFromWorkspace = useAppStore((state) => state.removeEdgeFromWorkspace);
   const deleteMergedNodeId = useAppStore((state) => state.deleteMergedNodeId);
-  const clearMergedNodeIds = useAppStore((state) => state.clearMergedNodeIds);
-
-
   const { screenToFlowPosition, zoomIn, zoomOut, fitView } = useReactFlow();
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const isConnectingRef = useRef(false);
+  const suppressPaneClickUntilRef = useRef(0);
 
   const showToast = useCallback((msg: string) => {
     setToastMessage(msg);
@@ -170,25 +121,57 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
 
     if (isMergedView) {
       // 1. Populate task nodes
-      const activeGoalIds = Object.keys(goals);
+      const visibleTaskIds = new Set<string>();
+      const activeGoalIds = Object.keys(goals).filter((goalId) => {
+        const goal = goals[goalId];
+        return goal && (workspaceCategoryFilter === null || workspaceCategoryFilter.includes(goal.category));
+      });
       activeGoalIds.forEach((gid, index) => {
         const g = goals[gid];
         if (!g || !g.nodes) return;
         const yOffset = index * 250;
 
         g.nodes.forEach((n) => {
-          if (!n) return;
-          // Only show nodes that have been pulled into the merged workspace!
-          if (!mergedNodeIds.includes(n.id)) return;
-
+          if (!n || visibleTaskIds.has(n.taskId)) return;
+          visibleTaskIds.add(n.taskId);
           const mergedPos = mergedNodePositions[n.id];
           const finalPos = mergedPos ? mergedPos : { x: n.position.x, y: n.position.y + yOffset };
           computedNodes.push({
             id: n.id,
             type: 'taskNode',
             position: finalPos,
-            data: { taskId: n.taskId, goalColor: g.color, goalTitle: g.title, goalId: gid, isMerged: true }
+            data: {
+              taskId: n.taskId,
+              goalColor: g.color,
+              goalTitle: g.title,
+              goalId: gid,
+              isMerged: true,
+              categoryIds: Array.from(new Set([g.category, ...(tasks[n.taskId]?.categoryIds || [])])),
+            }
           });
+        });
+      });
+
+      workspaceNodes.forEach((node) => {
+        const task = tasks[node.taskId];
+        if (!task || visibleTaskIds.has(task.id)) return;
+        const isVisible = workspaceCategoryFilter === null
+          || task.categoryIds?.some((categoryId) => workspaceCategoryFilter.includes(categoryId));
+        if (!isVisible) return;
+
+        visibleTaskIds.add(task.id);
+        computedNodes.push({
+          id: node.id,
+          type: 'taskNode',
+          position: mergedNodePositions[node.id] || node.position,
+          data: {
+            taskId: node.taskId,
+            goalColor: task.color || 'indigo',
+            goalTitle: '',
+            goalId: null,
+            isMerged: true,
+            categoryIds: task.categoryIds || [],
+          },
         });
       });
 
@@ -205,20 +188,14 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
               id: e.id,
               source: e.source,
               target: e.target,
-              type: 'step',
+              type: 'bezier',
               animated: false,
               style: { 
                 stroke: '#a9aec5', 
-                strokeWidth: 1.5,
+                strokeWidth: 2,
                 opacity: 0.65
               },
-              interactionWidth: 25,
-              markerEnd: {
-                type: MarkerType.ArrowClosed,
-                width: 15,
-                height: 15,
-                color: '#a9aec5',
-              }
+              interactionWidth: 28,
             });
           }
         });
@@ -226,6 +203,11 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
 
       // Custom drawn merged connections (cross-goal or custom)
       mergedEdges.forEach((e) => {
+        const isVisibleInWorkspace = workspaceCategoryFilter === null
+          || e.categoryIds === undefined
+          || e.categoryIds.some((categoryId) => workspaceCategoryFilter.includes(categoryId));
+        if (!isVisibleInWorkspace) return;
+
         const hasSource = computedNodes.some(n => n.id === e.source);
         const hasTarget = computedNodes.some(n => n.id === e.target);
         if (hasSource && hasTarget) {
@@ -239,23 +221,17 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
             id: e.id,
             source: e.source,
             target: e.target,
-            type: 'step',
-            animated: true,
+            type: 'bezier',
+            animated: false,
             style: { 
               stroke: '#8d78d5', 
-              strokeWidth: 2.5,
+              strokeWidth: 2.25,
               opacity: 1,
               strokeDasharray: isCross ? '6,6' : '0'
             },
             label: isCross ? '跨计划依赖' : undefined,
             labelStyle: { fill: '#8d78d5', fontSize: 9, fontFamily: 'monospace', fontWeight: 'bold' },
-            interactionWidth: 25,
-            markerEnd: {
-              type: MarkerType.ArrowClosed,
-              width: 15,
-              height: 15,
-              color: '#8d78d5',
-            }
+            interactionWidth: 28,
           };
 
           if (alreadyExistsIndex >= 0) {
@@ -309,7 +285,14 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
         id: n.id,
         type: 'taskNode',
         position: n.position,
-        data: { taskId: n.taskId, goalColor: goal.color, goalTitle: goal.title, goalId: selectedGoalId, isMerged: false }
+        data: {
+          taskId: n.taskId,
+          goalColor: goal.color,
+          goalTitle: goal.title,
+          goalId: selectedGoalId,
+          isMerged: false,
+          categoryIds: [goal.category],
+        }
       }));
 
       computedEdges = (goal.edges || []).map((e) => {
@@ -320,20 +303,14 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
           id: e.id,
           source: e.source,
           target: e.target,
-          type: 'step',
-          animated: isCustom,
+          type: 'bezier',
+          animated: false,
           style: { 
             stroke: strokeColor, 
-            strokeWidth: isCustom ? 2.5 : 1.5,
+            strokeWidth: isCustom ? 2.25 : 2,
             opacity: isCustom ? 1 : 0.65
           },
-          interactionWidth: 25,
-          markerEnd: {
-            type: MarkerType.ArrowClosed,
-            width: 15,
-            height: 15,
-            color: strokeColor,
-          }
+          interactionWidth: 28,
         };
       });
 
@@ -377,7 +354,7 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
 
     setLocalNodes(computedNodes);
     setLocalEdges(computedEdges);
-  }, [isMergedView, selectedGoalId, goals, activeMergedGoalIds, crossGoalEdges, mergedNodePositions, mergedEdges, mergedNodeIds, tasks]);
+  }, [isMergedView, selectedGoalId, goals, mergedNodePositions, workspaceNodes, mergedEdges, tasks, workspaceCategoryFilter]);
 
   // Standard React Flow selection and state synchronization handlers
   const onNodesChange = useCallback((changes: NodeChange[]) => {
@@ -466,6 +443,9 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
     if (event.key === 'Tab') {
       const selectedNode = localNodes.find((n) => n.selected);
       if (!selectedNode) return;
+      const parentTaskId = (selectedNode.data as { taskId?: string }).taskId;
+      const parentTask = parentTaskId ? tasks[parentTaskId] : undefined;
+      if (!parentTask) return;
 
       event.preventDefault();
 
@@ -479,15 +459,14 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
         }
       }
 
-      if (!targetGoalId || !goals[targetGoalId]) return;
-
-      const g = goals[targetGoalId];
+      const targetGoal = targetGoalId ? goals[targetGoalId] : undefined;
+      if (targetGoalId && !targetGoal) return;
 
       const sourcePos = selectedNode.position;
-      let nextX = sourcePos.x + 250;
+      let nextX = sourcePos.x + 210;
       let nextY = sourcePos.y;
 
-      while (g && g.nodes && g.nodes.some((n) => Math.abs(n.position.x - nextX) < 100 && Math.abs(n.position.y - nextY) < 60)) {
+      while (targetGoal?.nodes.some((n) => Math.abs(n.position.x - nextX) < 100 && Math.abs(n.position.y - nextY) < 60)) {
         nextY += 110;
       }
 
@@ -498,9 +477,12 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
         description: '',
         duration: 0,
         isDone: false,
+        categoryIds: targetGoal
+          ? [targetGoal.category]
+          : (parentTask.categoryIds || []),
         startTime: '',
         endTime: '',
-        color: 'sky'
+        color: parentTask.color || 'sky'
       };
       addTask(newTaskObj);
 
@@ -511,34 +493,43 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
         position: { x: nextX, y: nextY }
       };
 
-      addNodeToGoal(targetGoalId, newGoalNode);
-      if (isMergedView) {
-        addMergedNodeId(newNodeId);
+      if (targetGoalId) {
+        addNodeToGoal(targetGoalId, newGoalNode);
+      } else {
+        addWorkspaceNode(newGoalNode);
       }
 
       const edgeId = `edge-custom-${Math.random().toString(36).substring(2, 9)}`;
       const newEdge = {
         id: edgeId,
         source: selectedNode.id,
-        target: newNodeId
+        target: newNodeId,
+        categoryIds: (isMergedView || !targetGoalId)
+          ? (newTaskObj.categoryIds || [])
+          : undefined,
       };
-      if (isMergedView) {
+      if (isMergedView || !targetGoalId) {
         addMergedEdge(newEdge);
       } else {
         addEdgeToGoal(targetGoalId, newEdge);
       }
 
-      showToast('🍀 思维子分支已生成！已建立右偏对齐连线(硬直角)！');
+      showToast('已创建思维子节点');
     }
-  }, [localNodes, isMergedView, selectedGoalId, goals, addTask, addNodeToGoal, addEdgeToGoal, addMergedEdge, addMergedNodeId, showToast]);
+  }, [localNodes, isMergedView, selectedGoalId, goals, tasks, workspaceCategoryFilter, addTask, addNodeToGoal, addWorkspaceNode, addEdgeToGoal, addMergedEdge, showToast]);
 
   // Handle new dependency connections
   const onConnect = useCallback((connection: Connection) => {
     const edgeId = `edge-custom-${Math.random().toString(36).substring(2, 9)}`;
+    const sourceCategoryIds = (localNodes.find((node) => node.id === connection.source)?.data as { categoryIds?: string[] } | undefined)?.categoryIds || [];
+    const targetCategoryIds = (localNodes.find((node) => node.id === connection.target)?.data as { categoryIds?: string[] } | undefined)?.categoryIds || [];
+    const targetCategoryIdSet = new Set(targetCategoryIds);
+    const sharedCategoryIds = sourceCategoryIds.filter((categoryId) => targetCategoryIdSet.has(categoryId));
     const newEdge = {
       id: edgeId,
       source: connection.source!,
       target: connection.target!,
+      categoryIds: isMergedView ? sharedCategoryIds : undefined,
     };
 
     if (isMergedView) {
@@ -548,18 +539,27 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
       addEdgeToGoal(selectedGoalId, newEdge);
       showToast('已添加连线');
     }
-  }, [isMergedView, selectedGoalId, addMergedEdge, addEdgeToGoal, showToast]);
+  }, [isMergedView, selectedGoalId, localNodes, addMergedEdge, addEdgeToGoal, showToast]);
+
+  const onConnectStart = useCallback(() => {
+    isConnectingRef.current = true;
+  }, []);
+
+  const onConnectEnd = useCallback(() => {
+    isConnectingRef.current = false;
+    suppressPaneClickUntilRef.current = Date.now() + 250;
+  }, []);
 
   // Double click edge to delete dependency (RESTRICTED TO CUSTOM WORKSPACE EDGES IN MERGED VIEW ONLY)
   const onEdgeDoubleClick = useCallback((_event: React.MouseEvent, edge: Edge) => {
     if (isMergedView) {
-      deleteMergedEdge(edge.id);
+      removeEdgeFromWorkspace(edge.id, workspaceCategoryFilter);
       showToast('已移除跨计划连线');
     } else if (selectedGoalId) {
       deleteEdgeFromGoal(selectedGoalId, edge.id);
       showToast('已移除连线');
     }
-  }, [isMergedView, selectedGoalId, deleteMergedEdge, deleteEdgeFromGoal, showToast]);
+  }, [isMergedView, selectedGoalId, workspaceCategoryFilter, removeEdgeFromWorkspace, deleteEdgeFromGoal, showToast]);
 
   // Left click backspace deletes node
   const onNodesDelete = useCallback((nodesDeleted: Node[]) => {
@@ -572,23 +572,30 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
     });
   }, [isMergedView, selectedGoalId, deleteMergedNodeId, deleteNodeFromGoal]);
 
-  // Add brand new quick task direct to canvas
-  const handleAddNewQuickTask = () => {
-    const activeGoalId = selectedGoalId || activeMergedGoalIds[0] || Object.keys(goals)[0];
-    if (!activeGoalId) return;
+  // Create a blank task exactly where the user clicks the empty canvas.
+  const handlePaneClick = useCallback((event: React.MouseEvent) => {
+    if (isConnectingRef.current || Date.now() < suppressPaneClickUntilRef.current) {
+      return;
+    }
 
-    // Direct active to activeMergedGoalIds if currently empty
-    if (isMergedView && !activeMergedGoalIds.includes(activeGoalId)) {
-      toggleActiveMergedGoalId(activeGoalId);
+    const selectedCategoryIds = workspaceCategoryFilter === null
+      ? categories.map((category) => category.id)
+      : workspaceCategoryFilter;
+
+    if (selectedCategoryIds.length === 0) {
+      showToast('请先勾选至少一个任务分类');
+      return;
     }
 
     const newTaskId = `t-quick-${Math.random().toString(36).substring(2, 9)}`;
+    const targetGoal = !isMergedView && selectedGoalId ? goals[selectedGoalId] : undefined;
     const newTaskObj: Task = {
       id: newTaskId,
       title: '',
       description: '',
       duration: 0,
       isDone: false,
+      categoryIds: targetGoal ? [targetGoal.category] : [...selectedCategoryIds],
       startTime: '',
       endTime: '',
       color: 'indigo'
@@ -596,43 +603,43 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
     addTask(newTaskObj);
 
     const newNodeId = `node-qk-${Math.random().toString(36).substring(2, 9)}`;
+    const clickedPosition = screenToFlowPosition({
+      x: event.clientX,
+      y: event.clientY,
+    });
     const newGoalNode: GoalNode = {
       id: newNodeId,
       taskId: newTaskId,
-      position: { x: 220, y: 150 }
+      position: {
+        x: clickedPosition.x - 56,
+        y: clickedPosition.y - 20,
+      },
     };
 
-    addNodeToGoal(activeGoalId, newGoalNode);
-    if (isMergedView) {
-      addMergedNodeId(newNodeId);
+    if (targetGoal && selectedGoalId) {
+      addNodeToGoal(selectedGoalId, newGoalNode);
+    } else {
+      addWorkspaceNode(newGoalNode);
     }
-  };
+  }, [workspaceCategoryFilter, categories, isMergedView, selectedGoalId, goals, addTask, addNodeToGoal, addWorkspaceNode, screenToFlowPosition, showToast]);
 
   const activeTitle = isMergedView 
     ? '合并画布' 
     : (selectedGoalId ? goals[selectedGoalId]?.title : '选择计划');
 
   const activeDescription = selectedGoalId ? goals[selectedGoalId]?.description : '';
-
-  const showEmptyMergePlaceholder = isMergedView && mergedNodeIds.length === 0;
+  const showEmptyPlaceholder = !localNodes.some((node) => node.type === 'taskNode');
 
   return (
     <div className="flex-1 flex flex-col min-h-0 relative select-none">
-      
-      {/* 1. Empty Workspace Overlay Placeholder */}
-      {showEmptyMergePlaceholder && (
-        <div className="absolute inset-0 bg-neutral-100/60 z-10 flex flex-col items-center justify-center p-8 text-center select-none backdrop-blur-3xs">
-          <div className="max-w-md bg-white p-8 rounded-3xl border border-neutral-200/80 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-300">
-            <div className="w-16 h-16 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center mx-auto shadow-xs border border-purple-100">
-              <Layers2 className="w-8 h-8" />
-            </div>
-            <div className="space-y-1.5">
-              <h3 className="text-base font-bold text-neutral-800 tracking-tight">画布为空</h3>
-              <p className="text-xs text-neutral-500 leading-relaxed font-sans">拖入任务节点开始。</p>
-            </div>
+      {showEmptyPlaceholder ? (
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-6">
+          <div className="flex items-center gap-3 rounded-lg border border-neutral-200 bg-white/95 px-4 py-3 text-neutral-600 shadow-lg backdrop-blur-xs">
+            <MousePointerClick className="h-5 w-5 shrink-0 text-purple-600" />
+            <span className="text-sm font-semibold">单击空白处创建节点</span>
           </div>
         </div>
-      )}
+      ) : null}
 
       {/* 2. Topology Left Info Board & Checklist */}
       <div className="absolute top-5 left-5 z-20 max-w-xs bg-white/95 border border-neutral-200 rounded-2xl shadow-lg p-4 pointer-events-auto space-y-2">
@@ -657,22 +664,8 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
         </div>
       </div>
 
-      {/* 4. Top Right Quick Canvas Controls (Plus milestone) */}
-      <div className="absolute top-5 right-5 z-20 flex gap-2 pointer-events-auto">
-        <button
-          onClick={handleAddNewQuickTask}
-          className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-[#79dce7] via-[#c9b9f1] to-[#efb5d4] hover:opacity-90 text-white text-xs font-semibold cursor-pointer shadow-md transition-all"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          <span>新建节点</span>
-        </button>
-      </div>
-
       {/* 5. Apple Style Highly Prominent Zoom Control Panel with Button labels */}
       <div className="absolute bottom-6 right-6 z-20 flex items-center gap-1.5 bg-white border-2 border-purple-600/30 p-2 rounded-2xl shadow-xl pointer-events-auto select-none">
-        <span className="text-[10px] font-bold text-purple-600 font-mono tracking-wider px-2.5 uppercase border-r border-neutral-200">
-          画布控制
-        </span>
         <button 
           onClick={() => zoomIn()}
           className="flex items-center justify-center p-2 rounded-xl bg-neutral-100 hover:bg-purple-600 hover:text-white text-neutral-700 transition-all cursor-pointer font-bold gap-1 shadow-sm group"
@@ -701,9 +694,7 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
       </div>
 
       {/* 6. Real React Flow Canvas */}
-      <div 
-        onDrop={onDrop}
-        onDragOver={onDragOver}
+      <div
         onKeyDown={handleKeyDown}
         tabIndex={0}
         className="flex-1 min-h-0 bg-neutral-50/50 cursor-grab active:cursor-grabbing text-neutral-800 outline-none"
@@ -717,8 +708,16 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
           onNodeDrag={onNodeDrag}
           onNodeDragStop={onNodeDragStop}
           onConnect={onConnect}
+          onConnectStart={onConnectStart}
+          onConnectEnd={onConnectEnd}
+          connectionLineType={ConnectionLineType.Bezier}
+          connectionLineStyle={{ stroke: '#8d78d5', strokeWidth: 2.25 }}
+          connectionRadius={28}
+          zoomOnDoubleClick={false}
+          onPaneClick={handlePaneClick}
           onEdgeDoubleClick={onEdgeDoubleClick}
           onNodesDelete={onNodesDelete}
+          nodesDeletable={!isMergedView}
           fitView
           minZoom={0.15}
           maxZoom={1.5}
@@ -744,109 +743,11 @@ const DAGInnerWorkspace: React.FC<DAGInnerWorkspaceProps> = ({ onDrop, onDragOve
 };
 
 export const DAGWorkspace: React.FC = () => {
-  const selectedGoalId = useAppStore((state) => state.selectedGoalId);
-  const isMergedView = useAppStore((state) => state.isMergedView);
-  const addNodeToGoal = useAppStore((state) => state.addNodeToGoal);
-  const goals = useAppStore((state) => state.goals);
-  const activeMergedGoalIds = useAppStore((state) => state.activeMergedGoalIds);
-  const toggleActiveMergedGoalId = useAppStore((state) => state.toggleActiveMergedGoalId);
-  const addMergedNodeId = useAppStore((state) => state.addMergedNodeId);
-  const updateMergedNodePositions = useAppStore((state) => state.updateMergedNodePositions);
-
-  const reactFlowWrapper = useRef<HTMLDivElement>(null);
-
-  const onDragOver = useCallback((event: React.DragEvent) => {
-    event.preventDefault();
-    event.dataTransfer.dropEffect = 'move';
-  }, []);
-
-  // Drop Event mapping BOM sidebar coordinates logic
-  const handleOuterDrop = useCallback(
-    (event: React.DragEvent, screenToFlow: (pos: { x: number; y: number }) => { x: number; y: number }) => {
-      event.preventDefault();
-
-      const taskId = event.dataTransfer.getData('application/reactflow-taskid');
-      const orgNodeId = event.dataTransfer.getData('application/reactflow-orgnodeid');
-      const orgGoalId = event.dataTransfer.getData('application/reactflow-orggoalid');
-      if (!taskId) return;
-
-      const rect = reactFlowWrapper.current?.getBoundingClientRect();
-      if (!rect) return;
-
-      // Project native screen drop coordinates to localized canvas coordinates
-      const canvasPosition = screenToFlow({
-        x: event.clientX,
-        y: event.clientY
-      });
-
-      if (isMergedView && orgNodeId && orgGoalId) {
-        addMergedNodeId(orgNodeId);
-        updateMergedNodePositions({
-          [orgNodeId]: canvasPosition
-        });
-      } else {
-        // Find which plan owns this template node task to add correctly!
-        let targetGoalId = '';
-        for (const [gid, g] of Object.entries(goals)) {
-          if (g && g.nodes && g.nodes.some((n) => n.taskId === taskId)) {
-            targetGoalId = gid;
-            break;
-          }
-        }
-        
-        // Fallback if not mapped
-        if (!targetGoalId) targetGoalId = selectedGoalId || Object.keys(goals)[0] || '';
-
-        const newNodeId = `node-inst-${Math.random().toString(36).substring(2, 9)}`;
-        const newGoalNode: GoalNode = {
-          id: newNodeId,
-          taskId: taskId,
-          position: canvasPosition
-        };
-
-        if (selectedGoalId) {
-          addNodeToGoal(selectedGoalId, newGoalNode);
-        }
-      }
-    },
-    [isMergedView, selectedGoalId, goals, activeMergedGoalIds, toggleActiveMergedGoalId, addNodeToGoal, addMergedNodeId, updateMergedNodePositions]
-  );
-
   return (
-    <div 
-      ref={reactFlowWrapper} 
-      className="flex-1 flex flex-col min-h-0 bg-white border border-neutral-200 rounded-2xl overflow-hidden shadow-xs relative"
-    >
+    <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-xs">
       <ReactFlowProvider>
-        <FlowWrapperHelper 
-          onDragOver={onDragOver} 
-          onDropHelper={handleOuterDrop} 
-        />
+        <DAGInnerWorkspace />
       </ReactFlowProvider>
     </div>
-  );
-};
-
-// Isolated logic component to bypass screenToFlowPosition requirement of a Parent Provider wrapper
-interface FlowWrapperHelperProps {
-  onDragOver: (event: React.DragEvent) => void;
-  onDropHelper: (
-    event: React.DragEvent, 
-    screenToFlow: (pos: { x: number; y: number }) => { x: number; y: number }
-  ) => void;
-}
-
-const FlowWrapperHelper: React.FC<FlowWrapperHelperProps> = ({ onDragOver, onDropHelper }) => {
-  const { screenToFlowPosition } = useReactFlow();
-
-  const handleDrop = (event: React.DragEvent) => {
-    onDropHelper(event, screenToFlowPosition);
-  };
-
-  return (
-    <DAGInnerWorkspace 
-      onDragOver={onDragOver} 
-      onDrop={handleDrop} 
-    />
   );
 };
