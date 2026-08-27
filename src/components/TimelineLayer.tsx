@@ -430,13 +430,13 @@ export const TimelineLayer: React.FC = () => {
         <div
           ref={scrollContainerRef}
           onScroll={handleTimelineScroll}
-          className="custom-scrollbar relative min-w-0 flex-1 overflow-auto bg-[#ffffff]"
+          className="custom-scrollbar relative isolate min-w-0 flex-1 overflow-auto bg-[#ffffff]"
         >
           <div style={{ width: `calc(var(--task-column-width) + ${timelineWidth}px)`, minHeight: '100%' }}>
-            <div className="sticky top-0 z-20 flex h-11 border-b border-neutral-200 bg-[#f7f8fb] text-[10px] text-neutral-400">
+            <div className="sticky top-0 z-40 flex h-11 border-b border-neutral-200 bg-[#f7f8fb] text-[10px] text-neutral-400">
               <div
                 style={{ width: 'var(--task-column-width)' }}
-                className="sticky left-0 z-30 flex shrink-0 items-center border-r border-neutral-200 bg-[#f7f8fb] px-6 font-bold text-neutral-600"
+                className="sticky left-0 z-50 flex shrink-0 items-center border-r border-neutral-200 bg-[#f7f8fb] px-6 font-bold text-neutral-600"
               >
                 排期任务
                 <div
@@ -514,7 +514,7 @@ export const TimelineLayer: React.FC = () => {
                   >
                     <div
                       style={{ width: 'var(--task-column-width)' }}
-                      className="sticky left-0 z-10 flex shrink-0 items-center gap-2 border-r border-neutral-200 bg-[#ffffff] px-4 pr-5"
+                      className="sticky left-0 z-30 flex shrink-0 items-center gap-2 border-r border-neutral-200 bg-[#ffffff] px-4 pr-5"
                     >
                       <div
                         draggable
@@ -543,7 +543,7 @@ export const TimelineLayer: React.FC = () => {
                     </div>
 
                     <div
-                      className="relative flex shrink-0 items-center"
+                      className="relative z-0 flex shrink-0 items-center"
                       style={{ width: timelineWidth, backgroundImage: trackBackground }}
                     >
                       {isNowInRange ? (
