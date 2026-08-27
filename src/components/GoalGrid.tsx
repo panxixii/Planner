@@ -150,21 +150,21 @@ export const GoalGrid: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 flex-1 overflow-y-auto p-6 max-w-5xl mx-auto select-none font-sans">
+    <div className="w-full min-w-0 max-w-5xl flex-1 overflow-y-auto p-6 mx-auto box-border select-none font-sans space-y-6">
       {/* Category Header */}
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex w-full min-w-0 items-center justify-between gap-4">
+        <div className="min-w-0">
           <div className="flex items-center gap-2.5">
-            <h1 className="text-xl font-semibold tracking-tight text-neutral-800 flex items-center gap-2">
-              <Target className="w-5 h-5 text-purple-600 animate-pulse" />
-              <span>{categoryLabels[selectedCategoryId]}</span>
+            <h1 className="flex min-w-0 items-center gap-2 text-xl font-semibold tracking-tight text-neutral-800">
+              <Target className="w-5 h-5 shrink-0 text-purple-600 animate-pulse" />
+              <span className="truncate">{categoryLabels[selectedCategoryId]}</span>
             </h1>
           </div>
         </div>
 
         <button
           onClick={() => setIsCreating(!isCreating)}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-neutral-200 text-xs text-neutral-700 hover:text-neutral-900 hover:bg-neutral-50 shadow-2xs transition-all cursor-pointer font-bold font-mono uppercase"
+          className="flex shrink-0 items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-neutral-200 text-xs text-neutral-700 hover:text-neutral-900 hover:bg-neutral-50 shadow-2xs transition-all cursor-pointer font-bold font-mono uppercase"
         >
           <Plus className="w-4 h-4 text-purple-600" />
           <span>新建计划</span>
