@@ -20,7 +20,7 @@ import { WorkspaceFilterBar } from './components/WorkspaceFilterBar';
 type MenuId = 'task-pool' | 'task-categories' | 'workspace' | 'statistics';
 
 const menuItems = [
-  { id: 'task-pool' as const, label: '任务池', icon: ListTodo },
+  { id: 'task-pool' as const, label: 'Todo', icon: ListTodo },
   { id: 'task-categories' as const, label: '任务分类', icon: Tags },
   { id: 'workspace' as const, label: '工作区', icon: Workflow },
   { id: 'statistics' as const, label: '统计', icon: BarChart3 },
