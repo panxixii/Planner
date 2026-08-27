@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { AppState, Task, Goal, BOMTreeItem, CategoryType, GoalNode, GoalEdge, AppCategory } from './types';
+import { AppState, Task, Goal, BOMTreeItem, CategoryType, GoalNode, GoalEdge, AppCategory, TaskStatus } from './types';
 
 // Helper to generate IDs
 const genId = () => Math.random().toString(36).substring(2, 11);
@@ -131,6 +131,14 @@ const DEFAULT_CATEGORIES: AppCategory[] = [
   { id: 'personal', label: '心智与成长' }
 ];
 
+const DEFAULT_TASK_STATUSES: TaskStatus[] = [
+  { id: 'status-breakdown', label: '待拆解', isSystem: true },
+  { id: 'status-scheduling', label: '待排期', isSystem: true },
+  { id: 'status-not-started', label: '未开始', isSystem: true },
+  { id: 'status-in-progress', label: '进行中', isSystem: true },
+  { id: 'status-completed', label: '已完成', isCompleted: true, isSystem: true },
+];
+
 // Helper to load state from localStorage with robust schema verification & fallback migration
 const loadSavedState = () => {
   if (typeof window === 'undefined') return null;
@@ -143,6 +151,27 @@ const loadSavedState = () => {
         const safeCategories = Array.isArray(parsed.categories) && parsed.categories.length > 0
           ? parsed.categories
           : DEFAULT_CATEGORIES;
+        const loadedTaskStatuses: TaskStatus[] = Array.isArray(parsed.taskStatuses)
+          ? parsed.taskStatuses.filter((status: unknown): status is TaskStatus => {
+              if (!status || typeof status !== 'object') return false;
+              const candidate = status as TaskStatus;
+              return typeof candidate.id === 'string'
+                && typeof candidate.label === 'string'
+                && candidate.label.trim().length > 0;
+            })
+          : [];
+        const loadedStatusById = new Map(loadedTaskStatuses.map((status) => [status.id, status]));
+        const systemStatusIds = new Set(DEFAULT_TASK_STATUSES.map((status) => status.id));
+        const safeTaskStatuses: TaskStatus[] = [
+          ...DEFAULT_TASK_STATUSES.map((defaultStatus) => ({
+            ...defaultStatus,
+            label: loadedStatusById.get(defaultStatus.id)?.label.trim() || defaultStatus.label,
+          })),
+          ...loadedTaskStatuses
+            .filter((status) => !systemStatusIds.has(status.id))
+            .map((status) => ({ id: status.id, label: status.label.trim() })),
+        ];
+        const safeTaskStatusIds = new Set(safeTaskStatuses.map((status) => status.id));
 
         // Re-construct and validate loaded goals to prevent malformed properties
         const loadedGoals = parsed.goals || {};
@@ -178,6 +207,9 @@ const loadSavedState = () => {
           if (task && typeof task === 'object') {
             validatedTasks[tid] = {
               ...task,
+              statusId: typeof task.statusId === 'string' && safeTaskStatusIds.has(task.statusId)
+                ? task.statusId
+                : (task.isDone ? 'status-completed' : 'status-not-started'),
               categoryIds: Array.isArray(task.categoryIds)
                 ? task.categoryIds.filter((id: unknown) => typeof id === 'string' && safeCategories.some((category: AppCategory) => category.id === id))
                 : undefined
@@ -215,6 +247,7 @@ const loadSavedState = () => {
           goals: validatedGoals,
           bomTree: finalBOMTree,
           categories: safeCategories,
+          taskStatuses: safeTaskStatuses,
           selectedCategoryId: parsed.selectedCategoryId || 'all',
           selectedGoalId: parsed.selectedGoalId || null,
           isMergedView: parsed.isMergedView || false,
@@ -257,6 +290,7 @@ const initialTasks = savedState ? savedState.tasks : EMPTY_TASKS;
 const initialGoals = savedState ? savedState.goals : EMPTY_GOALS;
 const initialBOMTree = savedState ? savedState.bomTree : EMPTY_BOM_TREE;
 const initialCategories = savedState ? savedState.categories : DEFAULT_CATEGORIES;
+const initialTaskStatuses = savedState ? savedState.taskStatuses : DEFAULT_TASK_STATUSES;
 const initialSelectedCategoryId = savedState ? savedState.selectedCategoryId : 'all';
 const initialSelectedGoalId = savedState ? savedState.selectedGoalId : null;
 const initialIsMergedView = savedState ? savedState.isMergedView : false;
@@ -301,6 +335,7 @@ export const useAppStore = create<AppState>((set, get) => {
           goals: merged.goals,
           bomTree: merged.bomTree,
           categories: merged.categories,
+          taskStatuses: merged.taskStatuses,
           selectedCategoryId: merged.selectedCategoryId,
           selectedGoalId: merged.selectedGoalId,
           isMergedView: merged.isMergedView,
@@ -332,6 +367,7 @@ export const useAppStore = create<AppState>((set, get) => {
     bomTree: initialBOMTree,
     selectedCategoryId: initialSelectedCategoryId,
     categories: initialCategories,
+    taskStatuses: initialTaskStatuses,
     selectedGoalId: initialSelectedGoalId,
     isMergedView: initialIsMergedView,
     selectedTaskId: null,
@@ -492,14 +528,70 @@ export const useAppStore = create<AppState>((set, get) => {
     setActiveNodeActionsId: (nodeId) => set({ activeNodeActionsId: nodeId }),
 
     // TASK ACTIONS (Normalized changes reflect everywhere instantly!)
-    addTask: (task) => persistSet((state: AppState) => ({
-      tasks: { ...state.tasks, [task.id]: task }
-    })),
+    addTask: (task) => persistSet((state: AppState) => {
+      const requestedStatus = state.taskStatuses.find((status) => status.id === task.statusId);
+      const statusId = requestedStatus?.id || (task.isDone ? 'status-completed' : 'status-not-started');
+      const status = state.taskStatuses.find((candidate) => candidate.id === statusId);
+      return {
+        tasks: {
+          ...state.tasks,
+          [task.id]: { ...task, statusId, isDone: Boolean(status?.isCompleted) },
+        },
+      };
+    }),
 
     updateTask: (taskId, updates) => persistSet((state: AppState) => {
-      const updatedTask = { ...state.tasks[taskId], ...updates };
+      const currentTask = state.tasks[taskId];
+      if (!currentTask) return {};
+
+      const normalizedUpdates = { ...updates };
+      if (updates.statusId !== undefined) {
+        const status = state.taskStatuses.find((candidate) => candidate.id === updates.statusId);
+        normalizedUpdates.statusId = status?.id || 'status-not-started';
+        normalizedUpdates.isDone = Boolean(status?.isCompleted);
+      } else if (updates.isDone !== undefined) {
+        normalizedUpdates.statusId = updates.isDone ? 'status-completed' : 'status-not-started';
+      }
+
+      const updatedTask = { ...currentTask, ...normalizedUpdates };
       return {
         tasks: { ...state.tasks, [taskId]: updatedTask }
+      };
+    }),
+
+    addTaskStatus: (label) => {
+      const normalizedLabel = label.trim();
+      if (!normalizedLabel || get().taskStatuses.some((status) => status.label === normalizedLabel)) return null;
+      const statusId = `status-${genId()}`;
+      persistSet((state: AppState) => ({
+        taskStatuses: [...state.taskStatuses, { id: statusId, label: normalizedLabel }],
+      }));
+      return statusId;
+    },
+
+    renameTaskStatus: (statusId, label) => persistSet((state: AppState) => {
+      const normalizedLabel = label.trim();
+      if (!normalizedLabel || state.taskStatuses.some((status) => status.id !== statusId && status.label === normalizedLabel)) {
+        return {};
+      }
+      return {
+        taskStatuses: state.taskStatuses.map((status) => (
+          status.id === statusId ? { ...status, label: normalizedLabel } : status
+        )),
+      };
+    }),
+
+    deleteTaskStatus: (statusId) => persistSet((state: AppState) => {
+      const targetStatus = state.taskStatuses.find((status) => status.id === statusId);
+      if (!targetStatus || targetStatus.isSystem) return {};
+      return {
+        taskStatuses: state.taskStatuses.filter((status) => status.id !== statusId),
+        tasks: Object.fromEntries(Object.entries(state.tasks).map(([taskId, task]) => [
+          taskId,
+          task.statusId === statusId
+            ? { ...task, statusId: 'status-not-started', isDone: false }
+            : task,
+        ])),
       };
     }),
 

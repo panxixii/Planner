@@ -4,10 +4,18 @@ export interface Task {
   description: string;
   duration: number; // estimated hours, decimals supported
   isDone: boolean;
+  statusId?: string; // References a configurable task status.
   categoryIds?: string[]; // A workspace task can belong to multiple categories.
   startTime?: string; // YYYY-MM-DD or YYYY-MM-DDTHH:mm
   endTime?: string; // YYYY-MM-DD or YYYY-MM-DDTHH:mm
   color?: string; // e.g. 'emerald', 'sky', 'rose', 'violet', 'amber'
+}
+
+export interface TaskStatus {
+  id: string;
+  label: string;
+  isCompleted?: boolean;
+  isSystem?: boolean;
 }
 
 export interface GoalNode {
@@ -51,6 +59,7 @@ export type CategoryType = string;
 
 export interface AppState {
   tasks: Record<string, Task>;
+  taskStatuses: TaskStatus[];
   goals: Record<string, Goal>;
   bomTree: BOMTreeItem[];
   selectedCategoryId: CategoryType;
@@ -81,6 +90,9 @@ export interface AppState {
   updateTask: (taskId: string, updates: Partial<Task>) => void;
   deleteTask: (taskId: string) => void;
   removeTaskFromWorkspace: (taskId: string, categoryIds: string[] | null) => void;
+  addTaskStatus: (label: string) => string | null;
+  renameTaskStatus: (statusId: string, label: string) => void;
+  deleteTaskStatus: (statusId: string) => void;
   
   // Goal Actions
   addGoal: (goal: Goal) => void;

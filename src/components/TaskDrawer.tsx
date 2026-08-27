@@ -1,6 +1,18 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useAppStore } from '../store';
-import { X, Check, Trash2, Calendar, Clock, AlertCircle, Tags } from 'lucide-react';
+import {
+  AlertCircle,
+  Calendar,
+  Check,
+  Clock,
+  Pencil,
+  Plus,
+  Settings2,
+  Tags,
+  Trash2,
+  X,
+} from 'lucide-react';
+import type { TaskStatus } from '../types';
 
 const COLORS = ['indigo', 'emerald', 'sky', 'rose', 'amber', 'violet'];
 
@@ -39,8 +51,12 @@ export const TaskDrawer: React.FC = () => {
   const tasks = useAppStore((state) => state.tasks);
   const categories = useAppStore((state) => state.categories);
   const goals = useAppStore((state) => state.goals);
+  const taskStatuses = useAppStore((state) => state.taskStatuses);
   const updateTask = useAppStore((state) => state.updateTask);
   const deleteTask = useAppStore((state) => state.deleteTask);
+  const addTaskStatus = useAppStore((state) => state.addTaskStatus);
+  const renameTaskStatus = useAppStore((state) => state.renameTaskStatus);
+  const deleteTaskStatus = useAppStore((state) => state.deleteTaskStatus);
 
   const task = selectedTaskId ? tasks[selectedTaskId] : null;
   const assignedCategories = useMemo(() => {
@@ -59,13 +75,17 @@ export const TaskDrawer: React.FC = () => {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [duration, setDuration] = useState(1);
-  const [isDone, setIsDone] = useState(false);
+  const [statusId, setStatusId] = useState('status-not-started');
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
   const [color, setColor] = useState('indigo');
   const [errorMsg, setErrorMsg] = useState('');
-
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+  const [isManagingStatuses, setIsManagingStatuses] = useState(false);
+  const [newStatusLabel, setNewStatusLabel] = useState('');
+  const [editingStatusId, setEditingStatusId] = useState<string | null>(null);
+  const [editingStatusLabel, setEditingStatusLabel] = useState('');
+  const [confirmingStatusDeleteId, setConfirmingStatusDeleteId] = useState<string | null>(null);
 
   // Sync edits
   useEffect(() => {
@@ -73,12 +93,16 @@ export const TaskDrawer: React.FC = () => {
       setTitle(task.title || '');
       setDescription(task.description || '');
       setDuration(task.duration !== undefined ? task.duration : 0);
-      setIsDone(task.isDone || false);
+      setStatusId(task.statusId || (task.isDone ? 'status-completed' : 'status-not-started'));
       setStartTime(toDateTimeLocal(task.startTime));
       setEndTime(toDateTimeLocal(task.endTime, true));
       setColor(task.color || 'indigo');
       setErrorMsg('');
       setIsConfirmingDelete(false);
+      setIsManagingStatuses(false);
+      setNewStatusLabel('');
+      setEditingStatusId(null);
+      setConfirmingStatusDeleteId(null);
     }
   }, [task, selectedTaskId]);
 
@@ -94,7 +118,7 @@ export const TaskDrawer: React.FC = () => {
       title,
       description,
       duration: Number(duration),
-      isDone,
+      statusId,
       startTime: startTime || undefined,
       endTime: endTime || undefined,
       color,
@@ -111,6 +135,36 @@ export const TaskDrawer: React.FC = () => {
     }
     deleteTask(selectedTaskId);
     selectTask(null);
+  };
+
+  const handleAddStatus = () => {
+    const createdStatusId = addTaskStatus(newStatusLabel);
+    if (!createdStatusId) return;
+    setStatusId(createdStatusId);
+    setNewStatusLabel('');
+  };
+
+  const startRenamingStatus = (status: TaskStatus) => {
+    setEditingStatusId(status.id);
+    setEditingStatusLabel(status.label);
+    setConfirmingStatusDeleteId(null);
+  };
+
+  const commitStatusRename = () => {
+    if (!editingStatusId || !editingStatusLabel.trim()) return;
+    renameTaskStatus(editingStatusId, editingStatusLabel);
+    setEditingStatusId(null);
+    setEditingStatusLabel('');
+  };
+
+  const handleStatusDelete = (targetStatusId: string) => {
+    if (confirmingStatusDeleteId !== targetStatusId) {
+      setConfirmingStatusDeleteId(targetStatusId);
+      return;
+    }
+    deleteTaskStatus(targetStatusId);
+    if (statusId === targetStatusId) setStatusId('status-not-started');
+    setConfirmingStatusDeleteId(null);
   };
 
   return (
@@ -195,8 +249,9 @@ export const TaskDrawer: React.FC = () => {
             </div>
           </section>
 
-          <section className="mt-5 grid grid-cols-2 gap-3 border-t border-neutral-200 pt-5">
-            <div className="min-w-0 space-y-1.5">
+          <section className="mt-5 border-t border-neutral-200 pt-5">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="min-w-0 space-y-1.5">
               <label htmlFor="task-duration" className={`flex items-center gap-1.5 ${labelClassName}`}>
                 <Clock className="h-3.5 w-3.5 text-neutral-400" />
                 预期（小时）
@@ -211,24 +266,135 @@ export const TaskDrawer: React.FC = () => {
                 className={fieldClassName}
                 placeholder="未设置"
               />
+              </div>
+
+              <div className="min-w-0 space-y-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <label htmlFor="task-status" className={labelClassName}>状态</label>
+                  <button
+                    type="button"
+                    onClick={() => setIsManagingStatuses((value) => !value)}
+                    className={`flex h-5 w-5 items-center justify-center rounded text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-700 ${
+                      isManagingStatuses ? 'bg-neutral-100 text-neutral-700' : ''
+                    }`}
+                    aria-label="管理任务状态"
+                    title="管理任务状态"
+                  >
+                    <Settings2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                <select
+                  id="task-status"
+                  value={statusId}
+                  onChange={(event) => setStatusId(event.target.value)}
+                  className={fieldClassName}
+                >
+                  {taskStatuses.map((status) => (
+                    <option key={status.id} value={status.id}>{status.label}</option>
+                  ))}
+                </select>
+              </div>
             </div>
 
-            <div className="min-w-0 space-y-1.5">
-              <span className={labelClassName}>状态</span>
-              <button
-                type="button"
-                aria-pressed={isDone}
-                onClick={() => setIsDone((value) => !value)}
-                className={`flex h-10 w-full items-center justify-center gap-2 rounded-lg border text-xs font-semibold transition-colors ${
-                  isDone
-                    ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
-                    : 'border-neutral-200 bg-[#ffffff] text-neutral-500 hover:bg-neutral-50'
-                }`}
-              >
-                <Check className={`h-3.5 w-3.5 ${isDone ? 'opacity-100' : 'opacity-35'}`} />
-                <span>{isDone ? '已完成' : '未完成'}</span>
-              </button>
-            </div>
+            {isManagingStatuses ? (
+              <div className="mt-4 border-t border-neutral-200 pt-4">
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <span className="text-[11px] font-semibold text-neutral-500">状态选项</span>
+                  <span className="text-[10px] text-neutral-400">默认状态不可删除</span>
+                </div>
+
+                <div className="divide-y divide-neutral-100 border-y border-neutral-100">
+                  {taskStatuses.map((status) => (
+                    <div key={status.id} className="flex h-10 items-center gap-2">
+                      {editingStatusId === status.id ? (
+                        <>
+                          <input
+                            autoFocus
+                            value={editingStatusLabel}
+                            onChange={(event) => setEditingStatusLabel(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter') commitStatusRename();
+                              if (event.key === 'Escape') setEditingStatusId(null);
+                            }}
+                            className="h-7 min-w-0 flex-1 rounded-md border border-purple-300 bg-white px-2 text-xs text-neutral-800 outline-none ring-2 ring-purple-100"
+                            aria-label={`重命名${status.label}`}
+                          />
+                          <button
+                            type="button"
+                            onClick={commitStatusRename}
+                            className="flex h-7 w-7 items-center justify-center rounded-md text-emerald-600 hover:bg-emerald-50"
+                            aria-label="保存状态名称"
+                            title="保存"
+                          >
+                            <Check className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditingStatusId(null)}
+                            className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
+                            aria-label="取消重命名"
+                            title="取消"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <span className="min-w-0 flex-1 truncate text-xs text-neutral-700">{status.label}</span>
+                          <button
+                            type="button"
+                            onClick={() => startRenamingStatus(status)}
+                            className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
+                            aria-label={`重命名${status.label}`}
+                            title="重命名"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          {!status.isSystem ? (
+                            <button
+                              type="button"
+                              onClick={() => handleStatusDelete(status.id)}
+                              className={`flex h-7 items-center justify-center rounded-md text-rose-500 hover:bg-rose-50 ${
+                                confirmingStatusDeleteId === status.id ? 'w-auto bg-rose-50 px-2 text-[10px] font-semibold' : 'w-7'
+                              }`}
+                              aria-label={confirmingStatusDeleteId === status.id ? `确认删除${status.label}` : `删除${status.label}`}
+                              title={confirmingStatusDeleteId === status.id ? '再次点击确认删除' : '删除'}
+                            >
+                              {confirmingStatusDeleteId === status.id
+                                ? '确认删除'
+                                : <Trash2 className="h-3.5 w-3.5" />}
+                            </button>
+                          ) : null}
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-3 flex items-center gap-2">
+                  <input
+                    value={newStatusLabel}
+                    onChange={(event) => setNewStatusLabel(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') handleAddStatus();
+                    }}
+                    className="h-9 min-w-0 flex-1 rounded-md border border-neutral-200 bg-white px-3 text-xs text-neutral-800 outline-none placeholder:text-neutral-400 focus:border-purple-300 focus:ring-2 focus:ring-purple-100"
+                    placeholder="新状态名称"
+                    aria-label="新状态名称"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddStatus}
+                    disabled={!newStatusLabel.trim()}
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-neutral-200 bg-white text-neutral-500 transition-colors hover:bg-neutral-50 hover:text-purple-600 disabled:cursor-not-allowed disabled:opacity-40"
+                    aria-label="添加状态"
+                    title="添加状态"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </section>
 
           <section className="mt-5 space-y-3 border-t border-neutral-200 pt-5">
