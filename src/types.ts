@@ -10,6 +10,7 @@ export interface Task {
   startTime?: string; // YYYY-MM-DD or YYYY-MM-DDTHH:mm
   endTime?: string; // YYYY-MM-DD or YYYY-MM-DDTHH:mm
   color?: string; // e.g. 'emerald', 'sky', 'rose', 'violet', 'amber'
+  textColor?: string; // Node title color; defaults to the application ink color.
 }
 
 export interface TaskStatus {

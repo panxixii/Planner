@@ -42,7 +42,7 @@ export const DraftNode = React.memo(({ id, data, selected }: NodeProps) => {
   const [title, setTitle] = useState('');
   const [showMembership, setShowMembership] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const assignedIds = useMemo(() => new Set<string>(task?.componentIds || []), [task?.componentIds]);
 
@@ -137,7 +137,7 @@ export const DraftNode = React.memo(({ id, data, selected }: NodeProps) => {
       ) : null}
 
       <span className="absolute inset-y-2 left-1.5 w-1 rounded-full" style={{ backgroundColor: scheme.accent }} />
-      <input
+      <textarea
         ref={inputRef}
         value={isEditing ? title : task.title}
         readOnly={!isEditing}
@@ -159,8 +159,9 @@ export const DraftNode = React.memo(({ id, data, selected }: NodeProps) => {
           }
         }}
         aria-label="草稿节点标题"
-        className={`${isEditing ? 'nodrag nopan cursor-text' : 'cursor-pointer'} max-w-44 bg-transparent p-0 text-center text-xs font-semibold text-neutral-700 outline-none`}
-        style={{ width: `${Math.max(4, Math.min((isEditing ? title : task.title).length, 20))}ch` }}
+        rows={1}
+        className={`${isEditing ? 'nodrag nopan cursor-text' : 'cursor-pointer'} h-full w-full resize-none overflow-hidden bg-transparent px-2 py-2 text-center text-xs font-semibold leading-4 outline-none`}
+        style={{ color: task.textColor || '#334155' }}
       />
       <Handle type="target" position={Position.Left} id="left" className="planner-mind-handle planner-mind-handle-target" />
       <Handle type="source" position={Position.Right} id="right" className="planner-mind-handle planner-mind-handle-source" />

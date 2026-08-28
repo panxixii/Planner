@@ -42,7 +42,7 @@ export const TaskNode = React.memo(({ id, data, selected }: NodeProps) => {
   const components = useAppStore((state) => state.workspaceComponents);
   const showActions = useAppStore((state) => state.activeNodeActionsId === id);
   const setActiveNodeActionsId = useAppStore((state) => state.setActiveNodeActionsId);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const skipBlurCommitRef = useRef(false);
   const [isEditing, setIsEditing] = useState(false);
   const [draftTitle, setDraftTitle] = useState('');
@@ -225,7 +225,7 @@ export const TaskNode = React.memo(({ id, data, selected }: NodeProps) => {
         style={{ backgroundColor: task.isDone ? '#b8c0cc' : scheme.accent }}
       />
 
-      <input
+      <textarea
         ref={inputRef}
         value={isEditing ? draftTitle : task.title}
         readOnly={!isEditing}
@@ -251,8 +251,9 @@ export const TaskNode = React.memo(({ id, data, selected }: NodeProps) => {
             event.currentTarget.blur();
           }
         }}
-        className={`${isEditing ? 'nodrag nopan cursor-text' : 'cursor-pointer'} max-w-44 bg-transparent p-0 text-center text-xs font-semibold text-neutral-700 outline-none ${task.isDone ? 'line-through text-neutral-400' : ''}`}
-        style={{ width: `${Math.max(4, Math.min((isEditing ? draftTitle : task.title).length, 20))}ch` }}
+        rows={1}
+        className={`${isEditing ? 'nodrag nopan cursor-text' : 'cursor-pointer'} h-full w-full resize-none overflow-hidden bg-transparent px-2 py-2 text-center text-xs font-semibold leading-4 outline-none ${task.isDone ? 'line-through opacity-55' : ''}`}
+        style={{ color: task.textColor || '#334155' }}
       />
 
       <Handle

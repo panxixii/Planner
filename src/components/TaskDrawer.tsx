@@ -50,6 +50,7 @@ export const TaskDrawer: React.FC = () => {
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
   const [color, setColor] = useState('indigo');
+  const [textColor, setTextColor] = useState('#334155');
   const [errorMsg, setErrorMsg] = useState('');
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const [isManagingStatuses, setIsManagingStatuses] = useState(false);
@@ -68,6 +69,7 @@ export const TaskDrawer: React.FC = () => {
       setStartTime(toDateTimeLocal(task.startTime));
       setEndTime(toDateTimeLocal(task.endTime, true));
       setColor(NAMED_COLOR_HEX[task.color || 'indigo'] || task.color || '#9387D1');
+      setTextColor(task.textColor || '#334155');
       setErrorMsg('');
       setIsConfirmingDelete(false);
       setIsManagingStatuses(false);
@@ -93,6 +95,7 @@ export const TaskDrawer: React.FC = () => {
       startTime: startTime || undefined,
       endTime: endTime || undefined,
       color,
+      textColor,
     });
     
     // Close on save
@@ -378,7 +381,7 @@ export const TaskDrawer: React.FC = () => {
 
           <section className="mt-5 border-t border-neutral-200 pt-5">
             <h3 className={labelClassName}>节点颜色</h3>
-            <div className="mt-2.5"><ColorPicker label="任务节点颜色" value={color} onChange={setColor} /></div>
+            <div className="mt-2.5 space-y-2.5"><ColorPicker label="任务节点颜色" value={color} onChange={setColor} /><ColorPicker label="节点字体颜色" value={textColor} onChange={setTextColor} /></div>
           </section>
         </div>
 
