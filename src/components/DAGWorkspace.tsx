@@ -51,6 +51,8 @@ const DAGInnerWorkspace: React.FC = () => {
   const addWorkspaceNode = useAppStore((state) => state.addWorkspaceNode);
   const addMergedEdge = useAppStore((state) => state.addMergedEdge);
   const setTaskComponentIds = useAppStore((state) => state.setTaskComponentIds);
+  const beginHistoryGroup = useAppStore((state) => state.beginHistoryGroup);
+  const endHistoryGroup = useAppStore((state) => state.endHistoryGroup);
   const removeEdgeFromWorkspace = useAppStore((state) => state.removeEdgeFromWorkspace);
   const deleteMergedNodeId = useAppStore((state) => state.deleteMergedNodeId);
   const updateWorkspaceComponent = useAppStore((state) => state.updateWorkspaceComponent);
@@ -436,6 +438,7 @@ const DAGInnerWorkspace: React.FC = () => {
         endTime: '',
         color: parentTask.color || 'sky'
       };
+      beginHistoryGroup();
       addTask(newTaskObj);
 
       const newNodeId = `node-mind-${Math.random().toString(36).substring(2, 9)}`;
@@ -462,10 +465,11 @@ const DAGInnerWorkspace: React.FC = () => {
       } else {
         addEdgeToGoal(targetGoalId, newEdge);
       }
+      endHistoryGroup();
 
       showToast('已创建思维子节点');
     }
-  }, [localNodes, isMergedView, selectedGoalId, goals, tasks, workspaceComponentFilter, addTask, addNodeToGoal, addWorkspaceNode, addEdgeToGoal, addMergedEdge, showToast]);
+  }, [localNodes, isMergedView, selectedGoalId, goals, tasks, workspaceComponentFilter, addTask, addNodeToGoal, addWorkspaceNode, addEdgeToGoal, addMergedEdge, beginHistoryGroup, endHistoryGroup, showToast]);
 
   // Handle new dependency connections
   const onConnect = useCallback((connection: Connection) => {
@@ -477,6 +481,7 @@ const DAGInnerWorkspace: React.FC = () => {
     };
 
     if (isMergedView) {
+      beginHistoryGroup();
       addMergedEdge(newEdge);
       const sourceNode = localNodes.find((node) => node.id === connection.source);
       const targetNode = localNodes.find((node) => node.id === connection.target);
@@ -490,6 +495,7 @@ const DAGInnerWorkspace: React.FC = () => {
             ...(tasks[targetTaskId].componentIds || []),
             sourceComponentId,
           ])));
+          endHistoryGroup();
           showToast('已将根节点连接到任务，并加入该联通块');
           return;
         }
@@ -505,12 +511,13 @@ const DAGInnerWorkspace: React.FC = () => {
           ])));
         }
       }
+      endHistoryGroup();
       showToast('已添加跨计划连线');
     } else if (selectedGoalId) {
       addEdgeToGoal(selectedGoalId, newEdge);
       showToast('已添加连线');
     }
-  }, [isMergedView, selectedGoalId, localNodes, tasks, addMergedEdge, addEdgeToGoal, setTaskComponentIds, showToast]);
+  }, [isMergedView, selectedGoalId, localNodes, tasks, addMergedEdge, addEdgeToGoal, setTaskComponentIds, beginHistoryGroup, endHistoryGroup, showToast]);
 
   const onConnectStart = useCallback(() => {
     isConnectingRef.current = true;
@@ -567,6 +574,7 @@ const DAGInnerWorkspace: React.FC = () => {
       endTime: '',
       color: 'indigo'
     };
+    beginHistoryGroup();
     addTask(newTaskObj);
 
     const newNodeId = `node-qk-${Math.random().toString(36).substring(2, 9)}`;
@@ -588,7 +596,8 @@ const DAGInnerWorkspace: React.FC = () => {
     } else {
       addWorkspaceNode(newGoalNode);
     }
-  }, [workspaceComponentFilter, isMergedView, selectedGoalId, goals, addTask, addNodeToGoal, addWorkspaceNode, screenToFlowPosition, showToast]);
+    endHistoryGroup();
+  }, [workspaceComponentFilter, isMergedView, selectedGoalId, goals, addTask, addNodeToGoal, addWorkspaceNode, screenToFlowPosition, beginHistoryGroup, endHistoryGroup, showToast]);
 
   const activeTitle = isMergedView 
     ? '合并画布' 

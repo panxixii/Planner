@@ -165,6 +165,8 @@ const TodoLaneGraph: React.FC<{ lane: TodoLane; isMain: boolean }> = ({ lane, is
   const deleteLane = useAppStore((state) => state.deleteTodoLane);
   const removeTask = useAppStore((state) => state.removeTaskFromTodo);
   const updateTask = useAppStore((state) => state.updateTask);
+  const beginHistoryGroup = useAppStore((state) => state.beginHistoryGroup);
+  const endHistoryGroup = useAppStore((state) => state.endHistoryGroup);
   const items = useMemo(() => allItems.filter((item) => item.laneId === lane.id && tasks[item.taskId]), [allItems, lane.id, tasks]);
   const layout = useMemo(() => buildLaneLayout(items), [items]);
   const laneDrop = useDroppable({ id: `todo-lane-${lane.id}`, data: { kind: 'lane', laneId: lane.id } });
@@ -172,7 +174,7 @@ const TodoLaneGraph: React.FC<{ lane: TodoLane; isMain: boolean }> = ({ lane, is
   return (
     <section className="rounded-2xl border border-neutral-200 bg-white/85 shadow-sm">
       <header className="flex h-14 items-center justify-between border-b border-neutral-200 px-5">
-        <div className="flex min-w-0 items-center gap-3"><span className={`h-2.5 w-2.5 rounded-full ${isMain ? 'bg-purple-500' : 'bg-sky-400'}`} /><input value={lane.name} onChange={(event) => renameLane(lane.id, event.target.value)} className="min-w-0 bg-transparent text-sm font-bold text-neutral-800 outline-none" aria-label="Todo 分类名称" /></div>
+        <div className="flex min-w-0 items-center gap-3"><span className={`h-2.5 w-2.5 rounded-full ${isMain ? 'bg-purple-500' : 'bg-sky-400'}`} /><input value={lane.name} onFocus={beginHistoryGroup} onChange={(event) => renameLane(lane.id, event.target.value)} onBlur={endHistoryGroup} className="min-w-0 bg-transparent text-sm font-bold text-neutral-800 outline-none" aria-label="Todo 分类名称" /></div>
         {!isMain ? <button type="button" onClick={() => deleteLane(lane.id)} className="flex h-8 items-center gap-1 rounded-md px-2 text-xs text-neutral-400 hover:bg-rose-50 hover:text-rose-500" title="删除分线并移回主线"><Trash2 className="h-3.5 w-3.5" />删除分线</button> : null}
       </header>
       <div ref={laneDrop.setNodeRef} className={`min-h-[158px] overflow-x-auto p-6 custom-scrollbar ${laneDrop.isOver ? 'bg-purple-50/40 ring-2 ring-inset ring-purple-200' : ''}`}>

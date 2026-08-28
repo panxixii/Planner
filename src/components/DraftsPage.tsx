@@ -98,8 +98,11 @@ const DraftCanvas: React.FC<DraftCanvasProps> = ({ draftId }) => {
   const removeDraftEdge = useAppStore((state) => state.removeDraftEdge);
   const addDraftStroke = useAppStore((state) => state.addDraftStroke);
   const replaceDraftStrokes = useAppStore((state) => state.replaceDraftStrokes);
-  const undoDraftStroke = useAppStore((state) => state.undoDraftStroke);
+  const undo = useAppStore((state) => state.undo);
+  const canUndo = useAppStore((state) => state.canUndo);
   const clearDraftStrokes = useAppStore((state) => state.clearDraftStrokes);
+  const beginHistoryGroup = useAppStore((state) => state.beginHistoryGroup);
+  const endHistoryGroup = useAppStore((state) => state.endHistoryGroup);
   const { screenToFlowPosition } = useReactFlow();
   const [mode, setMode] = useState<'select' | 'draw' | 'erase'>('select');
   const [penColor, setPenColor] = useState('#8D78D5');
@@ -157,9 +160,11 @@ const DraftCanvas: React.FC<DraftCanvasProps> = ({ draftId }) => {
       color: 'indigo',
     };
     const node: GoalNode = { id: nodeId, taskId, position: { x: position.x - 56, y: position.y - 20 } };
+    beginHistoryGroup();
     addTask(task);
     addDraftNode(draft.id, node);
-  }, [addDraftNode, addTask, draft, mode, screenToFlowPosition]);
+    endHistoryGroup();
+  }, [addDraftNode, addTask, beginHistoryGroup, draft, endHistoryGroup, mode, screenToFlowPosition]);
 
   const finishNodeDrag = useCallback((_event: React.MouseEvent, changedNode: Node) => {
     if (!draft) return;
@@ -256,7 +261,7 @@ const DraftCanvas: React.FC<DraftCanvasProps> = ({ draftId }) => {
             <div className="flex h-9 items-center gap-1 rounded-lg border border-neutral-200 bg-white px-1">
               {[2, 4, 8].map((width) => <button key={width} type="button" onClick={() => setPenWidth(width)} className={`flex h-7 min-w-8 items-center justify-center rounded-md px-1.5 text-[10px] font-bold ${penWidth === width ? 'bg-purple-100 text-purple-600' : 'text-neutral-400 hover:bg-neutral-50'}`} title={`${width}px`}><span className="rounded-full bg-current" style={{ width: Math.max(4, width), height: Math.max(4, width) }} /></button>)}
             </div>
-            <button type="button" disabled={draft.strokes.length === 0} onClick={() => undoDraftStroke(draft.id)} className="flex h-9 items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-2.5 text-[11px] font-semibold text-neutral-500 disabled:opacity-40"><RotateCcw className="h-3.5 w-3.5" />撤销</button>
+            <button type="button" disabled={!canUndo} onClick={undo} className="flex h-9 items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-2.5 text-[11px] font-semibold text-neutral-500 disabled:opacity-40"><RotateCcw className="h-3.5 w-3.5" />撤销</button>
             <button type="button" disabled={draft.strokes.length === 0} onClick={() => window.confirm('确定清空当前草稿的全部笔迹吗？') && clearDraftStrokes(draft.id)} className="flex h-9 items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-2.5 text-[11px] font-semibold text-rose-500 disabled:opacity-40"><Trash2 className="h-3.5 w-3.5" />清空笔迹</button>
           </>
         ) : mode === 'erase' ? (

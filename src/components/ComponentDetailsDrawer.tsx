@@ -14,6 +14,8 @@ export const ComponentDetailsDrawer: React.FC = () => {
   const deleteComponent = useAppStore((state) => state.deleteWorkspaceComponent);
   const setTaskComponentIds = useAppStore((state) => state.setTaskComponentIds);
   const openDetails = useAppStore((state) => state.openComponentDetails);
+  const beginHistoryGroup = useAppStore((state) => state.beginHistoryGroup);
+  const endHistoryGroup = useAppStore((state) => state.endHistoryGroup);
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
 
   useEffect(() => {
@@ -38,7 +40,7 @@ export const ComponentDetailsDrawer: React.FC = () => {
           <button type="button" onClick={() => openDetails(null)} className="flex h-8 w-8 items-center justify-center rounded-md text-neutral-400 hover:bg-neutral-100" title="关闭"><X className="h-4 w-4" /></button>
         </header>
         <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-5 custom-scrollbar">
-          <label className="block space-y-1.5"><span className="text-xs font-semibold text-neutral-600">名称</span><input value={component.name} onChange={(event) => update({ name: event.target.value })} placeholder="未命名联通块" className="h-10 w-full rounded-lg border border-neutral-200 bg-white px-3 text-sm outline-none focus:border-purple-300" /></label>
+          <label className="block space-y-1.5"><span className="text-xs font-semibold text-neutral-600">名称</span><input value={component.name} onFocus={beginHistoryGroup} onChange={(event) => update({ name: event.target.value })} onBlur={endHistoryGroup} placeholder="未命名联通块" className="h-10 w-full rounded-lg border border-neutral-200 bg-white px-3 text-sm outline-none focus:border-purple-300" /></label>
           <section className="space-y-3 border-t border-neutral-200 pt-5">
             <ColorPicker label="手柄颜色" value={component.color} onChange={(color) => update({ color })} />
             <ColorPicker label="统一节点颜色" value={component.nodeColor} onChange={(color) => update({ nodeColor: color })} />

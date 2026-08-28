@@ -45,6 +45,8 @@ export const TimeTemplatesPage: React.FC = () => {
   const addBlock = useAppStore((state) => state.addTimeTemplateBlock);
   const updateBlock = useAppStore((state) => state.updateTimeTemplateBlock);
   const deleteBlock = useAppStore((state) => state.deleteTimeTemplateBlock);
+  const beginHistoryGroup = useAppStore((state) => state.beginHistoryGroup);
+  const endHistoryGroup = useAppStore((state) => state.endHistoryGroup);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(templates[0]?.id || null);
   const [detailsBlockId, setDetailsBlockId] = useState<string | null>(null);
   const pointerActionRef = useRef<PointerAction | null>(null);
@@ -88,6 +90,7 @@ export const TimeTemplatesPage: React.FC = () => {
     event.preventDefault();
     event.stopPropagation();
     event.currentTarget.setPointerCapture(event.pointerId);
+    beginHistoryGroup();
     pointerActionRef.current = {
       pointerId: event.pointerId,
       templateId: selectedTemplate.id,
@@ -123,6 +126,7 @@ export const TimeTemplatesPage: React.FC = () => {
     if (pointerActionRef.current?.pointerId !== event.pointerId) return;
     pointerActionRef.current = null;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    endHistoryGroup();
   };
 
   return (
@@ -154,7 +158,7 @@ export const TimeTemplatesPage: React.FC = () => {
         {!selectedTemplate ? <div className="flex h-full items-center justify-center text-sm text-neutral-400">请选择或新建一个时间模版</div> : (
           <div className="mx-auto max-w-[1700px] space-y-5">
             <header className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex min-w-0 items-center gap-3"><Clock3 className="h-5 w-5 text-purple-500" /><input value={selectedTemplate.name} onChange={(event) => renameTemplate(selectedTemplate.id, event.target.value)} className="min-w-48 bg-transparent text-lg font-bold text-neutral-800 outline-none" aria-label="时间模版名称" /></div>
+              <div className="flex min-w-0 items-center gap-3"><Clock3 className="h-5 w-5 text-purple-500" /><input value={selectedTemplate.name} onFocus={beginHistoryGroup} onChange={(event) => renameTemplate(selectedTemplate.id, event.target.value)} onBlur={endHistoryGroup} className="min-w-48 bg-transparent text-lg font-bold text-neutral-800 outline-none" aria-label="时间模版名称" /></div>
               <div className="flex items-center gap-2">
                 <button type="button" onClick={() => setActiveTemplate(selectedTemplate.type, activeTemplateIds[selectedTemplate.type] === selectedTemplate.id ? null : selectedTemplate.id)} className={`h-9 rounded-lg border px-3 text-xs font-semibold ${activeTemplateIds[selectedTemplate.type] === selectedTemplate.id ? 'border-emerald-200 bg-emerald-50 text-emerald-600' : 'border-purple-200 bg-purple-50 text-purple-600'}`}>{activeTemplateIds[selectedTemplate.type] === selectedTemplate.id ? '已应用 · 点击停用' : '应用到工作区'}</button>
                 <button type="button" onClick={() => { if (window.confirm(`确定删除“${selectedTemplate.name || '未命名模版'}”吗？`)) deleteTemplate(selectedTemplate.id); }} className="flex h-9 items-center gap-1.5 rounded-lg border border-rose-200 bg-white px-3 text-xs font-semibold text-rose-500 hover:bg-rose-50"><Trash2 className="h-3.5 w-3.5" />删除模版</button>
@@ -185,7 +189,7 @@ export const TimeTemplatesPage: React.FC = () => {
           <section className="relative w-full max-w-sm rounded-2xl border border-neutral-200 bg-white p-5 shadow-2xl">
             <div className="mb-5 flex items-center justify-between"><h2 className="text-sm font-bold text-neutral-800">时间块详情</h2><button type="button" onClick={() => setDetailsBlockId(null)} className="flex h-8 w-8 items-center justify-center rounded-md text-neutral-400 hover:bg-neutral-100"><X className="h-4 w-4" /></button></div>
             <div className="space-y-4">
-              <label className="block space-y-1.5"><span className="text-xs font-semibold text-neutral-600">标签名称</span><input value={detailsBlock.label} onChange={(event) => updateBlock(selectedTemplate.id, detailsBlock.id, { label: event.target.value })} className="h-10 w-full rounded-lg border border-neutral-200 px-3 text-sm outline-none focus:border-purple-300" /></label>
+              <label className="block space-y-1.5"><span className="text-xs font-semibold text-neutral-600">标签名称</span><input value={detailsBlock.label} onFocus={beginHistoryGroup} onChange={(event) => updateBlock(selectedTemplate.id, detailsBlock.id, { label: event.target.value })} onBlur={endHistoryGroup} className="h-10 w-full rounded-lg border border-neutral-200 px-3 text-sm outline-none focus:border-purple-300" /></label>
               <ColorPicker label="时间块颜色" value={detailsBlock.color} onChange={(color) => updateBlock(selectedTemplate.id, detailsBlock.id, { color })} />
               <div className="rounded-lg bg-neutral-50 px-3 py-2 text-xs text-neutral-500">{formatCyclePosition(detailsBlock.startMinute, selectedTemplate.type)} — {formatCyclePosition(detailsBlock.endMinute, selectedTemplate.type)}</div>
               <button type="button" onClick={() => { deleteBlock(selectedTemplate.id, detailsBlock.id); setDetailsBlockId(null); }} className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-rose-200 bg-rose-50 text-xs font-semibold text-rose-600 hover:bg-rose-100"><Trash2 className="h-4 w-4" />删除时间块</button>

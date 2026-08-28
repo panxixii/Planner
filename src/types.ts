@@ -138,6 +138,8 @@ export interface AppState {
   activeTimeTemplateIds: { daily: string | null; weekly: string | null };
   favoriteColors: string[];
   drafts: DraftBoard[];
+  canUndo: boolean;
+  canRedo: boolean;
   
   // Actions
   setCategory: (category: CategoryType) => void;
@@ -156,6 +158,11 @@ export interface AppState {
   openComponentDetails: (componentId: string | null) => void;
   selectTask: (taskId: string | null) => void;
   setActiveNodeActionsId: (nodeId: string | null) => void;
+  undo: () => void;
+  redo: () => void;
+  beginHistoryGroup: () => void;
+  endHistoryGroup: () => void;
+  restoreFromBackup: (data: Record<string, unknown>) => void;
 
   // Todo execution graph
   addTaskToTodo: (taskId: string) => boolean;
@@ -187,7 +194,6 @@ export interface AppState {
   removeDraftEdge: (draftId: string, edgeId: string) => void;
   addDraftStroke: (draftId: string, stroke: DraftStroke) => void;
   replaceDraftStrokes: (draftId: string, strokes: DraftStroke[]) => void;
-  undoDraftStroke: (draftId: string) => void;
   clearDraftStrokes: (draftId: string) => void;
   
   // Task Actions

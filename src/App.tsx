@@ -7,7 +7,9 @@ import {
   Clock3,
   FilePenLine,
   ListTodo,
+  Redo2,
   Trash2,
+  Undo2,
   Workflow,
 } from 'lucide-react';
 import { useAppStore } from './store';
@@ -40,6 +42,10 @@ export default function App() {
   const clearWorkspace = useAppStore((state) => state.clearWorkspace);
   const isSidebarCollapsed = useAppStore((state) => state.isSidebarCollapsed);
   const toggleSidebar = useAppStore((state) => state.toggleSidebar);
+  const canUndo = useAppStore((state) => state.canUndo);
+  const canRedo = useAppStore((state) => state.canRedo);
+  const undo = useAppStore((state) => state.undo);
+  const redo = useAppStore((state) => state.redo);
 
   const activeMenuLabel = menuItems.find((item) => item.id === activeMenu)?.label || '工作区';
 
@@ -48,6 +54,19 @@ export default function App() {
       setMergedView(true);
     }
   }, [activeMenu, isMergedView, setMergedView]);
+
+  useEffect(() => {
+    const handleHistoryShortcut = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'z') return;
+      const target = event.target as HTMLElement | null;
+      if (target?.isContentEditable || target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA') return;
+      event.preventDefault();
+      if (event.shiftKey) redo();
+      else undo();
+    };
+    window.addEventListener('keydown', handleHistoryShortcut);
+    return () => window.removeEventListener('keydown', handleHistoryShortcut);
+  }, [redo, undo]);
 
   const handleMenuChange = (menuId: MenuId) => {
     setActiveMenu(menuId);
@@ -130,8 +149,13 @@ export default function App() {
 
           </div>
 
-          {activeMenu === 'workspace' ? (
-            <div className="flex shrink-0 items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
+            <div className="flex items-center rounded-lg border border-neutral-200 bg-neutral-50 p-0.5">
+              <button type="button" disabled={!canUndo} onClick={undo} className="flex h-7 w-8 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-white hover:text-purple-600 disabled:cursor-default disabled:opacity-30" title="撤销（Ctrl/Cmd + Z）" aria-label="撤销"><Undo2 className="h-3.5 w-3.5" /></button>
+              <button type="button" disabled={!canRedo} onClick={redo} className="flex h-7 w-8 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-white hover:text-purple-600 disabled:cursor-default disabled:opacity-30" title="重做（Ctrl/Cmd + Shift + Z）" aria-label="重做"><Redo2 className="h-3.5 w-3.5" /></button>
+            </div>
+            {activeMenu === 'workspace' ? (
+              <>
               <DataTransferControls />
               <button
                 onClick={() => {
@@ -145,8 +169,9 @@ export default function App() {
                 <Trash2 className="h-3.5 w-3.5" />
                 <span>清空计划</span>
               </button>
-            </div>
-          ) : null}
+              </>
+            ) : null}
+          </div>
         </header>
 
         {activeMenu === 'workspace' ? (

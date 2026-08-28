@@ -94,7 +94,7 @@ export const downloadPlannerBackup = () => {
   URL.revokeObjectURL(url);
 };
 
-export const importPlannerBackup = async (file: File) => {
+export const importPlannerBackup = async (file: File): Promise<Record<string, unknown>> => {
   if (file.size > MAX_BACKUP_SIZE) {
     throw new Error('备份文件超过 20 MB，无法导入');
   }
@@ -116,5 +116,5 @@ export const importPlannerBackup = async (file: File) => {
     throw new Error('备份内容不完整或已经损坏');
   }
 
-  localStorage.setItem(PLANNER_STORAGE_KEY, JSON.stringify(withoutDraftStrokes(parsed.data)));
+  return withoutDraftStrokes(parsed.data);
 };

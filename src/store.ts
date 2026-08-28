@@ -429,46 +429,130 @@ if (savedState && Array.isArray(savedState.mergedEdges)) {
   initialMergedEdges = combinedEdges;
 }
 
+type HistorySnapshot = Pick<AppState,
+  | 'tasks'
+  | 'taskStatuses'
+  | 'goals'
+  | 'bomTree'
+  | 'categories'
+  | 'workspaceComponents'
+  | 'todoLanes'
+  | 'todoItems'
+  | 'timeTemplates'
+  | 'activeTimeTemplateIds'
+  | 'favoriteColors'
+  | 'drafts'
+  | 'crossGoalEdges'
+  | 'timelineTaskOrder'
+  | 'mergedNodePositions'
+  | 'workspaceNodes'
+  | 'mergedEdges'
+  | 'mergedNodeIds'
+>;
+
+const HISTORY_LIMIT = 100;
+const HISTORY_KEYS = new Set<keyof HistorySnapshot>([
+  'tasks', 'taskStatuses', 'goals', 'bomTree', 'categories', 'workspaceComponents',
+  'todoLanes', 'todoItems', 'timeTemplates', 'activeTimeTemplateIds', 'favoriteColors',
+  'drafts', 'crossGoalEdges', 'timelineTaskOrder', 'mergedNodePositions', 'workspaceNodes',
+  'mergedEdges', 'mergedNodeIds',
+]);
+
+const cloneHistorySnapshot = (snapshot: HistorySnapshot): HistorySnapshot => JSON.parse(JSON.stringify(snapshot));
+
+const captureHistorySnapshot = (state: AppState): HistorySnapshot => cloneHistorySnapshot({
+  tasks: state.tasks,
+  taskStatuses: state.taskStatuses,
+  goals: state.goals,
+  bomTree: state.bomTree,
+  categories: state.categories,
+  workspaceComponents: state.workspaceComponents,
+  todoLanes: state.todoLanes,
+  todoItems: state.todoItems,
+  timeTemplates: state.timeTemplates,
+  activeTimeTemplateIds: state.activeTimeTemplateIds,
+  favoriteColors: state.favoriteColors,
+  drafts: state.drafts,
+  crossGoalEdges: state.crossGoalEdges,
+  timelineTaskOrder: state.timelineTaskOrder,
+  mergedNodePositions: state.mergedNodePositions,
+  workspaceNodes: state.workspaceNodes,
+  mergedEdges: state.mergedEdges,
+  mergedNodeIds: state.mergedNodeIds,
+});
+
+const historySnapshotsEqual = (left: HistorySnapshot, right: HistorySnapshot) => JSON.stringify(left) === JSON.stringify(right);
+
 export const useAppStore = create<AppState>((set, get) => {
+  const undoStack: HistorySnapshot[] = [];
+  const redoStack: HistorySnapshot[] = [];
+  let historyGroupDepth = 0;
+  let historyGroupStart: HistorySnapshot | null = null;
+
+  const persistState = (state: AppState) => {
+    try {
+      const toSave = {
+        tasks: state.tasks,
+        goals: state.goals,
+        bomTree: state.bomTree,
+        categories: state.categories,
+        taskStatuses: state.taskStatuses,
+        selectedCategoryId: state.selectedCategoryId,
+        selectedGoalId: state.selectedGoalId,
+        isMergedView: state.isMergedView,
+        activeMergedGoalIds: state.activeMergedGoalIds,
+        workspaceComponentFilter: state.workspaceComponentFilter,
+        workspaceComponents: state.workspaceComponents,
+        todoLanes: state.todoLanes,
+        todoItems: state.todoItems,
+        timeTemplates: state.timeTemplates,
+        activeTimeTemplateIds: state.activeTimeTemplateIds,
+        favoriteColors: state.favoriteColors,
+        drafts: state.drafts,
+        crossGoalEdges: state.crossGoalEdges,
+        isSidebarCollapsed: state.isSidebarCollapsed,
+        showHelp: state.showHelp,
+        timelineTaskOrder: state.timelineTaskOrder || [],
+        isTimelineCollapsed: state.isTimelineCollapsed,
+        mergedNodePositions: state.mergedNodePositions,
+        workspaceNodes: state.workspaceNodes,
+        mergedEdges: state.mergedEdges,
+        mergedNodeIds: state.mergedNodeIds,
+      };
+      localStorage.setItem(PLANNER_STORAGE_KEY, JSON.stringify(toSave));
+    } catch (e) {
+      console.error('Failed to save state to localStorage:', e);
+    }
+  };
+
+  const pushUndoSnapshot = (snapshot: HistorySnapshot) => {
+    undoStack.push(snapshot);
+    if (undoStack.length > HISTORY_LIMIT) undoStack.shift();
+    redoStack.length = 0;
+  };
+
   // A wrapper function that performs the state change and automatically persists it to localStorage
   const persistSet = (nextStateOrFn: any) => {
     set((state) => {
+      const beforeUpdate = historyGroupStart || captureHistorySnapshot(state);
       const next = typeof nextStateOrFn === 'function' ? nextStateOrFn(state) : nextStateOrFn;
       const merged = { ...state, ...next };
 
-      try {
-        const toSave = {
-          tasks: merged.tasks,
-          goals: merged.goals,
-          bomTree: merged.bomTree,
-          categories: merged.categories,
-          taskStatuses: merged.taskStatuses,
-          selectedCategoryId: merged.selectedCategoryId,
-          selectedGoalId: merged.selectedGoalId,
-          isMergedView: merged.isMergedView,
-          activeMergedGoalIds: merged.activeMergedGoalIds,
-          workspaceComponentFilter: merged.workspaceComponentFilter,
-          workspaceComponents: merged.workspaceComponents,
-          todoLanes: merged.todoLanes,
-          todoItems: merged.todoItems,
-          timeTemplates: merged.timeTemplates,
-          activeTimeTemplateIds: merged.activeTimeTemplateIds,
-          favoriteColors: merged.favoriteColors,
-          drafts: merged.drafts,
-          crossGoalEdges: merged.crossGoalEdges,
-          isSidebarCollapsed: merged.isSidebarCollapsed,
-          showHelp: merged.showHelp,
-          timelineTaskOrder: merged.timelineTaskOrder || [],
-          isTimelineCollapsed: merged.isTimelineCollapsed,
-          mergedNodePositions: merged.mergedNodePositions,
-          workspaceNodes: merged.workspaceNodes,
-          mergedEdges: merged.mergedEdges,
-          mergedNodeIds: merged.mergedNodeIds,
-        };
-        localStorage.setItem(PLANNER_STORAGE_KEY, JSON.stringify(toSave));
-      } catch (e) {
-        console.error('Failed to save state to localStorage:', e);
+      const touchesHistory = Object.keys(next).some((key) => HISTORY_KEYS.has(key as keyof HistorySnapshot));
+      if (touchesHistory) {
+        const after = captureHistorySnapshot(merged);
+        if (!historySnapshotsEqual(beforeUpdate, after)) {
+          if (historyGroupDepth > 0) {
+            historyGroupStart ||= beforeUpdate;
+          } else {
+            pushUndoSnapshot(beforeUpdate);
+          }
+          next.canUndo = historyGroupDepth > 0 ? undoStack.length > 0 : true;
+          next.canRedo = false;
+        }
       }
+
+      persistState(merged);
 
       return next;
     });
@@ -495,6 +579,8 @@ export const useAppStore = create<AppState>((set, get) => {
     activeTimeTemplateIds: initialActiveTimeTemplateIds,
     favoriteColors: initialFavoriteColors,
     drafts: initialDrafts,
+    canUndo: false,
+    canRedo: false,
     crossGoalEdges: initialCrossGoalEdges,
     isSidebarCollapsed: initialIsSidebarCollapsed,
     showHelp: initialShowHelp,
@@ -683,6 +769,69 @@ export const useAppStore = create<AppState>((set, get) => {
 
     selectTask: (taskId) => persistSet({ selectedTaskId: taskId }),
     setActiveNodeActionsId: (nodeId) => set({ activeNodeActionsId: nodeId }),
+    beginHistoryGroup: () => {
+      if (historyGroupDepth === 0) historyGroupStart = captureHistorySnapshot(get());
+      historyGroupDepth += 1;
+    },
+    endHistoryGroup: () => {
+      if (historyGroupDepth === 0) return;
+      historyGroupDepth -= 1;
+      if (historyGroupDepth > 0) return;
+      const start = historyGroupStart;
+      historyGroupStart = null;
+      if (!start || historySnapshotsEqual(start, captureHistorySnapshot(get()))) return;
+      pushUndoSnapshot(start);
+      set({ canUndo: true, canRedo: false });
+    },
+    undo: () => {
+      if (historyGroupDepth > 0) {
+        historyGroupDepth = 0;
+        const start = historyGroupStart;
+        historyGroupStart = null;
+        if (start && !historySnapshotsEqual(start, captureHistorySnapshot(get()))) pushUndoSnapshot(start);
+      }
+      const snapshot = undoStack.pop();
+      if (!snapshot) return;
+      redoStack.push(captureHistorySnapshot(get()));
+      const next = { ...snapshot, canUndo: undoStack.length > 0, canRedo: true };
+      set(next);
+      persistState({ ...get(), ...next });
+    },
+    redo: () => {
+      const snapshot = redoStack.pop();
+      if (!snapshot) return;
+      undoStack.push(captureHistorySnapshot(get()));
+      const next = { ...snapshot, canUndo: true, canRedo: redoStack.length > 0 };
+      set(next);
+      persistState({ ...get(), ...next });
+    },
+    restoreFromBackup: (data) => persistSet((state: AppState) => ({
+      tasks: data.tasks && typeof data.tasks === 'object' && !Array.isArray(data.tasks) ? data.tasks as Record<string, Task> : state.tasks,
+      taskStatuses: Array.isArray(data.taskStatuses) ? data.taskStatuses as TaskStatus[] : state.taskStatuses,
+      goals: data.goals && typeof data.goals === 'object' && !Array.isArray(data.goals) ? data.goals as Record<string, Goal> : state.goals,
+      bomTree: Array.isArray(data.bomTree) ? data.bomTree as BOMTreeItem[] : state.bomTree,
+      categories: Array.isArray(data.categories) ? data.categories as AppCategory[] : state.categories,
+      workspaceComponents: Array.isArray(data.workspaceComponents) ? data.workspaceComponents as WorkspaceComponent[] : state.workspaceComponents,
+      todoLanes: Array.isArray(data.todoLanes) ? data.todoLanes as TodoLane[] : DEFAULT_TODO_LANES,
+      todoItems: Array.isArray(data.todoItems) ? data.todoItems as TodoItem[] : [],
+      timeTemplates: Array.isArray(data.timeTemplates) ? data.timeTemplates as TimeTemplate[] : [],
+      activeTimeTemplateIds: data.activeTimeTemplateIds && typeof data.activeTimeTemplateIds === 'object'
+        ? data.activeTimeTemplateIds as AppState['activeTimeTemplateIds']
+        : { daily: null, weekly: null },
+      favoriteColors: Array.isArray(data.favoriteColors) ? data.favoriteColors as string[] : [],
+      drafts: Array.isArray(data.drafts) ? (data.drafts as DraftBoard[]).map((draft) => ({
+        ...draft,
+        strokes: state.drafts.find((currentDraft) => currentDraft.id === draft.id)?.strokes || [],
+      })) : [],
+      crossGoalEdges: Array.isArray(data.crossGoalEdges) ? data.crossGoalEdges as GoalEdge[] : [],
+      timelineTaskOrder: Array.isArray(data.timelineTaskOrder) ? data.timelineTaskOrder as string[] : [],
+      mergedNodePositions: data.mergedNodePositions && typeof data.mergedNodePositions === 'object'
+        ? data.mergedNodePositions as AppState['mergedNodePositions']
+        : {},
+      workspaceNodes: Array.isArray(data.workspaceNodes) ? data.workspaceNodes as GoalNode[] : [],
+      mergedEdges: Array.isArray(data.mergedEdges) ? data.mergedEdges as GoalEdge[] : [],
+      mergedNodeIds: Array.isArray(data.mergedNodeIds) ? data.mergedNodeIds as string[] : [],
+    })),
 
     addTaskToTodo: (taskId) => {
       const state = get();
@@ -862,7 +1011,6 @@ export const useAppStore = create<AppState>((set, get) => {
     removeDraftEdge: (draftId, edgeId) => persistSet((state: AppState) => ({ drafts: state.drafts.map((draft) => draft.id === draftId ? { ...draft, edges: draft.edges.filter((edge) => edge.id !== edgeId) } : draft) })),
     addDraftStroke: (draftId, stroke: DraftStroke) => persistSet((state: AppState) => ({ drafts: state.drafts.map((draft) => draft.id === draftId ? { ...draft, strokes: [...draft.strokes, stroke] } : draft) })),
     replaceDraftStrokes: (draftId, strokes) => persistSet((state: AppState) => ({ drafts: state.drafts.map((draft) => draft.id === draftId ? { ...draft, strokes } : draft) })),
-    undoDraftStroke: (draftId) => persistSet((state: AppState) => ({ drafts: state.drafts.map((draft) => draft.id === draftId ? { ...draft, strokes: draft.strokes.slice(0, -1) } : draft) })),
     clearDraftStrokes: (draftId) => persistSet((state: AppState) => ({ drafts: state.drafts.map((draft) => draft.id === draftId ? { ...draft, strokes: [] } : draft) })),
 
     // TASK ACTIONS (Normalized changes reflect everywhere instantly!)
