@@ -26,6 +26,94 @@ body {
     linear-gradient(135deg, #f8fbff 0%, #fff9fc 52%, #f4f7ff 100%);
 }
 
+.planner-welcome {
+  background: linear-gradient(125deg, #d9f7fb 0%, #f7f6ff 44%, #fff0f8 72%, #eef3ff 100%);
+  background-size: 240% 240%;
+  animation: planner-welcome-flow 16s ease-in-out infinite;
+}
+
+.planner-welcome-orb {
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(20px);
+  opacity: 0.48;
+  will-change: transform;
+}
+
+.planner-welcome-orb-one {
+  left: -8vw;
+  top: -12vw;
+  width: 42vw;
+  height: 42vw;
+  background: radial-gradient(circle, rgba(121, 220, 231, 0.65), transparent 68%);
+  animation: planner-orbit-one 20s ease-in-out infinite alternate;
+}
+
+.planner-welcome-orb-two {
+  right: -10vw;
+  top: 6vh;
+  width: 46vw;
+  height: 46vw;
+  background: radial-gradient(circle, rgba(239, 181, 212, 0.58), transparent 68%);
+  animation: planner-orbit-two 24s ease-in-out infinite alternate;
+}
+
+.planner-welcome-orb-three {
+  bottom: -22vw;
+  left: 24vw;
+  width: 54vw;
+  height: 54vw;
+  background: radial-gradient(circle, rgba(201, 185, 241, 0.62), transparent 68%);
+  animation: planner-orbit-three 22s ease-in-out infinite alternate;
+}
+
+.planner-welcome-card {
+  animation: planner-welcome-breathe 4.8s ease-in-out infinite;
+}
+
+.planner-welcome-logo {
+  animation: planner-logo-breathe 3.2s ease-in-out infinite;
+}
+
+@keyframes planner-welcome-flow {
+  0%, 100% { background-position: 0% 45%; }
+  50% { background-position: 100% 55%; }
+}
+
+@keyframes planner-orbit-one {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to { transform: translate3d(26vw, 18vh, 0) scale(1.15); }
+}
+
+@keyframes planner-orbit-two {
+  from { transform: translate3d(0, 0, 0) scale(1.08); }
+  to { transform: translate3d(-22vw, 30vh, 0) scale(0.9); }
+}
+
+@keyframes planner-orbit-three {
+  from { transform: translate3d(0, 0, 0) scale(0.92); }
+  to { transform: translate3d(-16vw, -24vh, 0) scale(1.12); }
+}
+
+@keyframes planner-welcome-breathe {
+  0%, 100% { transform: translateY(0); box-shadow: 0 28px 80px rgba(117, 104, 174, 0.16); }
+  50% { transform: translateY(-7px); box-shadow: 0 38px 100px rgba(117, 104, 174, 0.23); }
+}
+
+@keyframes planner-logo-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.07); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .planner-welcome,
+  .planner-welcome-orb,
+  .planner-welcome-card,
+  .planner-welcome-logo {
+    animation: none;
+  }
+}
+
 .planner-hue-slider {
   background: linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
 }

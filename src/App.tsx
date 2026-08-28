@@ -19,6 +19,7 @@ import { TimelineLayer } from './components/TimelineLayer';
 import { WorkspaceFilterBar } from './components/WorkspaceFilterBar';
 import { ComponentDetailsDrawer } from './components/ComponentDetailsDrawer';
 import { DataTransferControls } from './components/DataTransferControls';
+import { WelcomeScreen } from './components/WelcomeScreen';
 
 const TodoPage = lazy(() => import('./components/TodoPage').then((module) => ({ default: module.TodoPage })));
 const TimeTemplatesPage = lazy(() => import('./components/TimeTemplatesPage').then((module) => ({ default: module.TimeTemplatesPage })));
@@ -35,6 +36,7 @@ const menuItems = [
 ];
 
 export default function App() {
+  const [showWelcome, setShowWelcome] = useState(true);
   const [activeMenu, setActiveMenu] = useState<MenuId>('workspace');
   const isMergedView = useAppStore((state) => state.isMergedView);
   const setMergedView = useAppStore((state) => state.setMergedView);
@@ -76,6 +78,8 @@ export default function App() {
       selectTask(null);
     }
   };
+
+  if (showWelcome) return <WelcomeScreen onStart={() => setShowWelcome(false)} />;
 
   return (
     <div className="flex min-h-screen flex-row overflow-hidden bg-neutral-100 font-sans text-neutral-800 antialiased selection:bg-blue-500/10">
