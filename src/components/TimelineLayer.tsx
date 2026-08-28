@@ -290,7 +290,21 @@ export const TimelineLayer: React.FC = () => {
     orderedVisibleTasks.forEach((task) => {
       if (!parentByTaskId.has(task.id)) appendTask(task.id, 0);
     });
-    orderedVisibleTasks.forEach((task) => appendTask(task.id, 0));
+    orderedVisibleTasks.forEach((task) => {
+      if (visited.has(task.id)) return;
+
+      const ancestorIds = new Set<string>();
+      let ancestorId = parentByTaskId.get(task.id);
+      while (ancestorId && !ancestorIds.has(ancestorId)) {
+        if (visited.has(ancestorId)) return;
+        ancestorIds.add(ancestorId);
+        ancestorId = parentByTaskId.get(ancestorId);
+      }
+
+      // Only recover genuinely cyclic or disconnected relationships. Descendants
+      // of a collapsed, already-rendered parent must remain hidden.
+      appendTask(task.id, 0);
+    });
     return rows;
   }, [collapsedTaskIds, goals, mergedEdges, mergedNodePositions, orderedVisibleTasks, workspaceNodes]);
 
