@@ -1,12 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Network, Trash2, X } from 'lucide-react';
-import { Handle, NodeProps, Position } from '@xyflow/react';
+import { Handle, NodeProps, NodeResizer, Position } from '@xyflow/react';
 import { useAppStore } from '../store';
 import { getComponentLabel } from '../workspaceComponents';
 
 interface DraftNodeData {
   draftId: string;
   taskId: string;
+  onResizeStart?: () => void;
+  onResizeEnd?: (nodeId: string, width: number, height: number) => void;
 }
 
 const colorMap: Record<string, { accent: string; surface: string; border: string }> = {
@@ -27,7 +29,7 @@ const getScheme = (color: string) => {
 };
 
 export const DraftNode = React.memo(({ id, data, selected }: NodeProps) => {
-  const { draftId, taskId } = data as unknown as DraftNodeData;
+  const { draftId, taskId, onResizeStart, onResizeEnd } = data as unknown as DraftNodeData;
   const task = useAppStore((state) => state.tasks[taskId]);
   const draftNodePosition = useAppStore((state) => state.drafts.find((draft) => draft.id === draftId)?.nodes.find((node) => node.id === id)?.position);
   const components = useAppStore((state) => state.workspaceComponents);
@@ -77,7 +79,7 @@ export const DraftNode = React.memo(({ id, data, selected }: NodeProps) => {
 
   return (
     <div
-      className={`planner-mind-node group relative flex h-10 min-w-28 max-w-52 items-center justify-center rounded-full border px-5 text-center shadow-sm ${selected ? 'planner-mind-node-selected' : ''}`}
+      className={`planner-mind-node group relative flex h-full min-h-10 w-full min-w-28 items-center justify-center rounded-[999px] border px-5 text-center shadow-sm ${selected ? 'planner-mind-node-selected' : ''}`}
       style={{ backgroundColor: scheme.surface, borderColor: selected ? scheme.accent : scheme.border }}
       onDoubleClick={(event) => {
         event.preventDefault();
@@ -88,6 +90,7 @@ export const DraftNode = React.memo(({ id, data, selected }: NodeProps) => {
       }}
       title="单击改名，双击设置归属联通块"
     >
+      <NodeResizer isVisible={selected} minWidth={112} minHeight={40} maxWidth={420} maxHeight={180} color={scheme.accent} handleStyle={{ width: 8, height: 8, borderRadius: 3 }} lineStyle={{ borderWidth: 1 }} onResizeStart={() => onResizeStart?.()} onResizeEnd={(_event, params) => onResizeEnd?.(id, params.width, params.height)} />
       {showMembership ? (
         <div
           className="nodrag nopan nowheel absolute bottom-full left-1/2 z-[10020] mb-2 w-64 -translate-x-1/2 rounded-xl border border-neutral-200 bg-white p-2.5 text-left shadow-2xl"

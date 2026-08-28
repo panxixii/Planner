@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Handle, NodeProps, Position } from '@xyflow/react';
+import { Handle, NodeProps, NodeResizer, Position } from '@xyflow/react';
 import { Check, ListPlus, Network, PanelRightOpen, Trash2, X } from 'lucide-react';
 import { useAppStore } from '../store';
 import { getComponentLabel, getTaskComponentIds } from '../workspaceComponents';
@@ -8,6 +8,8 @@ interface TaskNodeData {
   taskId: string;
   goalId?: string | null;
   isMerged?: boolean;
+  onResizeStart?: () => void;
+  onResizeEnd?: (nodeId: string, width: number, height: number) => void;
 }
 
 const colorMap: Record<string, { accent: string; surface: string; border: string }> = {
@@ -26,7 +28,7 @@ const hexToScheme = (color: string) => ({
 });
 
 export const TaskNode = React.memo(({ id, data, selected }: NodeProps) => {
-  const { taskId, goalId, isMerged } = data as unknown as TaskNodeData;
+  const { taskId, goalId, isMerged, onResizeStart, onResizeEnd } = data as unknown as TaskNodeData;
   const task = useAppStore((state) => state.tasks[taskId]);
   const selectTask = useAppStore((state) => state.selectTask);
   const updateTask = useAppStore((state) => state.updateTask);
@@ -92,7 +94,7 @@ export const TaskNode = React.memo(({ id, data, selected }: NodeProps) => {
         setActiveNodeActionsId(showActions ? null : id);
       }}
       title="单击改名，双击显示节点操作"
-      className={`planner-mind-node group relative flex h-10 min-w-28 max-w-52 items-center justify-center rounded-full border px-5 text-center transition-[box-shadow,border-color,transform,opacity] duration-150 ${
+      className={`planner-mind-node group relative flex h-full min-h-10 w-full min-w-28 items-center justify-center rounded-[999px] border px-5 text-center transition-[box-shadow,border-color,transform,opacity] duration-150 ${
         task.isDone ? 'opacity-55' : ''
       } ${selected ? 'planner-mind-node-selected' : ''} ${showActions ? 'planner-node-actions-open' : ''}`}
       style={{
@@ -105,6 +107,7 @@ export const TaskNode = React.memo(({ id, data, selected }: NodeProps) => {
             : `0 3px 10px ${scheme.accent}1c`,
       }}
     >
+      <NodeResizer isVisible={selected} minWidth={112} minHeight={40} maxWidth={420} maxHeight={180} color={scheme.accent} handleStyle={{ width: 8, height: 8, borderRadius: 3 }} lineStyle={{ borderWidth: 1 }} onResizeStart={() => onResizeStart?.()} onResizeEnd={(_event, params) => onResizeEnd?.(id, params.width, params.height)} />
       {showActions ? (
         <div
           className="nodrag nopan nowheel absolute bottom-full left-1/2 z-50 mb-2 flex -translate-x-1/2 items-center gap-1.5 rounded-lg border border-neutral-200 bg-white p-1 shadow-lg"

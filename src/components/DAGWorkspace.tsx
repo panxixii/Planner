@@ -12,12 +12,14 @@ import {
   applyEdgeChanges,
   NodeChange,
   EdgeChange,
-  ConnectionLineType
+  ConnectionLineType,
+  SelectionMode
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useAppStore } from '../store';
 import { TaskNode } from './TaskNode';
 import { ComponentHandleNode } from './ComponentHandleNode';
+import { CanvasSelectionToolbar } from './CanvasSelectionToolbar';
 import { 
   Layers2, 
   Sparkles, 
@@ -51,11 +53,13 @@ const DAGInnerWorkspace: React.FC = () => {
   const addWorkspaceNode = useAppStore((state) => state.addWorkspaceNode);
   const addMergedEdge = useAppStore((state) => state.addMergedEdge);
   const setTaskComponentIds = useAppStore((state) => state.setTaskComponentIds);
+  const removeTaskFromWorkspace = useAppStore((state) => state.removeTaskFromWorkspace);
   const beginHistoryGroup = useAppStore((state) => state.beginHistoryGroup);
   const endHistoryGroup = useAppStore((state) => state.endHistoryGroup);
   const removeEdgeFromWorkspace = useAppStore((state) => state.removeEdgeFromWorkspace);
   const deleteMergedNodeId = useAppStore((state) => state.deleteMergedNodeId);
   const updateWorkspaceComponent = useAppStore((state) => state.updateWorkspaceComponent);
+  const updateWorkspaceNodeSize = useAppStore((state) => state.updateWorkspaceNodeSize);
   const { screenToFlowPosition, zoomIn, zoomOut, fitView } = useReactFlow();
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -74,6 +78,11 @@ const DAGInnerWorkspace: React.FC = () => {
     taskNode: TaskNode,
     componentHandle: ComponentHandleNode
   }), []);
+
+  const handleResizeEnd = useCallback((nodeId: string, width: number, height: number) => {
+    updateWorkspaceNodeSize(nodeId, width, height);
+    endHistoryGroup();
+  }, [endHistoryGroup, updateWorkspaceNodeSize]);
 
   // Compute final elements dynamically with local cache
   const [localNodes, setLocalNodes] = useState<Node[]>([]);
@@ -111,6 +120,8 @@ const DAGInnerWorkspace: React.FC = () => {
             id: n.id,
             type: 'taskNode',
             position: finalPos,
+            width: n.width,
+            height: n.height,
             data: {
               taskId: n.taskId,
               goalColor: g.color,
@@ -118,6 +129,8 @@ const DAGInnerWorkspace: React.FC = () => {
               goalId: gid,
               isMerged: true,
               componentIds: taskComponentIds,
+              onResizeStart: beginHistoryGroup,
+              onResizeEnd: handleResizeEnd,
             }
           });
         });
@@ -134,6 +147,8 @@ const DAGInnerWorkspace: React.FC = () => {
           id: node.id,
           type: 'taskNode',
           position: mergedNodePositions[node.id] || node.position,
+          width: node.width,
+          height: node.height,
           data: {
             taskId: node.taskId,
             goalColor: task.color || 'indigo',
@@ -141,6 +156,8 @@ const DAGInnerWorkspace: React.FC = () => {
             goalId: null,
             isMerged: true,
             componentIds: taskComponentIds,
+            onResizeStart: beginHistoryGroup,
+            onResizeEnd: handleResizeEnd,
           },
         });
       });
@@ -273,6 +290,8 @@ const DAGInnerWorkspace: React.FC = () => {
         id: n.id,
         type: 'taskNode',
         position: n.position,
+        width: n.width,
+        height: n.height,
         data: {
           taskId: n.taskId,
           goalColor: goal.color,
@@ -280,6 +299,8 @@ const DAGInnerWorkspace: React.FC = () => {
           goalId: selectedGoalId,
           isMerged: false,
           categoryIds: [goal.category],
+          onResizeStart: beginHistoryGroup,
+          onResizeEnd: handleResizeEnd,
         }
       }));
 
@@ -306,7 +327,7 @@ const DAGInnerWorkspace: React.FC = () => {
 
     setLocalNodes(computedNodes);
     setLocalEdges(computedEdges);
-  }, [isMergedView, selectedGoalId, goals, mergedNodePositions, workspaceNodes, mergedEdges, tasks, workspaceComponentFilter, workspaceComponents]);
+  }, [isMergedView, selectedGoalId, goals, mergedNodePositions, workspaceNodes, mergedEdges, tasks, workspaceComponentFilter, workspaceComponents, beginHistoryGroup, handleResizeEnd]);
 
   // Standard React Flow selection and state synchronization handlers
   const onNodesChange = useCallback((changes: NodeChange[]) => {
@@ -605,6 +626,20 @@ const DAGInnerWorkspace: React.FC = () => {
 
   const activeDescription = selectedGoalId ? goals[selectedGoalId]?.description : '';
   const showEmptyPlaceholder = !localNodes.some((node) => node.type === 'taskNode');
+  const selectedTaskNodes = useMemo(() => localNodes.filter((node) => node.type === 'taskNode' && node.selected), [localNodes]);
+  const selectedTaskIds = selectedTaskNodes.flatMap((node) => {
+    const taskId = (node.data as { taskId?: string }).taskId;
+    return taskId ? [taskId] : [];
+  });
+
+  const removeSelectedNodes = useCallback(() => {
+    selectedTaskNodes.forEach((node) => {
+      const taskId = (node.data as { taskId?: string }).taskId;
+      if (!taskId) return;
+      if (isMergedView) removeTaskFromWorkspace(taskId, workspaceComponentFilter);
+      else if (selectedGoalId) deleteNodeFromGoal(selectedGoalId, node.id);
+    });
+  }, [deleteNodeFromGoal, isMergedView, removeTaskFromWorkspace, selectedGoalId, selectedTaskNodes, workspaceComponentFilter]);
 
   return (
     <div className="flex-1 flex flex-col min-h-0 relative select-none">
@@ -616,6 +651,7 @@ const DAGInnerWorkspace: React.FC = () => {
           </div>
         </div>
       ) : null}
+      {selectedTaskIds.length > 1 ? <CanvasSelectionToolbar taskIds={selectedTaskIds} onRemove={removeSelectedNodes} /> : null}
 
       {/* 2. Topology Left Info Board & Checklist */}
       <div className="absolute top-5 left-5 z-20 max-w-xs bg-white/95 border border-neutral-200 rounded-2xl shadow-lg p-4 pointer-events-auto space-y-2">
@@ -690,6 +726,9 @@ const DAGInnerWorkspace: React.FC = () => {
           connectionLineStyle={{ stroke: '#8d78d5', strokeWidth: 2.25 }}
           connectionRadius={28}
           zoomOnDoubleClick={false}
+          selectionOnDrag
+          selectionMode={SelectionMode.Partial}
+          panOnDrag={[1, 2]}
           onPaneClick={handlePaneClick}
           onEdgeDoubleClick={onEdgeDoubleClick}
           onNodesDelete={onNodesDelete}

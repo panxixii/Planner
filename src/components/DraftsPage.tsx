@@ -14,6 +14,7 @@ import {
   applyNodeChanges,
   useOnViewportChange,
   useReactFlow,
+  SelectionMode,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Eraser, FilePlus2, MousePointer2, Pencil, RotateCcw, Trash2 } from 'lucide-react';
@@ -21,6 +22,7 @@ import { useAppStore } from '../store';
 import { DraftStroke, DraftStrokePoint, GoalNode, Task } from '../types';
 import { ColorPicker } from './ColorPicker';
 import { DraftNode } from './DraftNode';
+import { CanvasSelectionToolbar } from './CanvasSelectionToolbar';
 
 const makeId = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
 
@@ -118,6 +120,12 @@ const DraftCanvas: React.FC<DraftCanvasProps> = ({ draftId }) => {
   const [erasedStrokesPreview, setErasedStrokesPreview] = useState<DraftStroke[] | null>(null);
   const nodeTypes = useMemo(() => ({ draftNode: DraftNode }), []);
 
+  const handleResizeEnd = useCallback((nodeId: string, width: number, height: number) => {
+    if (!draft) return;
+    updateDraftNodes(draft.id, draft.nodes.map((node) => node.id === nodeId ? { ...node, width, height } : node));
+    endHistoryGroup();
+  }, [draft, endHistoryGroup, updateDraftNodes]);
+
   useOnViewportChange({ onChange: setViewport, onEnd: setViewport });
 
   useEffect(() => {
@@ -126,9 +134,11 @@ const DraftCanvas: React.FC<DraftCanvasProps> = ({ draftId }) => {
       id: node.id,
       type: 'draftNode',
       position: node.position,
-      data: { draftId, taskId: node.taskId },
+      width: node.width,
+      height: node.height,
+      data: { draftId, taskId: node.taskId, onResizeStart: beginHistoryGroup, onResizeEnd: handleResizeEnd },
     }] : []));
-  }, [draft, draftId, tasks]);
+  }, [beginHistoryGroup, draft, draftId, handleResizeEnd, tasks]);
 
   const edges = useMemo<Edge[]>(() => (draft?.edges || []).map((edge) => ({
     id: edge.id,
@@ -246,9 +256,15 @@ const DraftCanvas: React.FC<DraftCanvasProps> = ({ draftId }) => {
   if (!draft) return null;
 
   const makePath = (points: DraftStrokePoint[]) => points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(' ');
+  const selectedNodes = useMemo(() => nodes.filter((node) => node.selected), [nodes]);
+  const selectedTaskIds = selectedNodes.flatMap((node) => {
+    const taskId = (node.data as { taskId?: string }).taskId;
+    return taskId ? [taskId] : [];
+  });
 
   return (
     <div className="relative min-h-0 flex-1 overflow-hidden bg-white">
+      {mode === 'select' && selectedTaskIds.length > 1 ? <CanvasSelectionToolbar taskIds={selectedTaskIds} onRemove={() => selectedNodes.forEach((node) => removeDraftNode(draft.id, node.id))} /> : null}
       <div className="absolute left-5 top-5 z-40 flex max-w-[calc(100%-2.5rem)] items-start gap-2 rounded-xl border border-neutral-200 bg-white/95 p-2 shadow-lg backdrop-blur-md">
         <div className="flex items-center gap-1 rounded-lg bg-neutral-100/70 p-1">
           <button type="button" onClick={() => setMode('select')} className={`flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[11px] font-semibold ${mode === 'select' ? 'bg-white text-purple-600 shadow-sm' : 'text-neutral-500'}`}><MousePointer2 className="h-3.5 w-3.5" />选择</button>
@@ -283,7 +299,9 @@ const DraftCanvas: React.FC<DraftCanvasProps> = ({ draftId }) => {
         nodesDraggable={mode === 'select'}
         nodesConnectable={mode === 'select'}
         elementsSelectable={mode === 'select'}
-        panOnDrag={mode === 'select'}
+        selectionOnDrag={mode === 'select'}
+        selectionMode={SelectionMode.Partial}
+        panOnDrag={mode === 'select' ? [1, 2] : false}
         zoomOnDoubleClick={false}
         fitView
         minZoom={0.15}

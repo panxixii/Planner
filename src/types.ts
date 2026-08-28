@@ -23,6 +23,8 @@ export interface GoalNode {
   id: string; // unique react-flow node ID
   taskId: string; // references task in tasks map
   position: { x: number; y: number };
+  width?: number;
+  height?: number;
 }
 
 export interface GoalEdge {
@@ -246,6 +248,7 @@ export interface AppState {
   mergedEdges: GoalEdge[];
   mergedNodeIds: string[];
   updateMergedNodePositions: (positions: Record<string, { x: number; y: number }>) => void;
+  updateWorkspaceNodeSize: (nodeId: string, width: number, height: number) => void;
   addWorkspaceNode: (node: GoalNode) => void;
   addMergedEdge: (edge: GoalEdge) => void;
   deleteMergedEdge: (edgeId: string) => void;

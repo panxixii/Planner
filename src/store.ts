@@ -1446,6 +1446,14 @@ export const useAppStore = create<AppState>((set, get) => {
       mergedNodePositions: { ...state.mergedNodePositions, ...positions }
     })),
 
+    updateWorkspaceNodeSize: (nodeId, width, height) => persistSet((state: AppState) => ({
+      goals: Object.fromEntries(Object.entries(state.goals).map(([goalId, goal]) => [goalId, {
+        ...goal,
+        nodes: goal.nodes.map((node) => node.id === nodeId ? { ...node, width, height } : node),
+      }])),
+      workspaceNodes: state.workspaceNodes.map((node) => node.id === nodeId ? { ...node, width, height } : node),
+    })),
+
     addWorkspaceNode: (node) => persistSet((state: AppState) => {
       if (state.workspaceNodes.some((existingNode) => existingNode.id === node.id || existingNode.taskId === node.taskId)) {
         return {};
