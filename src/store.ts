@@ -861,11 +861,7 @@ export const useAppStore = create<AppState>((set, get) => {
     addDraftEdge: (draftId, edge) => persistSet((state: AppState) => ({ drafts: state.drafts.map((draft) => draft.id === draftId ? { ...draft, edges: [...draft.edges, edge] } : draft) })),
     removeDraftEdge: (draftId, edgeId) => persistSet((state: AppState) => ({ drafts: state.drafts.map((draft) => draft.id === draftId ? { ...draft, edges: draft.edges.filter((edge) => edge.id !== edgeId) } : draft) })),
     addDraftStroke: (draftId, stroke: DraftStroke) => persistSet((state: AppState) => ({ drafts: state.drafts.map((draft) => draft.id === draftId ? { ...draft, strokes: [...draft.strokes, stroke] } : draft) })),
-    removeDraftStrokes: (draftId, strokeIds) => persistSet((state: AppState) => {
-      const removedIds = new Set(strokeIds);
-      if (removedIds.size === 0) return {};
-      return { drafts: state.drafts.map((draft) => draft.id === draftId ? { ...draft, strokes: draft.strokes.filter((stroke) => !removedIds.has(stroke.id)) } : draft) };
-    }),
+    replaceDraftStrokes: (draftId, strokes) => persistSet((state: AppState) => ({ drafts: state.drafts.map((draft) => draft.id === draftId ? { ...draft, strokes } : draft) })),
     undoDraftStroke: (draftId) => persistSet((state: AppState) => ({ drafts: state.drafts.map((draft) => draft.id === draftId ? { ...draft, strokes: draft.strokes.slice(0, -1) } : draft) })),
     clearDraftStrokes: (draftId) => persistSet((state: AppState) => ({ drafts: state.drafts.map((draft) => draft.id === draftId ? { ...draft, strokes: [] } : draft) })),
 

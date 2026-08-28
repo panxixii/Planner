@@ -186,7 +186,7 @@ export interface AppState {
   addDraftEdge: (draftId: string, edge: GoalEdge) => void;
   removeDraftEdge: (draftId: string, edgeId: string) => void;
   addDraftStroke: (draftId: string, stroke: DraftStroke) => void;
-  removeDraftStrokes: (draftId: string, strokeIds: string[]) => void;
+  replaceDraftStrokes: (draftId: string, strokes: DraftStroke[]) => void;
   undoDraftStroke: (draftId: string) => void;
   clearDraftStrokes: (draftId: string) => void;
   

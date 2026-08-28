@@ -18,11 +18,70 @@ import {
 import '@xyflow/react/dist/style.css';
 import { Eraser, FilePlus2, MousePointer2, Pencil, RotateCcw, Trash2 } from 'lucide-react';
 import { useAppStore } from '../store';
-import { DraftStrokePoint, GoalNode, Task } from '../types';
+import { DraftStroke, DraftStrokePoint, GoalNode, Task } from '../types';
 import { ColorPicker } from './ColorPicker';
 import { DraftNode } from './DraftNode';
 
 const makeId = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
+
+const distanceToSegment = (point: DraftStrokePoint, start: DraftStrokePoint, end: DraftStrokePoint) => {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  if (dx === 0 && dy === 0) return Math.hypot(point.x - start.x, point.y - start.y);
+  const progress = Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / (dx * dx + dy * dy)));
+  return Math.hypot(point.x - (start.x + progress * dx), point.y - (start.y + progress * dy));
+};
+
+const eraseStrokeSegment = (
+  strokes: DraftStroke[],
+  eraserStart: DraftStrokePoint,
+  eraserEnd: DraftStrokePoint,
+  eraserRadius: number,
+  zoom: number,
+): DraftStroke[] => strokes.flatMap((stroke) => {
+  if (stroke.points.length < 2) return [];
+  const sampleSpacing = Math.max(0.75 / zoom, eraserRadius / 4);
+  const sampledPoints: DraftStrokePoint[] = [];
+
+  stroke.points.forEach((point, index) => {
+    if (index === 0) {
+      sampledPoints.push(point);
+      return;
+    }
+    const previous = stroke.points[index - 1];
+    const distance = Math.hypot(point.x - previous.x, point.y - previous.y);
+    const steps = Math.max(1, Math.ceil(distance / sampleSpacing));
+    for (let step = 1; step <= steps; step += 1) {
+      const ratio = step / steps;
+      sampledPoints.push({
+        x: previous.x + (point.x - previous.x) * ratio,
+        y: previous.y + (point.y - previous.y) * ratio,
+      });
+    }
+  });
+
+  const effectiveRadius = eraserRadius + stroke.width / 2 / zoom;
+  const erased = sampledPoints.map((point) => distanceToSegment(point, eraserStart, eraserEnd) <= effectiveRadius);
+  if (!erased.some(Boolean)) return [stroke];
+
+  const remainingParts: DraftStrokePoint[][] = [];
+  let currentPart: DraftStrokePoint[] = [];
+  sampledPoints.forEach((point, index) => {
+    if (!erased[index]) {
+      currentPart.push(point);
+      return;
+    }
+    if (currentPart.length >= 2) remainingParts.push(currentPart);
+    currentPart = [];
+  });
+  if (currentPart.length >= 2) remainingParts.push(currentPart);
+
+  return remainingParts.map((points, index) => ({
+    ...stroke,
+    id: index === 0 ? stroke.id : makeId(`${stroke.id}-part`),
+    points,
+  }));
+});
 
 interface DraftCanvasProps {
   draftId: string;
@@ -38,7 +97,7 @@ const DraftCanvas: React.FC<DraftCanvasProps> = ({ draftId }) => {
   const addDraftEdge = useAppStore((state) => state.addDraftEdge);
   const removeDraftEdge = useAppStore((state) => state.removeDraftEdge);
   const addDraftStroke = useAppStore((state) => state.addDraftStroke);
-  const removeDraftStrokes = useAppStore((state) => state.removeDraftStrokes);
+  const replaceDraftStrokes = useAppStore((state) => state.replaceDraftStrokes);
   const undoDraftStroke = useAppStore((state) => state.undoDraftStroke);
   const clearDraftStrokes = useAppStore((state) => state.clearDraftStrokes);
   const { screenToFlowPosition } = useReactFlow();
@@ -50,8 +109,10 @@ const DraftCanvas: React.FC<DraftCanvasProps> = ({ draftId }) => {
   const [activePoints, setActivePoints] = useState<DraftStrokePoint[]>([]);
   const activePointsRef = useRef<DraftStrokePoint[]>([]);
   const drawingPointerRef = useRef<number | null>(null);
-  const erasedStrokeIdsRef = useRef<Set<string>>(new Set());
-  const [erasedStrokeIds, setErasedStrokeIds] = useState<Set<string>>(() => new Set());
+  const eraserPointRef = useRef<DraftStrokePoint | null>(null);
+  const erasedStrokesRef = useRef<DraftStroke[]>([]);
+  const [eraserPoint, setEraserPoint] = useState<DraftStrokePoint | null>(null);
+  const [erasedStrokesPreview, setErasedStrokesPreview] = useState<DraftStroke[] | null>(null);
   const nodeTypes = useMemo(() => ({ draftNode: DraftNode }), []);
 
   useOnViewportChange({ onChange: setViewport, onEnd: setViewport });
@@ -115,21 +176,14 @@ const DraftCanvas: React.FC<DraftCanvasProps> = ({ draftId }) => {
     screenToFlowPosition({ x: event.clientX, y: event.clientY })
   ), [screenToFlowPosition]);
 
-  const findTouchedStrokeIds = useCallback((point: DraftStrokePoint) => {
-    if (!draft) return [];
-    const radius = 10 / viewport.zoom;
-    return draft.strokes.flatMap((stroke) => {
-      const touched = stroke.points.some((strokePoint) => Math.hypot(strokePoint.x - point.x, strokePoint.y - point.y) <= radius + stroke.width / 2);
-      return touched ? [stroke.id] : [];
-    });
-  }, [draft, viewport.zoom]);
-
-  const eraseAtPoint = useCallback((point: DraftStrokePoint) => {
-    const nextIds = new Set(erasedStrokeIdsRef.current);
-    findTouchedStrokeIds(point).forEach((strokeId) => nextIds.add(strokeId));
-    erasedStrokeIdsRef.current = nextIds;
-    setErasedStrokeIds(nextIds);
-  }, [findTouchedStrokeIds]);
+  const eraseToPoint = useCallback((point: DraftStrokePoint) => {
+    const previousPoint = eraserPointRef.current || point;
+    const nextStrokes = eraseStrokeSegment(erasedStrokesRef.current, previousPoint, point, 10 / viewport.zoom, viewport.zoom);
+    eraserPointRef.current = point;
+    erasedStrokesRef.current = nextStrokes;
+    setEraserPoint(point);
+    setErasedStrokesPreview(nextStrokes);
+  }, [viewport.zoom]);
 
   const beginStroke = useCallback((event: React.PointerEvent<SVGSVGElement>) => {
     if (!draft || event.button !== 0) return;
@@ -137,21 +191,25 @@ const DraftCanvas: React.FC<DraftCanvasProps> = ({ draftId }) => {
     drawingPointerRef.current = event.pointerId;
     const firstPoint = pointFromPointer(event);
     if (mode === 'erase') {
-      erasedStrokeIdsRef.current = new Set();
-      setErasedStrokeIds(new Set());
-      eraseAtPoint(firstPoint);
+      erasedStrokesRef.current = draft.strokes;
+      eraserPointRef.current = firstPoint;
+      setErasedStrokesPreview(draft.strokes);
+      eraseToPoint(firstPoint);
       return;
     }
     const points = [firstPoint];
     activePointsRef.current = points;
     setActivePoints(points);
-  }, [draft, eraseAtPoint, mode, pointFromPointer]);
+  }, [draft, eraseToPoint, mode, pointFromPointer]);
 
   const extendStroke = useCallback((event: React.PointerEvent<SVGSVGElement>) => {
-    if (drawingPointerRef.current !== event.pointerId) return;
     const point = pointFromPointer(event);
+    if (drawingPointerRef.current !== event.pointerId) {
+      if (mode === 'erase') setEraserPoint(point);
+      return;
+    }
     if (mode === 'erase') {
-      eraseAtPoint(point);
+      eraseToPoint(point);
       return;
     }
     const previous = activePointsRef.current.at(-1);
@@ -159,15 +217,17 @@ const DraftCanvas: React.FC<DraftCanvasProps> = ({ draftId }) => {
     const nextPoints = [...activePointsRef.current, point];
     activePointsRef.current = nextPoints;
     setActivePoints(nextPoints);
-  }, [eraseAtPoint, mode, pointFromPointer, viewport.zoom]);
+  }, [eraseToPoint, mode, pointFromPointer, viewport.zoom]);
 
   const finishStroke = useCallback((event: React.PointerEvent<SVGSVGElement>) => {
     if (!draft || drawingPointerRef.current !== event.pointerId) return;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
     if (mode === 'erase') {
-      removeDraftStrokes(draft.id, Array.from(erasedStrokeIdsRef.current));
-      erasedStrokeIdsRef.current = new Set();
-      setErasedStrokeIds(new Set());
+      replaceDraftStrokes(draft.id, erasedStrokesRef.current);
+      erasedStrokesRef.current = [];
+      eraserPointRef.current = null;
+      setErasedStrokesPreview(null);
+      setEraserPoint(null);
       drawingPointerRef.current = null;
       return;
     }
@@ -176,7 +236,7 @@ const DraftCanvas: React.FC<DraftCanvasProps> = ({ draftId }) => {
     drawingPointerRef.current = null;
     activePointsRef.current = [];
     setActivePoints([]);
-  }, [addDraftStroke, draft, mode, penColor, penWidth, removeDraftStrokes]);
+  }, [addDraftStroke, draft, mode, penColor, penWidth, replaceDraftStrokes]);
 
   if (!draft) return null;
 
@@ -200,7 +260,7 @@ const DraftCanvas: React.FC<DraftCanvasProps> = ({ draftId }) => {
             <button type="button" disabled={draft.strokes.length === 0} onClick={() => window.confirm('确定清空当前草稿的全部笔迹吗？') && clearDraftStrokes(draft.id)} className="flex h-9 items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-2.5 text-[11px] font-semibold text-rose-500 disabled:opacity-40"><Trash2 className="h-3.5 w-3.5" />清空笔迹</button>
           </>
         ) : mode === 'erase' ? (
-          <span className="self-center px-1 text-[10px] text-neutral-400">在笔迹上划过即可擦除整条笔迹</span>
+          <span className="self-center px-1 text-[10px] text-neutral-400">橡皮擦经过哪里，就只擦除哪里的笔迹</span>
         ) : <span className="self-center px-1 text-[10px] text-neutral-400">单击空白处创建节点，双击节点设置归属</span>}
       </div>
 
@@ -235,10 +295,12 @@ const DraftCanvas: React.FC<DraftCanvasProps> = ({ draftId }) => {
         onPointerMove={extendStroke}
         onPointerUp={finishStroke}
         onPointerCancel={finishStroke}
+        onPointerLeave={() => { if (drawingPointerRef.current === null) setEraserPoint(null); }}
       >
         <g transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.zoom})`}>
-          {draft.strokes.map((stroke) => erasedStrokeIds.has(stroke.id) ? null : <path key={stroke.id} d={makePath(stroke.points)} fill="none" stroke={stroke.color} strokeWidth={stroke.width} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />)}
+          {(erasedStrokesPreview || draft.strokes).map((stroke) => <path key={stroke.id} d={makePath(stroke.points)} fill="none" stroke={stroke.color} strokeWidth={stroke.width} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />)}
           {activePoints.length > 1 ? <path d={makePath(activePoints)} fill="none" stroke={penColor} strokeWidth={penWidth} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" /> : null}
+          {mode === 'erase' && eraserPoint ? <circle cx={eraserPoint.x} cy={eraserPoint.y} r={10 / viewport.zoom} fill="rgba(255,255,255,0.78)" stroke="#8d78d5" strokeWidth={1.5} vectorEffect="non-scaling-stroke" /> : null}
         </g>
       </svg>
     </div>
