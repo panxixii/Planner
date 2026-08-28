@@ -2,13 +2,15 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import {
   Calendar,
   ChevronDown,
+  ChevronRight,
   ChevronUp,
   Clock,
   GripVertical,
   LocateFixed,
 } from 'lucide-react';
 import { useAppStore } from '../store';
-import { getTaskComponentIds } from '../workspaceComponents';
+import { getTaskComponentIds, getWorkspaceGraph } from '../workspaceComponents';
+import type { Task } from '../types';
 
 type ZoomScaleType = 'minutes' | 'hours' | 'days';
 
@@ -26,6 +28,12 @@ type TaskResizeState = {
   originalEnd: number;
   previewStart: number;
   previewEnd: number;
+};
+
+type TimelineTaskRow = {
+  task: Task;
+  depth: number;
+  hasChildren: boolean;
 };
 
 const DEFAULT_TASK_COLUMN_WIDTH = 240;
@@ -136,6 +144,10 @@ export const TimelineLayer: React.FC = () => {
   const workspaceComponentFilter = useAppStore((state) => state.workspaceComponentFilter);
   const timeTemplates = useAppStore((state) => state.timeTemplates);
   const activeTimeTemplateIds = useAppStore((state) => state.activeTimeTemplateIds);
+  const goals = useAppStore((state) => state.goals);
+  const workspaceNodes = useAppStore((state) => state.workspaceNodes);
+  const mergedEdges = useAppStore((state) => state.mergedEdges);
+  const mergedNodePositions = useAppStore((state) => state.mergedNodePositions);
 
   const initialNowRef = useRef(Date.now());
   const timelineRootRef = useRef<HTMLDivElement>(null);
@@ -154,6 +166,7 @@ export const TimelineLayer: React.FC = () => {
   const [dragOverTaskId, setDragOverTaskId] = useState<string | null>(null);
   const [taskColumnWidth, setTaskColumnWidth] = useState(DEFAULT_TASK_COLUMN_WIDTH);
   const [taskResizePreview, setTaskResizePreview] = useState<TaskResizeState | null>(null);
+  const [collapsedTaskIds, setCollapsedTaskIds] = useState<Set<string>>(() => new Set());
 
   const scaleDefinition = SCALE_DEFINITIONS[zoomScale];
   const timelineWidth = WINDOW_COLUMN_COUNT * scaleDefinition.columnWidth;
@@ -206,6 +219,89 @@ export const TimelineLayer: React.FC = () => {
       return a.title.localeCompare(b.title);
     });
   }, [timelineTaskOrder, visibleTasks]);
+
+  const timelineRows = useMemo<TimelineTaskRow[]>(() => {
+    const visibleTaskIds = new Set(orderedVisibleTasks.map((task) => task.id));
+    const taskOrder = new Map<string, number>();
+    orderedVisibleTasks.forEach((task, index) => taskOrder.set(task.id, index));
+    const graph = getWorkspaceGraph(goals, workspaceNodes, mergedEdges, mergedNodePositions);
+    const parentCandidates = new Map<string, Map<string, number>>();
+
+    graph.edges.forEach((edge) => {
+      const sourcePosition = graph.nodePositions.get(edge.source);
+      const targetPosition = graph.nodePositions.get(edge.target);
+      const sourceTaskId = graph.nodeTaskIds.get(edge.source);
+      const targetTaskId = graph.nodeTaskIds.get(edge.target);
+      if (!sourcePosition || !targetPosition || !sourceTaskId || !targetTaskId || sourceTaskId === targetTaskId) return;
+
+      const sourceIsParent = sourcePosition.x <= targetPosition.x;
+      const parentTaskId = sourceIsParent ? sourceTaskId : targetTaskId;
+      const childTaskId = sourceIsParent ? targetTaskId : sourceTaskId;
+      if (!visibleTaskIds.has(parentTaskId) || !visibleTaskIds.has(childTaskId)) return;
+
+      const distance = Math.abs(targetPosition.x - sourcePosition.x);
+      const candidates = parentCandidates.get(childTaskId) || new Map<string, number>();
+      const currentDistance = candidates.get(parentTaskId);
+      if (currentDistance === undefined || distance < currentDistance) candidates.set(parentTaskId, distance);
+      parentCandidates.set(childTaskId, candidates);
+    });
+
+    const parentByTaskId = new Map<string, string>();
+    parentCandidates.forEach((candidates, childTaskId) => {
+      let closestParentId: string | null = null;
+      let closestDistance = Number.POSITIVE_INFINITY;
+      candidates.forEach((distance, parentTaskId) => {
+        if (
+          distance < closestDistance
+          || (distance === closestDistance && (taskOrder.get(parentTaskId) ?? Number.MAX_SAFE_INTEGER) < (taskOrder.get(closestParentId || '') ?? Number.MAX_SAFE_INTEGER))
+        ) {
+          closestParentId = parentTaskId;
+          closestDistance = distance;
+        }
+      });
+      if (closestParentId) parentByTaskId.set(childTaskId, closestParentId);
+    });
+
+    const childrenByTaskId = new Map<string, string[]>();
+    parentByTaskId.forEach((parentTaskId, childTaskId) => {
+      const children = childrenByTaskId.get(parentTaskId) || [];
+      children.push(childTaskId);
+      childrenByTaskId.set(parentTaskId, children);
+    });
+    childrenByTaskId.forEach((children) => {
+      children.sort((a, b) => (taskOrder.get(a) ?? Number.MAX_SAFE_INTEGER) - (taskOrder.get(b) ?? Number.MAX_SAFE_INTEGER));
+    });
+
+    const taskById = new Map<string, Task>();
+    orderedVisibleTasks.forEach((task) => taskById.set(task.id, task));
+    const rows: TimelineTaskRow[] = [];
+    const visited = new Set<string>();
+    const appendTask = (taskId: string, depth: number) => {
+      if (visited.has(taskId)) return;
+      const task = taskById.get(taskId);
+      if (!task) return;
+      visited.add(taskId);
+      const children = childrenByTaskId.get(taskId) || [];
+      rows.push({ task, depth, hasChildren: children.length > 0 });
+      if (collapsedTaskIds.has(taskId)) return;
+      children.forEach((childId) => appendTask(childId, depth + 1));
+    };
+
+    orderedVisibleTasks.forEach((task) => {
+      if (!parentByTaskId.has(task.id)) appendTask(task.id, 0);
+    });
+    orderedVisibleTasks.forEach((task) => appendTask(task.id, 0));
+    return rows;
+  }, [collapsedTaskIds, goals, mergedEdges, mergedNodePositions, orderedVisibleTasks, workspaceNodes]);
+
+  const toggleTaskCollapse = useCallback((taskId: string) => {
+    setCollapsedTaskIds((current) => {
+      const next = new Set(current);
+      if (next.has(taskId)) next.delete(taskId);
+      else next.add(taskId);
+      return next;
+    });
+  }, []);
 
   const headers = useMemo(
     () => Array.from({ length: WINDOW_COLUMN_COUNT }, (_, index) => {
@@ -479,7 +575,7 @@ export const TimelineLayer: React.FC = () => {
       ref={timelineRootRef}
       id="timeline"
       style={{ '--task-column-width': `${taskColumnWidth}px` } as React.CSSProperties}
-      className={`flex shrink-0 select-none flex-col border-t border-neutral-200 bg-white transition-all duration-300 ${isTimelineCollapsed ? 'h-[45px] overflow-hidden' : orderedVisibleTasks.length === 0 ? 'h-[90px] overflow-hidden' : 'h-80'}`}
+      className={`flex shrink-0 select-none flex-col border-t border-neutral-200 bg-white transition-all duration-300 ${isTimelineCollapsed ? 'h-[45px] overflow-hidden' : timelineRows.length === 0 ? 'h-[90px] overflow-hidden' : 'h-80'}`}
     >
       <div
         ref={dragPreviewRef}
@@ -601,10 +697,10 @@ export const TimelineLayer: React.FC = () => {
               </div>
             </div>
 
-            {orderedVisibleTasks.length > 0 && templateBands.length > 0 ? (
+            {timelineRows.length > 0 && templateBands.length > 0 ? (
               <div
                 className="pointer-events-none absolute top-11 z-0 overflow-hidden"
-                style={{ left: 'var(--task-column-width)', width: timelineWidth, height: orderedVisibleTasks.length * 52 }}
+                style={{ left: 'var(--task-column-width)', width: timelineWidth, height: timelineRows.length * 52 }}
               >
                 {templateBands.map((band) => (
                   <div
@@ -616,8 +712,8 @@ export const TimelineLayer: React.FC = () => {
               </div>
             ) : null}
 
-            {orderedVisibleTasks.length > 0 ? (
-              orderedVisibleTasks.map((task) => {
+            {timelineRows.length > 0 ? (
+              timelineRows.map(({ task, depth, hasChildren }) => {
                 let startTimestamp = parseTaskTimestamp(task.startTime!);
                 let endTimestamp = parseTaskTimestamp(task.endTime!, true);
 
@@ -650,7 +746,7 @@ export const TimelineLayer: React.FC = () => {
                   >
                     <div
                       style={{ width: 'var(--task-column-width)' }}
-                      className="sticky left-0 z-30 flex shrink-0 items-center gap-2 border-r border-neutral-200 bg-[#ffffff] px-4 pr-5"
+                      className="sticky left-0 z-30 flex shrink-0 items-center border-r border-neutral-200 bg-[#ffffff] px-4 pr-5"
                     >
                       <div
                         draggable
@@ -661,19 +757,41 @@ export const TimelineLayer: React.FC = () => {
                       >
                         <GripVertical className="h-3.5 w-3.5" />
                       </div>
-                      <div className="min-w-0 flex-1">
-                        <button
-                          type="button"
-                          onClick={() => selectTask(task.id)}
-                          className="block w-full truncate text-left text-xs font-semibold text-neutral-800 transition-colors hover:text-purple-600"
+                      <div className="custom-scrollbar min-w-0 flex-1 overflow-x-auto overflow-y-hidden">
+                        <div
+                          className="flex min-w-max items-center gap-1.5 py-1"
+                          style={{ paddingLeft: depth * 18 }}
                         >
-                          {task.title}
-                        </button>
-                        <div className="mt-0.5 flex items-center gap-1.5 text-[9px] text-neutral-400">
-                          <span>预期: {task.duration}h</span>
-                          <span className={`shrink-0 rounded px-1 text-[8px] leading-4 ${getCountdownClass(task.endTime!, task.isDone)}`}>
-                            {getDaysRemaining(task.endTime!)}
-                          </span>
+                          {hasChildren ? (
+                            <button
+                              type="button"
+                              onClick={() => toggleTaskCollapse(task.id)}
+                              className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-neutral-400 transition-colors hover:bg-purple-50 hover:text-purple-600"
+                              title={collapsedTaskIds.has(task.id) ? '展开子任务' : '折叠子任务'}
+                              aria-label={collapsedTaskIds.has(task.id) ? '展开子任务' : '折叠子任务'}
+                            >
+                              {collapsedTaskIds.has(task.id)
+                                ? <ChevronRight className="h-3.5 w-3.5" />
+                                : <ChevronDown className="h-3.5 w-3.5" />}
+                            </button>
+                          ) : (
+                            <span className="h-5 w-5 shrink-0" />
+                          )}
+                          <div className="min-w-max pr-2">
+                            <button
+                              type="button"
+                              onClick={() => selectTask(task.id)}
+                              className="block whitespace-nowrap text-left text-xs font-semibold text-neutral-800 transition-colors hover:text-purple-600"
+                            >
+                              {task.title}
+                            </button>
+                            <div className="mt-0.5 flex items-center gap-1.5 whitespace-nowrap text-[9px] text-neutral-400">
+                              <span>预期: {task.duration}h</span>
+                              <span className={`shrink-0 rounded px-1 text-[8px] leading-4 ${getCountdownClass(task.endTime!, task.isDone)}`}>
+                                {getDaysRemaining(task.endTime!)}
+                              </span>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
