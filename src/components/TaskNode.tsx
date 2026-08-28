@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Handle, NodeProps, Position } from '@xyflow/react';
-import { Check, Network, PanelRightOpen, Trash2, X } from 'lucide-react';
+import { Check, ListPlus, Network, PanelRightOpen, Trash2, X } from 'lucide-react';
 import { useAppStore } from '../store';
 import { getComponentLabel, getTaskComponentIds } from '../workspaceComponents';
 
@@ -8,7 +8,6 @@ interface TaskNodeData {
   taskId: string;
   goalId?: string | null;
   isMerged?: boolean;
-  componentColor?: string;
 }
 
 const colorMap: Record<string, { accent: string; surface: string; border: string }> = {
@@ -20,8 +19,14 @@ const colorMap: Record<string, { accent: string; surface: string; border: string
   indigo: { accent: '#9387d1', surface: '#f6f5fc', border: '#d1cbea' },
 };
 
+const hexToScheme = (color: string) => ({
+  accent: color,
+  surface: `${color}14`,
+  border: `${color}55`,
+});
+
 export const TaskNode = React.memo(({ id, data, selected }: NodeProps) => {
-  const { taskId, goalId, isMerged, componentColor } = data as unknown as TaskNodeData;
+  const { taskId, goalId, isMerged } = data as unknown as TaskNodeData;
   const task = useAppStore((state) => state.tasks[taskId]);
   const selectTask = useAppStore((state) => state.selectTask);
   const updateTask = useAppStore((state) => state.updateTask);
@@ -30,6 +35,8 @@ export const TaskNode = React.memo(({ id, data, selected }: NodeProps) => {
   const deleteNodeFromGoal = useAppStore((state) => state.deleteNodeFromGoal);
   const workspaceComponentFilter = useAppStore((state) => state.workspaceComponentFilter);
   const setTaskComponentIds = useAppStore((state) => state.setTaskComponentIds);
+  const addTaskToTodo = useAppStore((state) => state.addTaskToTodo);
+  const isInTodo = useAppStore((state) => state.todoItems.some((item) => item.taskId === taskId));
   const components = useAppStore((state) => state.workspaceComponents);
   const showActions = useAppStore((state) => state.activeNodeActionsId === id);
   const setActiveNodeActionsId = useAppStore((state) => state.setActiveNodeActionsId);
@@ -56,7 +63,8 @@ export const TaskNode = React.memo(({ id, data, selected }: NodeProps) => {
     );
   }
 
-  const scheme = colorMap[componentColor || task.color || 'indigo'] || colorMap.indigo;
+  const selectedColor = task.color || 'indigo';
+  const scheme = colorMap[selectedColor] || (/^#[0-9a-f]{6}$/i.test(selectedColor) ? hexToScheme(selectedColor) : colorMap.indigo);
 
   const startEditing = () => {
     if (isEditing) return;
@@ -174,6 +182,21 @@ export const TaskNode = React.memo(({ id, data, selected }: NodeProps) => {
               ) : null}
             </div>
           ) : null}
+
+          <button
+            type="button"
+            disabled={isInTodo}
+            onClick={() => {
+              setIsConfirmingDelete(false);
+              addTaskToTodo(taskId);
+            }}
+            className="flex h-8 w-[76px] items-center justify-center gap-1.5 rounded-md border border-sky-200 bg-sky-50 text-[11px] font-semibold text-sky-600 transition-colors hover:bg-sky-100 disabled:cursor-default disabled:opacity-50"
+            aria-label={isInTodo ? '已加入 Todo' : '加入 Todo 主线'}
+            title={isInTodo ? '此任务已在 Todo 中' : '按点击顺序加入 Todo 主线尾部'}
+          >
+            {isInTodo ? <Check className="h-3.5 w-3.5" /> : <ListPlus className="h-3.5 w-3.5" />}
+            <span>{isInTodo ? '已加入' : 'Todo'}</span>
+          </button>
 
           <button
             type="button"
