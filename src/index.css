@@ -461,6 +461,11 @@ body {
   transform: translateY(-1px);
 }
 
+.planner-node-popover {
+  background-color: #ffffff !important;
+  backdrop-filter: none !important;
+}
+
 /* React Flow nodes are separate stacking contexts; lift the owner of an open popover. */
 .react-flow__node:has(.planner-node-actions-open) {
   z-index: 10000 !important;

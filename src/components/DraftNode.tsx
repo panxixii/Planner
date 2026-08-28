@@ -20,10 +20,16 @@ const colorMap: Record<string, { accent: string; surface: string; border: string
   indigo: { accent: '#9387d1', surface: '#f6f5fc', border: '#d1cbea' },
 };
 
+const mixHexWithWhite = (color: string, colorRatio: number) => {
+  const channels = color.slice(1).match(/.{2}/g)?.map((channel) => Number.parseInt(channel, 16));
+  if (!channels || channels.length !== 3) return '#f6f5fc';
+  return `#${channels.map((channel) => Math.round(255 - (255 - channel) * colorRatio).toString(16).padStart(2, '0')).join('')}`;
+};
+
 const getScheme = (color: string) => {
   if (colorMap[color]) return colorMap[color];
   if (/^#[0-9a-f]{6}$/i.test(color)) {
-    return { accent: color, surface: `${color}14`, border: `${color}55` };
+    return { accent: color, surface: mixHexWithWhite(color, 0.08), border: mixHexWithWhite(color, 0.34) };
   }
   return colorMap.indigo;
 };
@@ -111,7 +117,7 @@ export const DraftNode = React.memo(({ id, data, selected }: NodeProps) => {
       <NodeResizer isVisible={selected} minWidth={112} minHeight={40} maxWidth={420} maxHeight={180} color={scheme.accent} handleStyle={{ width: 8, height: 8, borderRadius: 3 }} lineStyle={{ borderWidth: 1 }} onResizeStart={() => onResizeStart?.()} onResizeEnd={(_event, params) => onResizeEnd?.(id, params.width, params.height)} />
       {showActions ? (
         <div
-          className="nodrag nopan nowheel absolute bottom-full left-1/2 z-[10020] mb-2 flex -translate-x-1/2 items-center gap-1.5 rounded-lg border border-neutral-200 bg-white p-1 shadow-2xl"
+          className="planner-node-popover nodrag nopan nowheel absolute bottom-full left-1/2 z-[10020] mb-2 flex -translate-x-1/2 items-center gap-1.5 rounded-lg border border-neutral-200 bg-white p-1 shadow-2xl"
           onClick={(event) => event.stopPropagation()}
           onDoubleClick={(event) => event.stopPropagation()}
           onPointerDown={(event) => event.stopPropagation()}
@@ -128,7 +134,7 @@ export const DraftNode = React.memo(({ id, data, selected }: NodeProps) => {
               <Network className="h-3.5 w-3.5" />归属
             </button>
             {activePanel === 'membership' ? (
-              <div className="absolute bottom-full left-1/2 z-[10021] mb-2 w-64 -translate-x-1/2 rounded-xl border border-neutral-200 bg-white p-2.5 text-left shadow-2xl">
+              <div className="planner-node-popover absolute bottom-full left-1/2 z-[10021] mb-2 w-64 -translate-x-1/2 rounded-xl border border-neutral-200 bg-white p-2.5 text-left shadow-2xl">
                 <p className="mb-2 px-1 text-[10px] leading-4 text-neutral-400">勾选后，这个节点会进入工作区，并可被对应联通块复用。</p>
                 <div className="max-h-44 space-y-1 overflow-y-auto custom-scrollbar">
                   {components.length > 0 ? components.map((component, index) => (
@@ -155,7 +161,7 @@ export const DraftNode = React.memo(({ id, data, selected }: NodeProps) => {
               <CircleDot className="h-3.5 w-3.5" />状态
             </button>
             {activePanel === 'status' ? (
-              <div className="absolute bottom-full left-1/2 z-[10021] mb-2 w-44 -translate-x-1/2 rounded-lg border border-neutral-200 bg-white p-1.5 text-left shadow-xl">
+              <div className="planner-node-popover absolute bottom-full left-1/2 z-[10021] mb-2 w-44 -translate-x-1/2 rounded-lg border border-neutral-200 bg-white p-1.5 text-left shadow-xl">
                 <p className="px-2 pb-1 pt-0.5 text-[10px] font-semibold text-neutral-400">变更任务状态</p>
                 <div className="max-h-52 space-y-0.5 overflow-y-auto custom-scrollbar">
                   {taskStatuses.map((status) => {

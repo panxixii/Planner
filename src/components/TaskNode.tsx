@@ -21,10 +21,16 @@ const colorMap: Record<string, { accent: string; surface: string; border: string
   indigo: { accent: '#9387d1', surface: '#f6f5fc', border: '#d1cbea' },
 };
 
+const mixHexWithWhite = (color: string, colorRatio: number) => {
+  const channels = color.slice(1).match(/.{2}/g)?.map((channel) => Number.parseInt(channel, 16));
+  if (!channels || channels.length !== 3) return '#f6f5fc';
+  return `#${channels.map((channel) => Math.round(255 - (255 - channel) * colorRatio).toString(16).padStart(2, '0')).join('')}`;
+};
+
 const hexToScheme = (color: string) => ({
   accent: color,
-  surface: `${color}14`,
-  border: `${color}55`,
+  surface: mixHexWithWhite(color, 0.08),
+  border: mixHexWithWhite(color, 0.34),
 });
 
 export const TaskNode = React.memo(({ id, data, selected }: NodeProps) => {
@@ -105,9 +111,7 @@ export const TaskNode = React.memo(({ id, data, selected }: NodeProps) => {
         setActiveNodeActionsId(showActions ? null : id);
       }}
       title="单击改名，双击显示节点操作"
-      className={`planner-mind-node group relative flex h-full min-h-10 w-full min-w-28 items-center justify-center rounded-[999px] border px-5 text-center transition-[box-shadow,border-color,transform,opacity] duration-150 ${
-        task.isDone ? 'opacity-55' : ''
-      } ${selected ? 'planner-mind-node-selected' : ''} ${showActions ? 'planner-node-actions-open' : ''}`}
+      className={`planner-mind-node group relative flex h-full min-h-10 w-full min-w-28 items-center justify-center rounded-[999px] border px-5 text-center transition-[box-shadow,border-color,transform] duration-150 ${selected ? 'planner-mind-node-selected' : ''} ${showActions ? 'planner-node-actions-open' : ''}`}
       style={{
         backgroundColor: task.isDone ? '#f7f8fa' : scheme.surface,
         borderColor: task.isDone ? (selected ? '#9ca3af' : '#d1d5db') : (selected ? scheme.accent : scheme.border),
@@ -121,7 +125,7 @@ export const TaskNode = React.memo(({ id, data, selected }: NodeProps) => {
       <NodeResizer isVisible={selected} minWidth={112} minHeight={40} maxWidth={420} maxHeight={180} color={scheme.accent} handleStyle={{ width: 8, height: 8, borderRadius: 3 }} lineStyle={{ borderWidth: 1 }} onResizeStart={() => onResizeStart?.()} onResizeEnd={(_event, params) => onResizeEnd?.(id, params.width, params.height)} />
       {showActions ? (
         <div
-          className="nodrag nopan nowheel absolute bottom-full left-1/2 z-50 mb-2 flex -translate-x-1/2 items-center gap-1.5 rounded-lg border border-neutral-200 bg-white p-1 shadow-lg"
+          className="planner-node-popover nodrag nopan nowheel absolute bottom-full left-1/2 z-50 mb-2 flex -translate-x-1/2 items-center gap-1.5 rounded-lg border border-neutral-200 bg-white p-1 shadow-lg"
           onClick={(event) => event.stopPropagation()}
           onDoubleClick={(event) => event.stopPropagation()}
           onMouseDown={(event) => event.stopPropagation()}
@@ -173,7 +177,7 @@ export const TaskNode = React.memo(({ id, data, selected }: NodeProps) => {
                 <span>归属</span>
               </button>
               {isChoosingComponents ? (
-                <div className="absolute bottom-full left-1/2 z-[10001] mb-2 w-56 -translate-x-1/2 rounded-lg border border-neutral-200 bg-white p-2 shadow-xl">
+                <div className="planner-node-popover absolute bottom-full left-1/2 z-[10001] mb-2 w-56 -translate-x-1/2 rounded-lg border border-neutral-200 bg-white p-2 shadow-xl">
                   <p className="px-1 pb-1.5 text-[10px] font-semibold text-neutral-500">选择可复用此节点的联通块</p>
                   <div className="max-h-48 space-y-1 overflow-y-auto custom-scrollbar">
                     {components.length > 0 ? components.map((component, index) => (
@@ -216,7 +220,7 @@ export const TaskNode = React.memo(({ id, data, selected }: NodeProps) => {
               <span>状态</span>
             </button>
             {isChoosingStatus ? (
-              <div className="absolute bottom-full left-1/2 z-[10001] mb-2 w-44 -translate-x-1/2 rounded-lg border border-neutral-200 bg-white p-1.5 shadow-xl">
+              <div className="planner-node-popover absolute bottom-full left-1/2 z-[10001] mb-2 w-44 -translate-x-1/2 rounded-lg border border-neutral-200 bg-white p-1.5 shadow-xl">
                 <p className="px-2 pb-1 pt-0.5 text-[10px] font-semibold text-neutral-400">变更任务状态</p>
                 <div className="max-h-52 space-y-0.5 overflow-y-auto custom-scrollbar">
                   {taskStatuses.map((status) => {
