@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import {
   BarChart3,
   Check,
   ChevronLeft,
   ChevronRight,
-  Layers2,
+  Clock3,
+  FilePenLine,
   ListTodo,
   Trash2,
   Workflow,
@@ -17,11 +18,17 @@ import { WorkspaceFilterBar } from './components/WorkspaceFilterBar';
 import { ComponentDetailsDrawer } from './components/ComponentDetailsDrawer';
 import { DataTransferControls } from './components/DataTransferControls';
 
-type MenuId = 'task-pool' | 'workspace' | 'statistics';
+const TodoPage = lazy(() => import('./components/TodoPage').then((module) => ({ default: module.TodoPage })));
+const TimeTemplatesPage = lazy(() => import('./components/TimeTemplatesPage').then((module) => ({ default: module.TimeTemplatesPage })));
+const DraftsPage = lazy(() => import('./components/DraftsPage').then((module) => ({ default: module.DraftsPage })));
+
+type MenuId = 'task-pool' | 'workspace' | 'drafts' | 'time-templates' | 'statistics';
 
 const menuItems = [
   { id: 'task-pool' as const, label: 'Todo', icon: ListTodo },
   { id: 'workspace' as const, label: '工作区', icon: Workflow },
+  { id: 'drafts' as const, label: '草稿', icon: FilePenLine },
+  { id: 'time-templates' as const, label: '时间模版', icon: Clock3 },
   { id: 'statistics' as const, label: '统计', icon: BarChart3 },
 ];
 
@@ -121,16 +128,6 @@ export default function App() {
               {activeMenuLabel}
             </span>
 
-            {activeMenu === 'workspace' && isMergedView ? (
-              <>
-                <ChevronRight className="h-3.5 w-3.5 shrink-0 text-neutral-300" />
-                <span className="flex items-center gap-1.5 rounded-md border border-purple-200 bg-purple-50 px-2 py-0.5 text-xs font-semibold text-purple-600">
-                  <Layers2 className="h-3.5 w-3.5" />
-                  合并工作区
-                </span>
-              </>
-            ) : null}
-
           </div>
 
           {activeMenu === 'workspace' ? (
@@ -160,6 +157,18 @@ export default function App() {
             </div>
             <TimelineLayer />
           </div>
+        ) : activeMenu === 'task-pool' ? (
+          <Suspense fallback={<div className="flex min-h-0 flex-1 items-center justify-center text-sm text-neutral-400">正在加载 Todo…</div>}>
+            <TodoPage />
+          </Suspense>
+        ) : activeMenu === 'time-templates' ? (
+          <Suspense fallback={<div className="flex min-h-0 flex-1 items-center justify-center text-sm text-neutral-400">正在加载时间模版…</div>}>
+            <TimeTemplatesPage />
+          </Suspense>
+        ) : activeMenu === 'drafts' ? (
+          <Suspense fallback={<div className="flex min-h-0 flex-1 items-center justify-center text-sm text-neutral-400">正在加载草稿…</div>}>
+            <DraftsPage />
+          </Suspense>
         ) : (
           <div className="min-h-0 flex-1 bg-neutral-50" aria-label={`${activeMenuLabel}页面`} />
         )}
