@@ -281,9 +281,7 @@ const DraftCanvas: React.FC<DraftCanvasProps> = ({ draftId }) => {
             <button type="button" disabled={!canUndo} onClick={undo} className="flex h-9 items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-2.5 text-[11px] font-semibold text-neutral-500 disabled:opacity-40"><RotateCcw className="h-3.5 w-3.5" />撤销</button>
             <button type="button" disabled={draft.strokes.length === 0} onClick={() => window.confirm('确定清空当前草稿的全部笔迹吗？') && clearDraftStrokes(draft.id)} className="flex h-9 items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-2.5 text-[11px] font-semibold text-rose-500 disabled:opacity-40"><Trash2 className="h-3.5 w-3.5" />清空笔迹</button>
           </>
-        ) : mode === 'erase' ? (
-          <span className="self-center px-1 text-[10px] text-neutral-400">橡皮擦经过哪里，就只擦除哪里的笔迹</span>
-        ) : <span className="self-center px-1 text-[10px] text-neutral-400">{mode === 'select' ? '拖动空白区域框选节点，中键或右键移动画布' : '左键拖动画布，双击空白处创建节点'}</span>}
+        ) : null}
       </div>
 
       <ReactFlow
@@ -372,7 +370,6 @@ export const DraftsPage: React.FC = () => {
             </div>
           ))}
         </div>
-        <p className="mt-3 text-[10px] leading-4 text-neutral-400">草稿节点可连接、自由排布。双击节点即可把它归属到已有联通块。</p>
       </aside>
 
       {activeDraft ? (
@@ -384,7 +381,6 @@ export const DraftsPage: React.FC = () => {
           <div className="max-w-sm rounded-2xl border border-dashed border-purple-200 bg-white/80 p-8 text-center shadow-sm">
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-purple-50 text-purple-600"><FilePlus2 className="h-5 w-5" /></div>
             <h2 className="mt-4 text-sm font-bold text-neutral-700">创建第一张草稿</h2>
-            <p className="mt-2 text-xs leading-5 text-neutral-400">用节点梳理想法，也可以直接在画板上书写和勾画。</p>
           </div>
         </div>
       )}

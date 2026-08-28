@@ -65,7 +65,6 @@ export const ComponentDetailsDrawer: React.FC = () => {
               <Trash2 className="h-4 w-4" />
               {isConfirmingDelete ? '确认删除' : '删除联通块'}
             </button>
-            <p className="text-center text-[10px] text-neutral-400">只删除联通块及节点归属，不删除任务节点</p>
           </section>
         </div>
       </aside>

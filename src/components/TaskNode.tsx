@@ -178,7 +178,7 @@ export const TaskNode = React.memo(({ id, data, selected }: NodeProps) => {
               </button>
               {isChoosingComponents ? (
                 <div className="planner-node-popover absolute bottom-full left-1/2 z-[10001] mb-2 w-56 -translate-x-1/2 rounded-lg border border-neutral-200 bg-white p-2 shadow-xl">
-                  <p className="px-1 pb-1.5 text-[10px] font-semibold text-neutral-500">选择可复用此节点的联通块</p>
+                  <p className="px-1 pb-1.5 text-[10px] font-semibold text-neutral-500">所属联通块</p>
                   <div className="max-h-48 space-y-1 overflow-y-auto custom-scrollbar">
                     {components.length > 0 ? components.map((component, index) => (
                       <label key={component.id} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-[11px] text-neutral-600 hover:bg-neutral-50">

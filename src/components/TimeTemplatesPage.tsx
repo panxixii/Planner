@@ -150,7 +150,7 @@ export const TimeTemplatesPage: React.FC = () => {
               </div>
             </section>
           ))}
-          {templates.length === 0 ? <p className="px-3 py-8 text-center text-xs leading-5 text-neutral-400">分别创建 24 小时或周模版，双击时间轴生成时间块。</p> : null}
+          {templates.length === 0 ? <p className="px-3 py-8 text-center text-xs text-neutral-400">暂无模版</p> : null}
         </div>
       </aside>
 
@@ -164,7 +164,6 @@ export const TimeTemplatesPage: React.FC = () => {
                 <button type="button" onClick={() => { if (window.confirm(`确定删除“${selectedTemplate.name || '未命名模版'}”吗？`)) deleteTemplate(selectedTemplate.id); }} className="flex h-9 items-center gap-1.5 rounded-lg border border-rose-200 bg-white px-3 text-xs font-semibold text-rose-500 hover:bg-rose-50"><Trash2 className="h-3.5 w-3.5" />删除模版</button>
               </div>
             </header>
-            <p className="rounded-lg border border-purple-100 bg-purple-50/70 px-4 py-2.5 text-xs text-purple-600">双击时间轴空白处创建时间块；拖动时间块改变位置，拖动左右两端改变长度；双击时间块打开详情。</p>
             <section className="overflow-x-auto rounded-xl border border-neutral-200 bg-white shadow-sm custom-scrollbar">
               <div style={{ width: timelineWidth }}>
                 <div className="flex h-12 border-b border-neutral-200 bg-neutral-50">

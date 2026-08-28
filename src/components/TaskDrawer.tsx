@@ -255,7 +255,6 @@ export const TaskDrawer: React.FC = () => {
               <div className="mt-4 border-t border-neutral-200 pt-4">
                 <div className="mb-2 flex items-center justify-between gap-3">
                   <span className="text-[11px] font-semibold text-neutral-500">状态选项</span>
-                  <span className="text-[10px] text-neutral-400">默认状态不可删除</span>
                 </div>
 
                 <div className="divide-y divide-neutral-100 border-y border-neutral-100">

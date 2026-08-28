@@ -23,7 +23,6 @@ import { CanvasSelectionToolbar } from './CanvasSelectionToolbar';
 import { 
   Layers2, 
   Sparkles, 
-  MousePointerClick,
   MousePointer2,
   Scan,
   ZoomIn, 
@@ -630,7 +629,6 @@ const DAGInnerWorkspace: React.FC = () => {
     : (selectedGoalId ? goals[selectedGoalId]?.title : '选择计划');
 
   const activeDescription = selectedGoalId ? goals[selectedGoalId]?.description : '';
-  const showEmptyPlaceholder = !localNodes.some((node) => node.type === 'taskNode');
   const selectedTaskNodes = useMemo(() => localNodes.filter((node) => node.type === 'taskNode' && node.selected), [localNodes]);
   const selectedTaskIds = selectedTaskNodes.flatMap((node) => {
     const taskId = (node.data as { taskId?: string }).taskId;
@@ -648,14 +646,6 @@ const DAGInnerWorkspace: React.FC = () => {
 
   return (
     <div className="flex-1 flex flex-col min-h-0 relative select-none">
-      {showEmptyPlaceholder ? (
-        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-6">
-          <div className="flex items-center gap-3 rounded-lg border border-neutral-200 bg-white/95 px-4 py-3 text-neutral-600 shadow-lg backdrop-blur-xs">
-            <MousePointerClick className="h-5 w-5 shrink-0 text-purple-600" />
-            <span className="text-sm font-semibold">双击空白处创建节点</span>
-          </div>
-        </div>
-      ) : null}
       {selectedTaskIds.length > 1 ? <CanvasSelectionToolbar taskIds={selectedTaskIds} onRemove={removeSelectedNodes} /> : null}
       <div className="absolute left-1/2 bottom-6 z-30 flex -translate-x-1/2 items-center gap-1 rounded-xl border border-neutral-200 bg-white/95 p-1 shadow-lg">
         <button type="button" onClick={() => setCanvasTool('pan')} className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-semibold ${canvasTool === 'pan' ? 'bg-purple-100 text-purple-600' : 'text-neutral-500 hover:bg-neutral-50'}`}><MousePointer2 className="h-3.5 w-3.5" />移动</button>

@@ -179,7 +179,7 @@ const TodoLaneGraph: React.FC<{ lane: TodoLane; isMain: boolean }> = ({ lane, is
       </header>
       <div ref={laneDrop.setNodeRef} className={`min-h-[158px] overflow-x-auto p-6 custom-scrollbar ${laneDrop.isOver ? 'bg-purple-50/40 ring-2 ring-inset ring-purple-200' : ''}`}>
         <div className="relative" style={{ width: layout.width, height: layout.height }}>
-          {items.length === 0 ? <div className="absolute inset-0 flex items-center justify-center text-xs text-neutral-400">把任务拖到这里，或从工作区加入 Todo</div> : null}
+          {items.length === 0 ? <div className="absolute inset-0 flex items-center justify-center text-xs text-neutral-400">暂无任务</div> : null}
           <svg className="pointer-events-none absolute inset-0 h-full w-full overflow-visible">
             {layout.edges.map((edge, index) => <path key={`${edge.fromX}-${edge.toX}-${index}`} d={`M ${edge.fromX} ${edge.fromY} C ${edge.fromX} ${(edge.fromY + edge.toY) / 2}, ${edge.toX} ${(edge.fromY + edge.toY) / 2}, ${edge.toX} ${edge.toY}`} fill="none" stroke="#aeb6c5" strokeWidth="2.5" strokeLinecap="round" />)}
           </svg>
@@ -213,7 +213,7 @@ export const TodoPage: React.FC = () => {
     <DndContext sensors={sensors} collisionDetection={todoCollisionDetection} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setActiveTaskId(null)}>
       <div className="min-h-0 flex-1 overflow-y-auto bg-neutral-50 p-6 custom-scrollbar">
         <div className="mx-auto max-w-[1500px] space-y-5">
-          <div className="flex items-center justify-between"><div><h2 className="text-lg font-bold text-neutral-800">Todo 执行路线</h2><p className="mt-1 text-xs text-neutral-500">拖到其他主线或分线的空白区域即可转移；拖到圆点成为子任务，拖到圆点前调整顺序。</p></div><button type="button" onClick={() => addLane()} className="flex h-9 items-center gap-1.5 rounded-lg border border-purple-200 bg-purple-50 px-3 text-xs font-semibold text-purple-600"><Plus className="h-4 w-4" />新增分线</button></div>
+          <div className="flex items-center justify-between"><h2 className="text-lg font-bold text-neutral-800">Todo 执行路线</h2><button type="button" onClick={() => addLane()} className="flex h-9 items-center gap-1.5 rounded-lg border border-purple-200 bg-purple-50 px-3 text-xs font-semibold text-purple-600"><Plus className="h-4 w-4" />新增分线</button></div>
           {lanes.map((lane, index) => <TodoLaneGraph key={lane.id} lane={lane} isMain={index === 0} />)}
         </div>
       </div>

@@ -135,7 +135,6 @@ export const DraftNode = React.memo(({ id, data, selected }: NodeProps) => {
             </button>
             {activePanel === 'membership' ? (
               <div className="planner-node-popover absolute bottom-full left-1/2 z-[10021] mb-2 w-64 -translate-x-1/2 rounded-xl border border-neutral-200 bg-white p-2.5 text-left shadow-2xl">
-                <p className="mb-2 px-1 text-[10px] leading-4 text-neutral-400">勾选后，这个节点会进入工作区，并可被对应联通块复用。</p>
                 <div className="max-h-44 space-y-1 overflow-y-auto custom-scrollbar">
                   {components.length > 0 ? components.map((component, index) => (
                     <label key={component.id} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-[11px] text-neutral-600 hover:bg-neutral-50">
@@ -143,7 +142,7 @@ export const DraftNode = React.memo(({ id, data, selected }: NodeProps) => {
                       <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: component.color }} />
                       <span className="truncate">{getComponentLabel(component, index)}</span>
                     </label>
-                  )) : <span className="block rounded-lg bg-neutral-50 px-2 py-3 text-center text-[11px] text-neutral-400">请先在工作区筛选栏新建联通块</span>}
+                  )) : <span className="block rounded-lg bg-neutral-50 px-2 py-3 text-center text-[11px] text-neutral-400">暂无联通块</span>}
                 </div>
               </div>
             ) : null}

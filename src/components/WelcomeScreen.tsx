@@ -21,7 +21,6 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onStart }) => (
         开始使用
         <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
       </button>
-      <span className="mt-5 text-[10px] text-slate-400">点击按钮进入你的工作空间</span>
     </main>
   </div>
 );
