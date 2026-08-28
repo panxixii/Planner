@@ -24,6 +24,8 @@ import {
   Layers2, 
   Sparkles, 
   MousePointerClick,
+  MousePointer2,
+  Scan,
   ZoomIn, 
   ZoomOut, 
   Maximize
@@ -64,6 +66,7 @@ const DAGInnerWorkspace: React.FC = () => {
   const { screenToFlowPosition, zoomIn, zoomOut, fitView } = useReactFlow();
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [canvasTool, setCanvasTool] = useState<'pan' | 'select'>('pan');
   const isConnectingRef = useRef(false);
   const suppressPaneClickUntilRef = useRef(0);
 
@@ -654,6 +657,10 @@ const DAGInnerWorkspace: React.FC = () => {
         </div>
       ) : null}
       {selectedTaskIds.length > 1 ? <CanvasSelectionToolbar taskIds={selectedTaskIds} onRemove={removeSelectedNodes} /> : null}
+      <div className="absolute left-1/2 bottom-6 z-30 flex -translate-x-1/2 items-center gap-1 rounded-xl border border-neutral-200 bg-white/95 p-1 shadow-lg">
+        <button type="button" onClick={() => setCanvasTool('pan')} className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-semibold ${canvasTool === 'pan' ? 'bg-purple-100 text-purple-600' : 'text-neutral-500 hover:bg-neutral-50'}`}><MousePointer2 className="h-3.5 w-3.5" />移动</button>
+        <button type="button" onClick={() => setCanvasTool('select')} className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-semibold ${canvasTool === 'select' ? 'bg-purple-100 text-purple-600' : 'text-neutral-500 hover:bg-neutral-50'}`}><Scan className="h-3.5 w-3.5" />框选</button>
+      </div>
 
       {/* 2. Topology Left Info Board & Checklist */}
       <div className="absolute top-5 left-5 z-20 max-w-xs bg-white/95 border border-neutral-200 rounded-2xl shadow-lg p-4 pointer-events-auto space-y-2">
@@ -732,9 +739,9 @@ const DAGInnerWorkspace: React.FC = () => {
           connectionLineStyle={{ stroke: '#8d78d5', strokeWidth: 2.25 }}
           connectionRadius={28}
           zoomOnDoubleClick={false}
-          selectionOnDrag
+          selectionOnDrag={canvasTool === 'select'}
           selectionMode={SelectionMode.Partial}
-          panOnDrag={[1, 2]}
+          panOnDrag={canvasTool === 'pan' ? [0, 1, 2] : [1, 2]}
           onPaneClick={handlePaneClick}
           onEdgeDoubleClick={onEdgeDoubleClick}
           onNodesDelete={onNodesDelete}

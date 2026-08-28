@@ -17,7 +17,7 @@ import {
   SelectionMode,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Eraser, FilePlus2, MousePointer2, Pencil, RotateCcw, Trash2 } from 'lucide-react';
+import { Eraser, FilePlus2, Hand, Pencil, RotateCcw, Scan, Trash2 } from 'lucide-react';
 import { useAppStore } from '../store';
 import { DraftStroke, DraftStrokePoint, GoalNode, Task } from '../types';
 import { ColorPicker } from './ColorPicker';
@@ -106,7 +106,7 @@ const DraftCanvas: React.FC<DraftCanvasProps> = ({ draftId }) => {
   const beginHistoryGroup = useAppStore((state) => state.beginHistoryGroup);
   const endHistoryGroup = useAppStore((state) => state.endHistoryGroup);
   const { screenToFlowPosition } = useReactFlow();
-  const [mode, setMode] = useState<'select' | 'draw' | 'erase'>('select');
+  const [mode, setMode] = useState<'pan' | 'select' | 'draw' | 'erase'>('pan');
   const [penColor, setPenColor] = useState('#8D78D5');
   const [penWidth, setPenWidth] = useState(4);
   const [nodes, setNodes] = useState<Node[]>([]);
@@ -155,7 +155,7 @@ const DraftCanvas: React.FC<DraftCanvasProps> = ({ draftId }) => {
   }, []);
 
   const createNode = useCallback((event: React.MouseEvent) => {
-    if (!draft || mode !== 'select' || event.detail !== 2) return;
+    if (!draft || (mode !== 'pan' && mode !== 'select') || event.detail !== 2) return;
     const position = screenToFlowPosition({ x: event.clientX, y: event.clientY });
     const taskId = makeId('task-draft');
     const nodeId = makeId('node-draft');
@@ -264,10 +264,11 @@ const DraftCanvas: React.FC<DraftCanvasProps> = ({ draftId }) => {
 
   return (
     <div className="relative min-h-0 flex-1 overflow-hidden bg-white">
-      {mode === 'select' && selectedTaskIds.length > 1 ? <CanvasSelectionToolbar taskIds={selectedTaskIds} onRemove={() => selectedNodes.forEach((node) => removeDraftNode(draft.id, node.id))} /> : null}
+      {(mode === 'pan' || mode === 'select') && selectedTaskIds.length > 1 ? <CanvasSelectionToolbar taskIds={selectedTaskIds} onRemove={() => selectedNodes.forEach((node) => removeDraftNode(draft.id, node.id))} /> : null}
       <div className="absolute left-5 top-5 z-40 flex max-w-[calc(100%-2.5rem)] items-start gap-2 rounded-xl border border-neutral-200 bg-white/95 p-2 shadow-lg backdrop-blur-md">
         <div className="flex items-center gap-1 rounded-lg bg-neutral-100/70 p-1">
-          <button type="button" onClick={() => setMode('select')} className={`flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[11px] font-semibold ${mode === 'select' ? 'bg-white text-purple-600 shadow-sm' : 'text-neutral-500'}`}><MousePointer2 className="h-3.5 w-3.5" />选择</button>
+          <button type="button" onClick={() => setMode('pan')} className={`flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[11px] font-semibold ${mode === 'pan' ? 'bg-white text-purple-600 shadow-sm' : 'text-neutral-500'}`}><Hand className="h-3.5 w-3.5" />移动</button>
+          <button type="button" onClick={() => setMode('select')} className={`flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[11px] font-semibold ${mode === 'select' ? 'bg-white text-purple-600 shadow-sm' : 'text-neutral-500'}`}><Scan className="h-3.5 w-3.5" />框选</button>
           <button type="button" onClick={() => setMode('draw')} className={`flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[11px] font-semibold ${mode === 'draw' ? 'bg-white text-purple-600 shadow-sm' : 'text-neutral-500'}`}><Pencil className="h-3.5 w-3.5" />画笔</button>
           <button type="button" onClick={() => setMode('erase')} className={`flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[11px] font-semibold ${mode === 'erase' ? 'bg-white text-purple-600 shadow-sm' : 'text-neutral-500'}`}><Eraser className="h-3.5 w-3.5" />橡皮擦</button>
         </div>
@@ -282,7 +283,7 @@ const DraftCanvas: React.FC<DraftCanvasProps> = ({ draftId }) => {
           </>
         ) : mode === 'erase' ? (
           <span className="self-center px-1 text-[10px] text-neutral-400">橡皮擦经过哪里，就只擦除哪里的笔迹</span>
-        ) : <span className="self-center px-1 text-[10px] text-neutral-400">双击空白处创建节点，双击节点设置归属</span>}
+        ) : <span className="self-center px-1 text-[10px] text-neutral-400">{mode === 'select' ? '拖动空白区域框选节点，中键或右键移动画布' : '左键拖动画布，双击空白处创建节点'}</span>}
       </div>
 
       <ReactFlow
@@ -296,12 +297,12 @@ const DraftCanvas: React.FC<DraftCanvasProps> = ({ draftId }) => {
         onEdgeDoubleClick={(_event, edge) => removeDraftEdge(draft.id, edge.id)}
         onConnect={connectNodes}
         onPaneClick={createNode}
-        nodesDraggable={mode === 'select'}
-        nodesConnectable={mode === 'select'}
-        elementsSelectable={mode === 'select'}
+        nodesDraggable={mode === 'pan' || mode === 'select'}
+        nodesConnectable={mode === 'pan' || mode === 'select'}
+        elementsSelectable={mode === 'pan' || mode === 'select'}
         selectionOnDrag={mode === 'select'}
         selectionMode={SelectionMode.Partial}
-        panOnDrag={mode === 'select' ? [1, 2] : false}
+        panOnDrag={mode === 'pan' ? [0, 1, 2] : mode === 'select' ? [1, 2] : false}
         zoomOnDoubleClick={false}
         fitView
         minZoom={0.15}
