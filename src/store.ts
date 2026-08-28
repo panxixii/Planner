@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { AppState, Task, Goal, BOMTreeItem, CategoryType, GoalNode, GoalEdge, AppCategory, TaskStatus, WorkspaceComponent } from './types';
+import { AppState, Task, Goal, BOMTreeItem, CategoryType, DraftBoard, DraftStroke, GoalNode, GoalEdge, AppCategory, TaskStatus, TimeTemplate, TimeTemplateBlock, TodoItem, TodoLane, WorkspaceComponent } from './types';
 import { getDescendantTaskIds, getWorkspaceGraph } from './workspaceComponents';
 
 // Helper to generate IDs
@@ -139,6 +139,9 @@ const DEFAULT_TASK_STATUSES: TaskStatus[] = [
   { id: 'status-in-progress', label: '进行中', isSystem: true },
   { id: 'status-completed', label: '已完成', isCompleted: true, isSystem: true },
 ];
+
+const DEFAULT_TODO_LANES: TodoLane[] = [{ id: 'todo-main', name: '主线' }];
+const DEFAULT_TIME_TEMPLATES: TimeTemplate[] = [];
 
 // Helper to load state from localStorage with robust schema verification & fallback migration
 const loadSavedState = () => {
@@ -281,6 +284,79 @@ const loadSavedState = () => {
                 handlePosition: component.handlePosition || { x: 80, y: 40 },
               }))
             : [],
+          todoLanes: Array.isArray(parsed.todoLanes) && parsed.todoLanes.length > 0
+            ? parsed.todoLanes.filter((lane: unknown): lane is TodoLane => (
+                Boolean(lane)
+                && typeof lane === 'object'
+                && typeof (lane as TodoLane).id === 'string'
+                && typeof (lane as TodoLane).name === 'string'
+              ))
+            : DEFAULT_TODO_LANES,
+          todoItems: Array.isArray(parsed.todoItems)
+            ? parsed.todoItems.filter((item: unknown): item is TodoItem => (
+                Boolean(item)
+                && typeof item === 'object'
+                && typeof (item as TodoItem).taskId === 'string'
+                && typeof (item as TodoItem).laneId === 'string'
+                && ((item as TodoItem).parentTaskId === null || typeof (item as TodoItem).parentTaskId === 'string')
+                && typeof (item as TodoItem).order === 'number'
+              ))
+            : [],
+          timeTemplates: Array.isArray(parsed.timeTemplates)
+            ? parsed.timeTemplates.filter((template: unknown): template is TimeTemplate => (
+                Boolean(template)
+                && typeof template === 'object'
+                && typeof (template as TimeTemplate).id === 'string'
+                && typeof (template as TimeTemplate).name === 'string'
+                && Array.isArray((template as TimeTemplate).blocks)
+              )).map((template: TimeTemplate) => ({
+                id: template.id,
+                name: template.name,
+                type: template.type === 'daily' ? 'daily' : 'weekly',
+                blocks: template.blocks.flatMap((block: TimeTemplateBlock & { weekday?: number }) => {
+                  if (!block || typeof block !== 'object'
+                    || typeof block.id !== 'string'
+                    || typeof block.startMinute !== 'number'
+                    || typeof block.endMinute !== 'number'
+                    || block.endMinute <= block.startMinute
+                    || typeof block.label !== 'string'
+                    || typeof block.color !== 'string') return [];
+                  const isLegacyWeeklyGrid = template.type === undefined && Number.isInteger(block.weekday);
+                  return [{
+                    id: block.id,
+                    startMinute: isLegacyWeeklyGrid ? (block.weekday || 0) * 1440 + block.startMinute : block.startMinute,
+                    endMinute: isLegacyWeeklyGrid ? (block.weekday || 0) * 1440 + block.endMinute : block.endMinute,
+                    label: block.label,
+                    color: block.color,
+                  }];
+                }),
+              }))
+            : DEFAULT_TIME_TEMPLATES,
+          activeTimeTemplateIds: {
+            daily: typeof parsed.activeTimeTemplateIds?.daily === 'string'
+              ? parsed.activeTimeTemplateIds.daily
+              : null,
+            weekly: typeof parsed.activeTimeTemplateIds?.weekly === 'string'
+              ? parsed.activeTimeTemplateIds.weekly
+              : (typeof parsed.activeTimeTemplateId === 'string' ? parsed.activeTimeTemplateId : null),
+          },
+          favoriteColors: Array.isArray(parsed.favoriteColors)
+            ? parsed.favoriteColors.filter((color: unknown): color is string => typeof color === 'string' && /^#[0-9a-f]{6}$/i.test(color)).slice(0, 24)
+            : [],
+          drafts: Array.isArray(parsed.drafts)
+            ? parsed.drafts.filter((draft: unknown): draft is DraftBoard => (
+                Boolean(draft)
+                && typeof draft === 'object'
+                && typeof (draft as DraftBoard).id === 'string'
+                && typeof (draft as DraftBoard).name === 'string'
+              )).map((draft: DraftBoard) => ({
+                id: draft.id,
+                name: draft.name,
+                nodes: Array.isArray(draft.nodes) ? draft.nodes : [],
+                edges: Array.isArray(draft.edges) ? draft.edges : [],
+                strokes: Array.isArray(draft.strokes) ? draft.strokes : [],
+              }))
+            : [],
           crossGoalEdges: Array.isArray(parsed.crossGoalEdges) ? parsed.crossGoalEdges : [],
           isSidebarCollapsed: !!parsed.isSidebarCollapsed,
           showHelp: typeof parsed.showHelp === 'boolean' ? parsed.showHelp : true,
@@ -322,6 +398,12 @@ const initialIsMergedView = savedState ? savedState.isMergedView : false;
 const initialActiveMergedGoalIds = savedState ? savedState.activeMergedGoalIds : [];
 const initialWorkspaceComponentFilter = savedState ? savedState.workspaceComponentFilter : null;
 const initialWorkspaceComponents = savedState ? savedState.workspaceComponents : [];
+const initialTodoLanes = savedState ? savedState.todoLanes : DEFAULT_TODO_LANES;
+const initialTodoItems = savedState ? savedState.todoItems : [];
+const initialTimeTemplates = savedState ? savedState.timeTemplates : DEFAULT_TIME_TEMPLATES;
+const initialActiveTimeTemplateIds = savedState ? savedState.activeTimeTemplateIds : { daily: null, weekly: null };
+const initialFavoriteColors = savedState ? savedState.favoriteColors : [];
+const initialDrafts = savedState ? savedState.drafts : [];
 const initialCrossGoalEdges = savedState ? savedState.crossGoalEdges : [];
 const initialIsSidebarCollapsed = savedState ? savedState.isSidebarCollapsed : false;
 const initialShowHelp = savedState ? savedState.showHelp : true;
@@ -367,6 +449,12 @@ export const useAppStore = create<AppState>((set, get) => {
           activeMergedGoalIds: merged.activeMergedGoalIds,
           workspaceComponentFilter: merged.workspaceComponentFilter,
           workspaceComponents: merged.workspaceComponents,
+          todoLanes: merged.todoLanes,
+          todoItems: merged.todoItems,
+          timeTemplates: merged.timeTemplates,
+          activeTimeTemplateIds: merged.activeTimeTemplateIds,
+          favoriteColors: merged.favoriteColors,
+          drafts: merged.drafts,
           crossGoalEdges: merged.crossGoalEdges,
           isSidebarCollapsed: merged.isSidebarCollapsed,
           showHelp: merged.showHelp,
@@ -401,6 +489,12 @@ export const useAppStore = create<AppState>((set, get) => {
     workspaceComponentFilter: initialWorkspaceComponentFilter,
     workspaceComponents: initialWorkspaceComponents,
     activeComponentDetailsId: null,
+    todoLanes: initialTodoLanes,
+    todoItems: initialTodoItems,
+    timeTemplates: initialTimeTemplates,
+    activeTimeTemplateIds: initialActiveTimeTemplateIds,
+    favoriteColors: initialFavoriteColors,
+    drafts: initialDrafts,
     crossGoalEdges: initialCrossGoalEdges,
     isSidebarCollapsed: initialIsSidebarCollapsed,
     showHelp: initialShowHelp,
@@ -562,11 +656,218 @@ export const useAppStore = create<AppState>((set, get) => {
       workspaceComponents: state.workspaceComponents.map((component) => (
         component.id === id ? { ...component, ...updates } : component
       )),
+      ...(updates.nodeColor !== undefined ? {
+        tasks: Object.fromEntries(Object.entries(state.tasks).map(([taskId, task]) => [
+          taskId,
+          task.componentIds?.includes(id) ? { ...task, color: updates.nodeColor } : task,
+        ])),
+      } : {}),
+    })),
+    deleteWorkspaceComponent: (id) => persistSet((state: AppState) => ({
+      workspaceComponents: state.workspaceComponents.filter((component) => component.id !== id),
+      tasks: Object.fromEntries(Object.entries(state.tasks).map(([taskId, task]) => [
+        taskId,
+        {
+          ...task,
+          componentIds: (task.componentIds || []).filter((componentId) => componentId !== id),
+        },
+      ])),
+      workspaceComponentFilter: state.workspaceComponentFilter === null
+        ? null
+        : state.workspaceComponentFilter.filter((componentId) => componentId !== id),
+      activeComponentDetailsId: state.activeComponentDetailsId === id
+        ? null
+        : state.activeComponentDetailsId,
     })),
     openComponentDetails: (componentId) => set({ activeComponentDetailsId: componentId }),
 
     selectTask: (taskId) => persistSet({ selectedTaskId: taskId }),
     setActiveNodeActionsId: (nodeId) => set({ activeNodeActionsId: nodeId }),
+
+    addTaskToTodo: (taskId) => {
+      const state = get();
+      if (!state.tasks[taskId] || state.todoItems.some((item) => item.taskId === taskId)) return false;
+      const mainLaneId = state.todoLanes[0]?.id || 'todo-main';
+      const nextOrder = state.todoItems
+        .filter((item) => item.laneId === mainLaneId && item.parentTaskId === null)
+        .reduce((max, item) => Math.max(max, item.order), -1) + 1;
+      persistSet((current: AppState) => ({
+        todoLanes: current.todoLanes.length > 0 ? current.todoLanes : DEFAULT_TODO_LANES,
+        todoItems: [...current.todoItems, { taskId, laneId: mainLaneId, parentTaskId: null, order: nextOrder }],
+      }));
+      return true;
+    },
+    addTodoLane: (name) => {
+      const id = `todo-lane-${genId()}`;
+      persistSet((state: AppState) => ({
+        todoLanes: [...state.todoLanes, { id, name: name?.trim() || `分线-${state.todoLanes.length}` }],
+      }));
+      return id;
+    },
+    renameTodoLane: (laneId, name) => persistSet((state: AppState) => ({
+      todoLanes: state.todoLanes.map((lane) => lane.id === laneId ? { ...lane, name } : lane),
+    })),
+    deleteTodoLane: (laneId) => persistSet((state: AppState) => {
+      if (laneId === state.todoLanes[0]?.id) return {};
+      const mainLaneId = state.todoLanes[0]?.id || 'todo-main';
+      const deletedLaneTaskIds = new Set(state.todoItems.filter((item) => item.laneId === laneId).map((item) => item.taskId));
+      const mainTail = state.todoItems
+        .filter((item) => item.laneId === mainLaneId && item.parentTaskId === null)
+        .reduce((max, item) => Math.max(max, item.order), -1) + 1;
+      let offset = 0;
+      return {
+        todoLanes: state.todoLanes.filter((lane) => lane.id !== laneId),
+        todoItems: state.todoItems.map((item) => {
+          if (item.laneId !== laneId) return item;
+          const parentTaskId = item.parentTaskId && deletedLaneTaskIds.has(item.parentTaskId) ? item.parentTaskId : null;
+          return { ...item, laneId: mainLaneId, parentTaskId, order: parentTaskId === null ? mainTail + offset++ : item.order };
+        }),
+      };
+    }),
+    moveTodoItem: (taskId, laneId, parentTaskId, beforeTaskId) => persistSet((state: AppState) => {
+      if (taskId === parentTaskId) return {};
+      const byParent = new Map(state.todoItems.map((item) => [item.taskId, item.parentTaskId]));
+      let ancestorId = parentTaskId;
+      while (ancestorId) {
+        if (ancestorId === taskId) return {};
+        ancestorId = byParent.get(ancestorId) || null;
+      }
+
+      const withoutMoved = state.todoItems.filter((item) => item.taskId !== taskId);
+      const siblings = withoutMoved
+        .filter((item) => item.laneId === laneId && item.parentTaskId === parentTaskId)
+        .sort((a, b) => a.order - b.order);
+      const beforeIndex = beforeTaskId ? siblings.findIndex((item) => item.taskId === beforeTaskId) : -1;
+      const insertIndex = beforeIndex >= 0 ? beforeIndex : siblings.length;
+      const orderedTaskIds = [...siblings.map((item) => item.taskId)];
+      orderedTaskIds.splice(insertIndex, 0, taskId);
+      const orderByTaskId = new Map(orderedTaskIds.map((id, index) => [id, index]));
+      const descendantIds = new Set<string>();
+      const queue = [taskId];
+      while (queue.length > 0) {
+        const currentId = queue.shift();
+        if (!currentId) continue;
+        state.todoItems.forEach((item) => {
+          if (item.parentTaskId === currentId && !descendantIds.has(item.taskId)) {
+            descendantIds.add(item.taskId);
+            queue.push(item.taskId);
+          }
+        });
+      }
+
+      return {
+        todoItems: [
+          ...withoutMoved.map((item) => {
+            if (orderByTaskId.has(item.taskId)) return { ...item, order: orderByTaskId.get(item.taskId)! };
+            if (descendantIds.has(item.taskId)) return { ...item, laneId };
+            return item;
+          }),
+          { taskId, laneId, parentTaskId, order: orderByTaskId.get(taskId) || 0 },
+        ],
+      };
+    }),
+    removeTaskFromTodo: (taskId) => persistSet((state: AppState) => {
+      const removedItem = state.todoItems.find((item) => item.taskId === taskId);
+      return {
+        todoItems: state.todoItems
+          .filter((item) => item.taskId !== taskId)
+          .map((item) => item.parentTaskId === taskId
+            ? { ...item, parentTaskId: removedItem?.parentTaskId || null }
+            : item),
+      };
+    }),
+
+    addTimeTemplate: (type, name) => {
+      const id = `time-template-${genId()}`;
+      persistSet((state: AppState) => ({
+        timeTemplates: [
+          ...state.timeTemplates,
+          {
+            id,
+            type,
+            name: name?.trim() || `${type === 'daily' ? '24 小时' : '周'}模版 ${state.timeTemplates.filter((template) => template.type === type).length + 1}`,
+            blocks: [],
+          },
+        ],
+      }));
+      return id;
+    },
+    renameTimeTemplate: (id, name) => persistSet((state: AppState) => ({
+      timeTemplates: state.timeTemplates.map((template) => (
+        template.id === id ? { ...template, name } : template
+      )),
+    })),
+    deleteTimeTemplate: (id) => persistSet((state: AppState) => ({
+      timeTemplates: state.timeTemplates.filter((template) => template.id !== id),
+      activeTimeTemplateIds: {
+        daily: state.activeTimeTemplateIds.daily === id ? null : state.activeTimeTemplateIds.daily,
+        weekly: state.activeTimeTemplateIds.weekly === id ? null : state.activeTimeTemplateIds.weekly,
+      },
+    })),
+    setActiveTimeTemplate: (type, id) => persistSet((state: AppState) => ({
+      activeTimeTemplateIds: {
+        ...state.activeTimeTemplateIds,
+        [type]: id && state.timeTemplates.some((template) => template.id === id && template.type === type) ? id : null,
+      },
+    })),
+    addTimeTemplateBlock: (templateId, block) => {
+      const id = `time-block-${genId()}`;
+      persistSet((state: AppState) => ({
+        timeTemplates: state.timeTemplates.map((template) => (
+          template.id === templateId
+            ? { ...template, blocks: [...template.blocks, { ...block, id }] }
+            : template
+        )),
+      }));
+      return id;
+    },
+    updateTimeTemplateBlock: (templateId, blockId, updates) => persistSet((state: AppState) => ({
+      timeTemplates: state.timeTemplates.map((template) => (
+        template.id === templateId
+          ? {
+              ...template,
+              blocks: template.blocks.map((block) => (
+                block.id === blockId ? { ...block, ...updates } : block
+              )),
+            }
+          : template
+      )),
+    })),
+    deleteTimeTemplateBlock: (templateId, blockId) => persistSet((state: AppState) => ({
+      timeTemplates: state.timeTemplates.map((template) => (
+        template.id === templateId
+          ? { ...template, blocks: template.blocks.filter((block) => block.id !== blockId) }
+          : template
+      )),
+    })),
+    addFavoriteColor: (color) => persistSet((state: AppState) => ({
+      favoriteColors: /^#[0-9a-f]{6}$/i.test(color) && !state.favoriteColors.includes(color.toUpperCase())
+        ? [...state.favoriteColors, color.toUpperCase()].slice(-24)
+        : state.favoriteColors,
+    })),
+    removeFavoriteColor: (color) => persistSet((state: AppState) => ({
+      favoriteColors: state.favoriteColors.filter((favorite) => favorite !== color),
+    })),
+    addDraft: (name) => {
+      const id = `draft-${genId()}`;
+      persistSet((state: AppState) => ({ drafts: [...state.drafts, { id, name: name?.trim() || `草稿 ${state.drafts.length + 1}`, nodes: [], edges: [], strokes: [] }] }));
+      return id;
+    },
+    renameDraft: (id, name) => persistSet((state: AppState) => ({ drafts: state.drafts.map((draft) => draft.id === id ? { ...draft, name } : draft) })),
+    deleteDraft: (id) => persistSet((state: AppState) => ({ drafts: state.drafts.filter((draft) => draft.id !== id) })),
+    addDraftNode: (draftId, node) => persistSet((state: AppState) => ({ drafts: state.drafts.map((draft) => draft.id === draftId ? { ...draft, nodes: [...draft.nodes, node] } : draft) })),
+    updateDraftNodes: (draftId, nodes) => persistSet((state: AppState) => ({ drafts: state.drafts.map((draft) => draft.id === draftId ? { ...draft, nodes } : draft) })),
+    removeDraftNode: (draftId, nodeId) => persistSet((state: AppState) => ({ drafts: state.drafts.map((draft) => draft.id === draftId ? { ...draft, nodes: draft.nodes.filter((node) => node.id !== nodeId), edges: draft.edges.filter((edge) => edge.source !== nodeId && edge.target !== nodeId) } : draft) })),
+    addDraftEdge: (draftId, edge) => persistSet((state: AppState) => ({ drafts: state.drafts.map((draft) => draft.id === draftId ? { ...draft, edges: [...draft.edges, edge] } : draft) })),
+    removeDraftEdge: (draftId, edgeId) => persistSet((state: AppState) => ({ drafts: state.drafts.map((draft) => draft.id === draftId ? { ...draft, edges: draft.edges.filter((edge) => edge.id !== edgeId) } : draft) })),
+    addDraftStroke: (draftId, stroke: DraftStroke) => persistSet((state: AppState) => ({ drafts: state.drafts.map((draft) => draft.id === draftId ? { ...draft, strokes: [...draft.strokes, stroke] } : draft) })),
+    removeDraftStrokes: (draftId, strokeIds) => persistSet((state: AppState) => {
+      const removedIds = new Set(strokeIds);
+      if (removedIds.size === 0) return {};
+      return { drafts: state.drafts.map((draft) => draft.id === draftId ? { ...draft, strokes: draft.strokes.filter((stroke) => !removedIds.has(stroke.id)) } : draft) };
+    }),
+    undoDraftStroke: (draftId) => persistSet((state: AppState) => ({ drafts: state.drafts.map((draft) => draft.id === draftId ? { ...draft, strokes: draft.strokes.slice(0, -1) } : draft) })),
+    clearDraftStrokes: (draftId) => persistSet((state: AppState) => ({ drafts: state.drafts.map((draft) => draft.id === draftId ? { ...draft, strokes: [] } : draft) })),
 
     // TASK ACTIONS (Normalized changes reflect everywhere instantly!)
     addTask: (task) => persistSet((state: AppState) => {
@@ -670,6 +971,7 @@ export const useAppStore = create<AppState>((set, get) => {
       const removedWorkspaceNodeIds = new Set(
         state.workspaceNodes.filter((node) => node.taskId === taskId).map((node) => node.id)
       );
+      const removedTodoItem = state.todoItems.find((item) => item.taskId === taskId);
 
       // Also prune from goal nodes if it is removed entirely
       const nextGoals = { ...state.goals };
@@ -680,11 +982,24 @@ export const useAppStore = create<AppState>((set, get) => {
       return {
         tasks: nextTasks,
         goals: nextGoals,
+        drafts: state.drafts.map((draft) => {
+          const removedNodeIds = new Set(draft.nodes.filter((node) => node.taskId === taskId).map((node) => node.id));
+          return {
+            ...draft,
+            nodes: draft.nodes.filter((node) => node.taskId !== taskId),
+            edges: draft.edges.filter((edge) => !removedNodeIds.has(edge.source) && !removedNodeIds.has(edge.target)),
+          };
+        }),
         workspaceNodes: state.workspaceNodes.filter((node) => node.taskId !== taskId),
         mergedEdges: state.mergedEdges.filter(
           (edge) => !removedWorkspaceNodeIds.has(edge.source) && !removedWorkspaceNodeIds.has(edge.target)
         ),
-        selectedTaskId: state.selectedTaskId === taskId ? null : state.selectedTaskId
+        selectedTaskId: state.selectedTaskId === taskId ? null : state.selectedTaskId,
+        todoItems: state.todoItems
+          .filter((item) => item.taskId !== taskId)
+          .map((item) => item.parentTaskId === taskId
+            ? { ...item, parentTaskId: removedTodoItem?.parentTaskId || null }
+            : item),
       };
     }),
 
@@ -692,6 +1007,7 @@ export const useAppStore = create<AppState>((set, get) => {
       const task = state.tasks[taskId];
       if (!task) return {};
       if (componentIds === null) {
+        const removedTodoItem = state.todoItems.find((item) => item.taskId === taskId);
         const removedNodeIds = new Set<string>();
         state.workspaceNodes.forEach((node) => {
           if (node.taskId === taskId) removedNodeIds.add(node.id);
@@ -703,6 +1019,14 @@ export const useAppStore = create<AppState>((set, get) => {
         delete nextTasks[taskId];
         return {
           tasks: nextTasks,
+          drafts: state.drafts.map((draft) => {
+            const draftNodeIds = new Set(draft.nodes.filter((node) => node.taskId === taskId).map((node) => node.id));
+            return {
+              ...draft,
+              nodes: draft.nodes.filter((node) => node.taskId !== taskId),
+              edges: draft.edges.filter((edge) => !draftNodeIds.has(edge.source) && !draftNodeIds.has(edge.target)),
+            };
+          }),
           workspaceNodes: state.workspaceNodes.filter((node) => node.taskId !== taskId),
           goals: Object.fromEntries(Object.entries(state.goals).map(([goalId, goal]) => [goalId, {
             ...goal,
@@ -711,6 +1035,11 @@ export const useAppStore = create<AppState>((set, get) => {
           }])),
           mergedEdges: state.mergedEdges.filter((edge) => !removedNodeIds.has(edge.source) && !removedNodeIds.has(edge.target)),
           selectedTaskId: state.selectedTaskId === taskId ? null : state.selectedTaskId,
+          todoItems: state.todoItems
+            .filter((item) => item.taskId !== taskId)
+            .map((item) => item.parentTaskId === taskId
+              ? { ...item, parentTaskId: removedTodoItem?.parentTaskId || null }
+              : item),
         };
       }
 
@@ -1020,6 +1349,9 @@ export const useAppStore = create<AppState>((set, get) => {
       activeMergedGoalIds: [],
       workspaceComponentFilter: null,
       workspaceComponents: [],
+      drafts: [],
+      todoLanes: DEFAULT_TODO_LANES,
+      todoItems: [],
       crossGoalEdges: [],
       bomTree: EMPTY_BOM_TREE,
       timelineTaskOrder: [],

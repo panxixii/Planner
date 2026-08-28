@@ -25,11 +25,18 @@ const validateData = (data: unknown): data is Record<string, unknown> => {
     && Array.isArray(data.workspaceComponents);
 };
 
+const withoutDraftStrokes = (data: Record<string, unknown>): Record<string, unknown> => ({
+  ...data,
+  drafts: Array.isArray(data.drafts)
+    ? data.drafts.map((draft) => isRecord(draft) ? { ...draft, strokes: [] } : draft)
+    : [],
+});
+
 const getCurrentPersistedData = (): Record<string, unknown> => {
   const saved = localStorage.getItem(PLANNER_STORAGE_KEY);
   if (saved) {
     const parsed: unknown = JSON.parse(saved);
-    if (validateData(parsed)) return parsed;
+    if (validateData(parsed)) return withoutDraftStrokes(parsed);
   }
 
   const state = useAppStore.getState();
@@ -45,6 +52,12 @@ const getCurrentPersistedData = (): Record<string, unknown> => {
     activeMergedGoalIds: state.activeMergedGoalIds,
     workspaceComponentFilter: state.workspaceComponentFilter,
     workspaceComponents: state.workspaceComponents,
+    todoLanes: state.todoLanes,
+    todoItems: state.todoItems,
+    timeTemplates: state.timeTemplates,
+    activeTimeTemplateIds: state.activeTimeTemplateIds,
+    favoriteColors: state.favoriteColors,
+    drafts: state.drafts.map((draft) => ({ ...draft, strokes: [] })),
     crossGoalEdges: state.crossGoalEdges,
     isSidebarCollapsed: state.isSidebarCollapsed,
     showHelp: state.showHelp,
@@ -103,5 +116,5 @@ export const importPlannerBackup = async (file: File) => {
     throw new Error('备份内容不完整或已经损坏');
   }
 
-  localStorage.setItem(PLANNER_STORAGE_KEY, JSON.stringify(parsed.data));
+  localStorage.setItem(PLANNER_STORAGE_KEY, JSON.stringify(withoutDraftStrokes(parsed.data)));
 };

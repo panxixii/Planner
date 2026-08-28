@@ -70,6 +70,53 @@ export interface WorkspaceComponent {
   handlePosition: { x: number; y: number };
 }
 
+export interface TodoLane {
+  id: string;
+  name: string;
+}
+
+export interface TodoItem {
+  taskId: string;
+  laneId: string;
+  parentTaskId: string | null;
+  order: number;
+}
+
+export interface TimeTemplateBlock {
+  id: string;
+  startMinute: number; // Minutes since the start of this repeating cycle.
+  endMinute: number;
+  label: string;
+  color: string;
+}
+
+export interface TimeTemplate {
+  id: string;
+  name: string;
+  type: 'daily' | 'weekly';
+  blocks: TimeTemplateBlock[];
+}
+
+export interface DraftStrokePoint {
+  x: number;
+  y: number;
+}
+
+export interface DraftStroke {
+  id: string;
+  color: string;
+  width: number;
+  points: DraftStrokePoint[];
+}
+
+export interface DraftBoard {
+  id: string;
+  name: string;
+  nodes: GoalNode[];
+  edges: GoalEdge[];
+  strokes: DraftStroke[];
+}
+
 export interface AppState {
   tasks: Record<string, Task>;
   taskStatuses: TaskStatus[];
@@ -85,6 +132,12 @@ export interface AppState {
   workspaceComponentFilter: string[] | null; // null means the complete workspace
   workspaceComponents: WorkspaceComponent[];
   activeComponentDetailsId: string | null;
+  todoLanes: TodoLane[];
+  todoItems: TodoItem[];
+  timeTemplates: TimeTemplate[];
+  activeTimeTemplateIds: { daily: string | null; weekly: string | null };
+  favoriteColors: string[];
+  drafts: DraftBoard[];
   
   // Actions
   setCategory: (category: CategoryType) => void;
@@ -99,9 +152,43 @@ export interface AppState {
   setWorkspaceComponentFilter: (componentIds: string[] | null) => void;
   addWorkspaceComponent: (name: string) => string;
   updateWorkspaceComponent: (id: string, updates: Partial<Omit<WorkspaceComponent, 'id'>>) => void;
+  deleteWorkspaceComponent: (id: string) => void;
   openComponentDetails: (componentId: string | null) => void;
   selectTask: (taskId: string | null) => void;
   setActiveNodeActionsId: (nodeId: string | null) => void;
+
+  // Todo execution graph
+  addTaskToTodo: (taskId: string) => boolean;
+  addTodoLane: (name?: string) => string;
+  renameTodoLane: (laneId: string, name: string) => void;
+  deleteTodoLane: (laneId: string) => void;
+  moveTodoItem: (taskId: string, laneId: string, parentTaskId: string | null, beforeTaskId?: string) => void;
+  removeTaskFromTodo: (taskId: string) => void;
+
+  // Reusable weekly time backgrounds
+  addTimeTemplate: (type: TimeTemplate['type'], name?: string) => string;
+  renameTimeTemplate: (id: string, name: string) => void;
+  deleteTimeTemplate: (id: string) => void;
+  setActiveTimeTemplate: (type: TimeTemplate['type'], id: string | null) => void;
+  addTimeTemplateBlock: (templateId: string, block: Omit<TimeTemplateBlock, 'id'>) => string;
+  updateTimeTemplateBlock: (templateId: string, blockId: string, updates: Partial<Omit<TimeTemplateBlock, 'id'>>) => void;
+  deleteTimeTemplateBlock: (templateId: string, blockId: string) => void;
+  addFavoriteColor: (color: string) => void;
+  removeFavoriteColor: (color: string) => void;
+
+  // Freeform draft canvases
+  addDraft: (name?: string) => string;
+  renameDraft: (id: string, name: string) => void;
+  deleteDraft: (id: string) => void;
+  addDraftNode: (draftId: string, node: GoalNode) => void;
+  updateDraftNodes: (draftId: string, nodes: GoalNode[]) => void;
+  removeDraftNode: (draftId: string, nodeId: string) => void;
+  addDraftEdge: (draftId: string, edge: GoalEdge) => void;
+  removeDraftEdge: (draftId: string, edgeId: string) => void;
+  addDraftStroke: (draftId: string, stroke: DraftStroke) => void;
+  removeDraftStrokes: (draftId: string, strokeIds: string[]) => void;
+  undoDraftStroke: (draftId: string) => void;
+  clearDraftStrokes: (draftId: string) => void;
   
   // Task Actions
   addTask: (task: Task) => void;
