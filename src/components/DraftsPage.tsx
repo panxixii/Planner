@@ -155,7 +155,7 @@ const DraftCanvas: React.FC<DraftCanvasProps> = ({ draftId }) => {
   }, []);
 
   const createNode = useCallback((event: React.MouseEvent) => {
-    if (!draft || mode !== 'select') return;
+    if (!draft || mode !== 'select' || event.detail !== 2) return;
     const position = screenToFlowPosition({ x: event.clientX, y: event.clientY });
     const taskId = makeId('task-draft');
     const nodeId = makeId('node-draft');
@@ -282,7 +282,7 @@ const DraftCanvas: React.FC<DraftCanvasProps> = ({ draftId }) => {
           </>
         ) : mode === 'erase' ? (
           <span className="self-center px-1 text-[10px] text-neutral-400">橡皮擦经过哪里，就只擦除哪里的笔迹</span>
-        ) : <span className="self-center px-1 text-[10px] text-neutral-400">单击空白处创建节点，双击节点设置归属</span>}
+        ) : <span className="self-center px-1 text-[10px] text-neutral-400">双击空白处创建节点，双击节点设置归属</span>}
       </div>
 
       <ReactFlow

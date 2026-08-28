@@ -573,6 +573,7 @@ const DAGInnerWorkspace: React.FC = () => {
 
   // Create a blank task exactly where the user clicks the empty canvas.
   const handlePaneClick = useCallback((event: React.MouseEvent) => {
+    if (event.detail !== 2) return;
     if (isConnectingRef.current || Date.now() < suppressPaneClickUntilRef.current) {
       return;
     }
@@ -647,7 +648,7 @@ const DAGInnerWorkspace: React.FC = () => {
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-6">
           <div className="flex items-center gap-3 rounded-lg border border-neutral-200 bg-white/95 px-4 py-3 text-neutral-600 shadow-lg backdrop-blur-xs">
             <MousePointerClick className="h-5 w-5 shrink-0 text-purple-600" />
-            <span className="text-sm font-semibold">单击空白处创建节点</span>
+            <span className="text-sm font-semibold">双击空白处创建节点</span>
           </div>
         </div>
       ) : null}
