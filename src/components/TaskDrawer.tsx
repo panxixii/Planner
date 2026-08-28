@@ -12,25 +12,11 @@ import {
   X,
 } from 'lucide-react';
 import type { TaskStatus } from '../types';
+import { DateTimePicker } from './DateTimePicker';
+import { ColorPicker } from './ColorPicker';
 
-const COLORS = ['indigo', 'emerald', 'sky', 'rose', 'amber', 'violet'];
-
-const COLOR_STYLES: Record<string, string> = {
-  indigo: 'bg-[#9387d1]',
-  emerald: 'bg-[#67c8bd]',
-  sky: 'bg-[#79bfd5]',
-  rose: 'bg-[#d78fb5]',
-  amber: 'bg-[#d9b958]',
-  violet: 'bg-[#9b8ae4]',
-};
-
-const COLOR_LABELS: Record<string, string> = {
-  indigo: '靛青',
-  emerald: '青绿',
-  sky: '天蓝',
-  rose: '玫红',
-  amber: '琥珀',
-  violet: '紫罗兰',
+const NAMED_COLOR_HEX: Record<string, string> = {
+  indigo: '#9387D1', emerald: '#67C8BD', sky: '#79BFD5', rose: '#D78FB5', amber: '#D9B958', violet: '#9B8AE4',
 };
 
 const fieldClassName = 'h-10 w-full rounded-lg border border-neutral-200 bg-[#ffffff] px-3 text-sm text-neutral-800 outline-none transition-colors placeholder:text-neutral-400 focus:border-purple-300 focus:ring-2 focus:ring-purple-100';
@@ -81,7 +67,7 @@ export const TaskDrawer: React.FC = () => {
       setStatusId(task.statusId || (task.isDone ? 'status-completed' : 'status-not-started'));
       setStartTime(toDateTimeLocal(task.startTime));
       setEndTime(toDateTimeLocal(task.endTime, true));
-      setColor(task.color || 'indigo');
+      setColor(NAMED_COLOR_HEX[task.color || 'indigo'] || task.color || '#9387D1');
       setErrorMsg('');
       setIsConfirmingDelete(false);
       setIsManagingStatuses(false);
@@ -371,45 +357,28 @@ export const TaskDrawer: React.FC = () => {
 
             <div className="space-y-1.5">
               <label htmlFor="task-start-time" className="text-[11px] font-medium text-neutral-500">开始时间</label>
-              <input
+              <DateTimePicker
                 id="task-start-time"
-                type="datetime-local"
-                step="60"
                 value={startTime}
-                onChange={(event) => setStartTime(event.target.value)}
-                className={fieldClassName}
+                onChange={setStartTime}
+                placeholder="选择开始日期与时间"
               />
             </div>
 
             <div className="space-y-1.5">
               <label htmlFor="task-end-time" className="text-[11px] font-medium text-neutral-500">结束时间</label>
-              <input
+              <DateTimePicker
                 id="task-end-time"
-                type="datetime-local"
-                step="60"
                 value={endTime}
-                onChange={(event) => setEndTime(event.target.value)}
-                className={fieldClassName}
+                onChange={setEndTime}
+                placeholder="选择结束日期与时间"
               />
             </div>
           </section>
 
           <section className="mt-5 border-t border-neutral-200 pt-5">
             <h3 className={labelClassName}>节点颜色</h3>
-            <div className="mt-2.5 flex items-center gap-2.5">
-              {COLORS.map((colorOption) => (
-                <button
-                  key={colorOption}
-                  type="button"
-                  onClick={() => setColor(colorOption)}
-                  className={`flex h-7 w-7 items-center justify-center rounded-full ${COLOR_STYLES[colorOption]} transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-neutral-300 focus:ring-offset-2`}
-                  aria-label={COLOR_LABELS[colorOption]}
-                  title={COLOR_LABELS[colorOption]}
-                >
-                  {color === colorOption ? <Check className="h-3.5 w-3.5 text-white" /> : null}
-                </button>
-              ))}
-            </div>
+            <div className="mt-2.5"><ColorPicker label="任务节点颜色" value={color} onChange={setColor} /></div>
           </section>
         </div>
 

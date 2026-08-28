@@ -5,7 +5,6 @@ import {
   ChevronUp,
   Clock,
   GripVertical,
-  Inbox,
   LocateFixed,
 } from 'lucide-react';
 import { useAppStore } from '../store';
@@ -16,6 +15,17 @@ type ZoomScaleType = 'minutes' | 'hours' | 'days';
 type ScaleDefinition = {
   unitMs: number;
   columnWidth: number;
+};
+
+type TaskResizeState = {
+  pointerId: number;
+  taskId: string;
+  edge: 'start' | 'end';
+  startX: number;
+  originalStart: number;
+  originalEnd: number;
+  previewStart: number;
+  previewEnd: number;
 };
 
 const DEFAULT_TASK_COLUMN_WIDTH = 240;
@@ -69,6 +79,16 @@ const parseTaskTimestamp = (value: string, endOfDate = false) => {
   return new Date(value).getTime();
 };
 
+const formatLocalDateTime = (timestamp: number) => {
+  const date = new Date(timestamp);
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};
+
+const withAlpha = (hexColor: string, alpha: string) => (
+  /^#[0-9a-f]{6}$/i.test(hexColor) ? `${hexColor}${alpha}` : hexColor
+);
+
 const formatHeader = (timestamp: number, scale: ZoomScaleType) => {
   const date = new Date(timestamp);
   const monthDay = `${date.getMonth() + 1}/${date.getDate()}`;
@@ -101,6 +121,10 @@ const colorClasses: Record<string, string> = {
   indigo: 'from-[#9387d1] to-[#b7a8df] border-[#c3b8e5] text-white shadow-[#9387d1]/10',
 };
 
+const namedTimelineColors: Record<string, string> = {
+  emerald: '#67c8bd', rose: '#d78fb5', sky: '#79bfd5', amber: '#d9b958', violet: '#9b8ae4', indigo: '#9387d1',
+};
+
 export const TimelineLayer: React.FC = () => {
   const tasks = useAppStore((state) => state.tasks);
   const selectTask = useAppStore((state) => state.selectTask);
@@ -108,7 +132,10 @@ export const TimelineLayer: React.FC = () => {
   const setTimelineTaskOrder = useAppStore((state) => state.setTimelineTaskOrder);
   const isTimelineCollapsed = useAppStore((state) => state.isTimelineCollapsed);
   const toggleTimeline = useAppStore((state) => state.toggleTimeline);
+  const updateTask = useAppStore((state) => state.updateTask);
   const workspaceComponentFilter = useAppStore((state) => state.workspaceComponentFilter);
+  const timeTemplates = useAppStore((state) => state.timeTemplates);
+  const activeTimeTemplateIds = useAppStore((state) => state.activeTimeTemplateIds);
 
   const initialNowRef = useRef(Date.now());
   const timelineRootRef = useRef<HTMLDivElement>(null);
@@ -118,6 +145,7 @@ export const TimelineLayer: React.FC = () => {
   const columnResizeRef = useRef<{ pointerId: number; startX: number; startWidth: number } | null>(null);
   const pendingScrollAdjustmentRef = useRef<number | null>(null);
   const pendingFocusTimestampRef = useRef<number | null>(initialNowRef.current);
+  const taskResizeRef = useRef<TaskResizeState | null>(null);
 
   const [zoomScale, setZoomScale] = useState<ZoomScaleType>('days');
   const [rangeStart, setRangeStart] = useState(() => getCenteredRangeStart(initialNowRef.current, 'days'));
@@ -125,6 +153,7 @@ export const TimelineLayer: React.FC = () => {
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [dragOverTaskId, setDragOverTaskId] = useState<string | null>(null);
   const [taskColumnWidth, setTaskColumnWidth] = useState(DEFAULT_TASK_COLUMN_WIDTH);
+  const [taskResizePreview, setTaskResizePreview] = useState<TaskResizeState | null>(null);
 
   const scaleDefinition = SCALE_DEFINITIONS[zoomScale];
   const timelineWidth = WINDOW_COLUMN_COUNT * scaleDefinition.columnWidth;
@@ -185,6 +214,52 @@ export const TimelineLayer: React.FC = () => {
     }),
     [rangeStart, scaleDefinition.unitMs, zoomScale],
   );
+
+  const activeTemplateType = zoomScale === 'days' ? 'weekly' : 'daily';
+  const activeTimeTemplate = timeTemplates.find((template) => (
+    template.id === activeTimeTemplateIds[activeTemplateType]
+    && template.type === activeTemplateType
+  )) || null;
+  const templateBands = useMemo(() => {
+    if (!activeTimeTemplate) return [];
+    const bands: { key: string; left: number; width: number; color: string }[] = [];
+    const cycleDays = activeTimeTemplate.type === 'daily' ? 1 : 7;
+    const firstCycle = new Date(rangeStart);
+    firstCycle.setHours(0, 0, 0, 0);
+    if (activeTimeTemplate.type === 'weekly') {
+      firstCycle.setDate(firstCycle.getDate() - firstCycle.getDay());
+    }
+    const cycleMs = cycleDays * 24 * 60 * 60 * 1000;
+    for (let cycleStart = firstCycle.getTime(); cycleStart <= rangeEnd; cycleStart += cycleMs) {
+      activeTimeTemplate.blocks.forEach((block) => {
+        const start = cycleStart + block.startMinute * 60_000;
+        const end = cycleStart + block.endMinute * 60_000;
+        const visibleStart = Math.max(start, rangeStart);
+        const visibleEnd = Math.min(end, rangeEnd);
+        if (visibleEnd <= visibleStart) return;
+        bands.push({
+          key: `${block.id}-${cycleStart}`,
+          left: ((visibleStart - rangeStart) / scaleDefinition.unitMs) * scaleDefinition.columnWidth,
+          width: ((visibleEnd - visibleStart) / scaleDefinition.unitMs) * scaleDefinition.columnWidth,
+          color: block.color,
+        });
+      });
+    }
+    return bands;
+  }, [activeTimeTemplate, rangeEnd, rangeStart, scaleDefinition.columnWidth, scaleDefinition.unitMs]);
+
+  const getTemplateColorAt = useCallback((timestamp: number) => {
+    if (!activeTimeTemplate) return null;
+    const date = new Date(timestamp);
+    const minuteOfDay = date.getHours() * 60 + date.getMinutes();
+    const cycleMinute = activeTimeTemplate.type === 'daily'
+      ? minuteOfDay
+      : date.getDay() * 1440 + minuteOfDay;
+    return activeTimeTemplate.blocks.find((block) => (
+      cycleMinute >= block.startMinute
+      && cycleMinute < block.endMinute
+    ))?.color || null;
+  }, [activeTimeTemplate]);
 
   const getViewportCenterTimestamp = useCallback(() => {
     const container = scrollContainerRef.current;
@@ -313,6 +388,57 @@ export const TimelineLayer: React.FC = () => {
     setTaskColumnWidth(applyTaskColumnWidth(taskColumnWidthRef.current + direction * 12));
   };
 
+  const handleTaskResizeStart = (
+    event: React.PointerEvent<HTMLDivElement>,
+    taskId: string,
+    edge: 'start' | 'end',
+    startTimestamp: number,
+    endTimestamp: number,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const nextResize = {
+      pointerId: event.pointerId,
+      taskId,
+      edge,
+      startX: event.clientX,
+      originalStart: startTimestamp,
+      originalEnd: endTimestamp,
+      previewStart: startTimestamp,
+      previewEnd: endTimestamp,
+    };
+    taskResizeRef.current = nextResize;
+    setTaskResizePreview(nextResize);
+  };
+
+  const handleTaskResizeMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const resize = taskResizeRef.current;
+    if (!resize || resize.pointerId !== event.pointerId) return;
+    const rawDelta = ((event.clientX - resize.startX) / scaleDefinition.columnWidth) * scaleDefinition.unitMs;
+    const snapMs = zoomScale === 'minutes' ? 5 * 60_000 : zoomScale === 'hours' ? 15 * 60_000 : 60 * 60_000;
+    const delta = Math.round(rawDelta / snapMs) * snapMs;
+    const minimumDuration = snapMs;
+    const nextResize = resize.edge === 'start'
+      ? { ...resize, previewStart: Math.min(resize.originalEnd - minimumDuration, resize.originalStart + delta) }
+      : { ...resize, previewEnd: Math.max(resize.originalStart + minimumDuration, resize.originalEnd + delta) };
+    taskResizeRef.current = nextResize;
+    setTaskResizePreview(nextResize);
+  };
+
+  const handleTaskResizeEnd = (event: React.PointerEvent<HTMLDivElement>) => {
+    const resize = taskResizeRef.current;
+    if (!resize || resize.pointerId !== event.pointerId) return;
+    updateTask(resize.taskId, {
+      startTime: formatLocalDateTime(resize.previewStart),
+      endTime: formatLocalDateTime(resize.previewEnd),
+      duration: Math.max(1 / 60, (resize.previewEnd - resize.previewStart) / 3_600_000),
+    });
+    taskResizeRef.current = null;
+    setTaskResizePreview(null);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+  };
+
   const getDragBorderClass = (taskId: string) => {
     if (taskId !== dragOverTaskId || !draggedTaskId) return '';
     const taskIds = orderedVisibleTasks.map((task) => task.id);
@@ -344,7 +470,6 @@ export const TimelineLayer: React.FC = () => {
     return 'bg-emerald-50 text-emerald-600 border border-emerald-100';
   };
 
-  const currentColumnIndex = Math.floor((nowTimestamp - rangeStart) / scaleDefinition.unitMs);
   const isNowInRange = nowTimestamp >= rangeStart && nowTimestamp < rangeEnd;
   const nowLinePosition = ((nowTimestamp - rangeStart) / scaleDefinition.unitMs) * scaleDefinition.columnWidth;
   const trackBackground = `repeating-linear-gradient(to right, transparent 0, transparent ${scaleDefinition.columnWidth - 1}px, #f0f0f0 ${scaleDefinition.columnWidth - 1}px, #f0f0f0 ${scaleDefinition.columnWidth}px)`;
@@ -354,7 +479,7 @@ export const TimelineLayer: React.FC = () => {
       ref={timelineRootRef}
       id="timeline"
       style={{ '--task-column-width': `${taskColumnWidth}px` } as React.CSSProperties}
-      className={`flex shrink-0 select-none flex-col border-t border-neutral-200 bg-white transition-all duration-300 ${isTimelineCollapsed ? 'h-[45px] overflow-hidden' : 'h-80'}`}
+      className={`flex shrink-0 select-none flex-col border-t border-neutral-200 bg-white transition-all duration-300 ${isTimelineCollapsed ? 'h-[45px] overflow-hidden' : orderedVisibleTasks.length === 0 ? 'h-[90px] overflow-hidden' : 'h-80'}`}
     >
       <div
         ref={dragPreviewRef}
@@ -419,7 +544,7 @@ export const TimelineLayer: React.FC = () => {
           onScroll={handleTimelineScroll}
           className="custom-scrollbar relative isolate min-w-0 flex-1 overflow-auto bg-[#ffffff]"
         >
-          <div style={{ width: `calc(var(--task-column-width) + ${timelineWidth}px)`, minHeight: '100%' }}>
+          <div className="relative" style={{ width: `calc(var(--task-column-width) + ${timelineWidth}px)`, minHeight: '100%' }}>
             <div className="sticky top-0 z-40 flex h-11 border-b border-neutral-200 bg-[#f7f8fb] text-[10px] text-neutral-400">
               <div
                 style={{ width: 'var(--task-column-width)' }}
@@ -444,15 +569,23 @@ export const TimelineLayer: React.FC = () => {
                 />
               </div>
               <div className="relative flex" style={{ width: timelineWidth }}>
+                {templateBands.map((band) => (
+                  <div
+                    key={`header-${band.key}`}
+                    className="pointer-events-none absolute inset-y-0 z-0"
+                    style={{ left: band.left, width: band.width, backgroundColor: withAlpha(band.color, '2e') }}
+                  />
+                ))}
                 {headers.map((header, index) => {
-                  const isCurrentColumn = isNowInRange && index === currentColumnIndex;
+                  const templateColor = getTemplateColorAt(header.timestamp);
                   return (
                     <div
                       key={header.timestamp}
-                      style={{ width: scaleDefinition.columnWidth }}
-                      className={`flex shrink-0 flex-col items-center justify-center border-r border-neutral-100 ${
-                        isCurrentColumn ? 'bg-amber-50 text-amber-700' : ''
-                      }`}
+                      style={{
+                        width: scaleDefinition.columnWidth,
+                        color: templateColor || undefined,
+                      }}
+                      className="relative z-[1] flex shrink-0 flex-col items-center justify-center border-r border-neutral-100"
                     >
                       <span className="text-[10.5px] font-semibold leading-4">{header.primary}</span>
                       <span className="h-3 text-[8px] leading-3 opacity-75">{header.secondary}</span>
@@ -468,12 +601,22 @@ export const TimelineLayer: React.FC = () => {
               </div>
             </div>
 
-            {orderedVisibleTasks.length === 0 ? (
-              <div className="sticky left-0 flex h-44 w-screen max-w-full flex-col items-center justify-center gap-2 text-xs text-neutral-400">
-                <Inbox className="h-8 w-8 stroke-1 text-neutral-300" />
-                <span>暂无排期任务</span>
+            {orderedVisibleTasks.length > 0 && templateBands.length > 0 ? (
+              <div
+                className="pointer-events-none absolute top-11 z-0 overflow-hidden"
+                style={{ left: 'var(--task-column-width)', width: timelineWidth, height: orderedVisibleTasks.length * 52 }}
+              >
+                {templateBands.map((band) => (
+                  <div
+                    key={band.key}
+                    className="absolute inset-y-0"
+                    style={{ left: band.left, width: band.width, backgroundColor: withAlpha(band.color, '20') }}
+                  />
+                ))}
               </div>
-            ) : (
+            ) : null}
+
+            {orderedVisibleTasks.length > 0 ? (
               orderedVisibleTasks.map((task) => {
                 let startTimestamp = parseTaskTimestamp(task.startTime!);
                 let endTimestamp = parseTaskTimestamp(task.endTime!, true);
@@ -483,13 +626,19 @@ export const TimelineLayer: React.FC = () => {
                   endTimestamp = startTimestamp + Math.max(task.duration, 1 / 60) * 60 * 60 * 1000;
                 }
 
+                if (taskResizePreview?.taskId === task.id) {
+                  startTimestamp = taskResizePreview.previewStart;
+                  endTimestamp = taskResizePreview.previewEnd;
+                }
+
                 const intersectsRange = startTimestamp < rangeEnd && endTimestamp > rangeStart;
                 const visibleStart = Math.max(startTimestamp, rangeStart);
                 const visibleEnd = Math.min(endTimestamp, rangeEnd);
                 const barLeft = ((visibleStart - rangeStart) / scaleDefinition.unitMs) * scaleDefinition.columnWidth;
                 const calculatedWidth = ((visibleEnd - visibleStart) / scaleDefinition.unitMs) * scaleDefinition.columnWidth;
                 const barWidth = Math.min(timelineWidth - barLeft, Math.max(4, calculatedWidth));
-                const barColor = colorClasses[task.color || 'indigo'] || colorClasses.indigo;
+                const barColor = colorClasses[task.color || 'indigo'];
+                const barHex = /^#[0-9a-f]{6}$/i.test(task.color || '') ? task.color! : namedTimelineColors[task.color || 'indigo'];
 
                 return (
                   <div
@@ -534,33 +683,34 @@ export const TimelineLayer: React.FC = () => {
                       style={{ width: timelineWidth, backgroundImage: trackBackground }}
                     >
                       {isNowInRange ? (
-                        <>
-                          <div
-                            className="pointer-events-none absolute inset-y-0 bg-amber-50/70"
-                            style={{
-                              left: currentColumnIndex * scaleDefinition.columnWidth,
-                              width: scaleDefinition.columnWidth,
-                            }}
-                          />
-                          <div
-                            className="pointer-events-none absolute inset-y-0 z-20 w-px bg-rose-400"
-                            style={{ left: nowLinePosition }}
-                          />
-                        </>
+                        <div
+                          className="pointer-events-none absolute inset-y-0 z-20 w-px bg-rose-400"
+                          style={{ left: nowLinePosition }}
+                        />
                       ) : null}
 
                       {intersectsRange ? (
-                        <button
-                          type="button"
-                          onClick={() => selectTask(task.id)}
-                          style={{ left: barLeft, width: barWidth }}
+                        <div
+                          style={{
+                            left: barLeft,
+                            width: barWidth,
+                            ...(!task.isDone && !barColor ? { background: `linear-gradient(to right, ${barHex}, ${barHex}C2)`, borderColor: `${barHex}99`, color: '#fff' } : {}),
+                          }}
                           className={`absolute z-10 flex h-7 items-center justify-between gap-1 overflow-hidden rounded-md border bg-gradient-to-r px-2.5 text-left shadow-xs transition-transform hover:scale-[1.008] ${
                             task.isDone
                               ? 'border-neutral-300 from-neutral-100 to-neutral-200 text-neutral-400 opacity-70 line-through'
-                              : barColor
+                              : (barColor || '')
                           }`}
                         >
-                          <span className="truncate text-[10px] font-medium">{task.title}</span>
+                          <div
+                            onPointerDown={(event) => handleTaskResizeStart(event, task.id, 'start', startTimestamp, endTimestamp)}
+                            onPointerMove={handleTaskResizeMove}
+                            onPointerUp={handleTaskResizeEnd}
+                            onPointerCancel={handleTaskResizeEnd}
+                            className="absolute inset-y-0 left-0 z-20 w-2 touch-none cursor-ew-resize bg-white/25 opacity-0 transition-opacity hover:opacity-100"
+                            title="拖动修改开始时间"
+                          />
+                          <button type="button" onClick={() => selectTask(task.id)} className="min-w-0 flex-1 truncate text-left text-[10px] font-medium">{task.title}</button>
                           {barWidth >= 78 ? (
                             <span className="flex shrink-0 items-center gap-0.5 text-[9px] opacity-85">
                               <Clock className="h-2.5 w-2.5" />
@@ -571,13 +721,21 @@ export const TimelineLayer: React.FC = () => {
                                   : `${task.duration}h`}
                             </span>
                           ) : null}
-                        </button>
+                          <div
+                            onPointerDown={(event) => handleTaskResizeStart(event, task.id, 'end', startTimestamp, endTimestamp)}
+                            onPointerMove={handleTaskResizeMove}
+                            onPointerUp={handleTaskResizeEnd}
+                            onPointerCancel={handleTaskResizeEnd}
+                            className="absolute inset-y-0 right-0 z-20 w-2 touch-none cursor-ew-resize bg-white/25 opacity-0 transition-opacity hover:opacity-100"
+                            title="拖动修改结束时间"
+                          />
+                        </div>
                       ) : null}
                     </div>
                   </div>
                 );
               })
-            )}
+            ) : null}
           </div>
         </div>
       ) : null}
