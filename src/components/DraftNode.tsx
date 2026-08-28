@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Network, Trash2 } from 'lucide-react';
+import { Check, CircleDot, Network, Trash2 } from 'lucide-react';
 import { Handle, NodeProps, NodeResizer, Position } from '@xyflow/react';
 import { useAppStore } from '../store';
 import { getComponentLabel } from '../workspaceComponents';
@@ -33,6 +33,7 @@ export const DraftNode = React.memo(({ id, data, selected }: NodeProps) => {
   const task = useAppStore((state) => state.tasks[taskId]);
   const draftNodePosition = useAppStore((state) => state.drafts.find((draft) => draft.id === draftId)?.nodes.find((node) => node.id === id)?.position);
   const components = useAppStore((state) => state.workspaceComponents);
+  const taskStatuses = useAppStore((state) => state.taskStatuses);
   const workspaceNodes = useAppStore((state) => state.workspaceNodes);
   const updateTask = useAppStore((state) => state.updateTask);
   const setTaskComponentIds = useAppStore((state) => state.setTaskComponentIds);
@@ -40,7 +41,8 @@ export const DraftNode = React.memo(({ id, data, selected }: NodeProps) => {
   const removeDraftNode = useAppStore((state) => state.removeDraftNode);
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState('');
-  const [showMembership, setShowMembership] = useState(false);
+  const [showActions, setShowActions] = useState(false);
+  const [activePanel, setActivePanel] = useState<'membership' | 'status' | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -53,13 +55,17 @@ export const DraftNode = React.memo(({ id, data, selected }: NodeProps) => {
   }, [isEditing]);
 
   useEffect(() => {
-    if (!showMembership) return;
+    if (!showActions) return;
     const closeOnOutsidePointer = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as globalThis.Node)) setShowMembership(false);
+      if (!rootRef.current?.contains(event.target as globalThis.Node)) {
+        setShowActions(false);
+        setActivePanel(null);
+        setConfirmDelete(false);
+      }
     };
     document.addEventListener('pointerdown', closeOnOutsidePointer, true);
     return () => document.removeEventListener('pointerdown', closeOnOutsidePointer, true);
-  }, [showMembership]);
+  }, [showActions]);
 
   if (!task) {
     return <div className="rounded-full border border-rose-200 bg-rose-50 px-4 py-2 text-xs text-rose-500">任务数据已缺失</div>;
@@ -97,41 +103,97 @@ export const DraftNode = React.memo(({ id, data, selected }: NodeProps) => {
         event.stopPropagation();
         if (isEditing) commitTitle();
         setConfirmDelete(false);
-        setShowMembership((value) => !value);
+        setActivePanel(null);
+        setShowActions((value) => !value);
       }}
-      title="单击改名，双击设置归属联通块"
+      title="单击改名，双击显示节点操作"
     >
       <NodeResizer isVisible={selected} minWidth={112} minHeight={40} maxWidth={420} maxHeight={180} color={scheme.accent} handleStyle={{ width: 8, height: 8, borderRadius: 3 }} lineStyle={{ borderWidth: 1 }} onResizeStart={() => onResizeStart?.()} onResizeEnd={(_event, params) => onResizeEnd?.(id, params.width, params.height)} />
-      {showMembership ? (
+      {showActions ? (
         <div
-          className="nodrag nopan nowheel absolute bottom-full left-1/2 z-[10020] mb-2 w-64 -translate-x-1/2 rounded-xl border border-neutral-200 bg-white p-2.5 text-left shadow-2xl"
+          className="nodrag nopan nowheel absolute bottom-full left-1/2 z-[10020] mb-2 flex -translate-x-1/2 items-center gap-1.5 rounded-lg border border-neutral-200 bg-white p-1 shadow-2xl"
           onClick={(event) => event.stopPropagation()}
           onDoubleClick={(event) => event.stopPropagation()}
           onPointerDown={(event) => event.stopPropagation()}
         >
-          <div className="mb-2 flex items-center gap-2 px-1">
-            <span className="flex items-center gap-1.5 text-[11px] font-bold text-neutral-600"><Network className="h-3.5 w-3.5 text-purple-500" />归属联通块</span>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => {
+                setConfirmDelete(false);
+                setActivePanel((current) => current === 'membership' ? null : 'membership');
+              }}
+              className="flex h-8 w-[76px] items-center justify-center gap-1.5 rounded-md border border-purple-200 bg-purple-50 text-[11px] font-semibold text-purple-600 transition-colors hover:bg-purple-100"
+            >
+              <Network className="h-3.5 w-3.5" />归属
+            </button>
+            {activePanel === 'membership' ? (
+              <div className="absolute bottom-full left-1/2 z-[10021] mb-2 w-64 -translate-x-1/2 rounded-xl border border-neutral-200 bg-white p-2.5 text-left shadow-2xl">
+                <p className="mb-2 px-1 text-[10px] leading-4 text-neutral-400">勾选后，这个节点会进入工作区，并可被对应联通块复用。</p>
+                <div className="max-h-44 space-y-1 overflow-y-auto custom-scrollbar">
+                  {components.length > 0 ? components.map((component, index) => (
+                    <label key={component.id} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-[11px] text-neutral-600 hover:bg-neutral-50">
+                      <input type="checkbox" checked={assignedIds.has(component.id)} onChange={(event) => toggleComponent(component.id, event.target.checked)} className="h-3.5 w-3.5 accent-[#8d78d5]" />
+                      <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: component.color }} />
+                      <span className="truncate">{getComponentLabel(component, index)}</span>
+                    </label>
+                  )) : <span className="block rounded-lg bg-neutral-50 px-2 py-3 text-center text-[11px] text-neutral-400">请先在工作区筛选栏新建联通块</span>}
+                </div>
+              </div>
+            ) : null}
           </div>
-          <p className="mb-2 px-1 text-[10px] leading-4 text-neutral-400">勾选后，这个节点会进入工作区，并可被对应联通块复用。</p>
-          <div className="max-h-44 space-y-1 overflow-y-auto custom-scrollbar">
-            {components.length > 0 ? components.map((component, index) => (
-              <label key={component.id} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-[11px] text-neutral-600 hover:bg-neutral-50">
-                <input type="checkbox" checked={assignedIds.has(component.id)} onChange={(event) => toggleComponent(component.id, event.target.checked)} className="h-3.5 w-3.5 accent-[#8d78d5]" />
-                <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: component.color }} />
-                <span className="truncate">{getComponentLabel(component, index)}</span>
-              </label>
-            )) : <span className="block rounded-lg bg-neutral-50 px-2 py-3 text-center text-[11px] text-neutral-400">请先在工作区筛选栏新建联通块</span>}
+
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => {
+                setConfirmDelete(false);
+                setActivePanel((current) => current === 'status' ? null : 'status');
+              }}
+              className="flex h-8 w-[76px] items-center justify-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 text-[11px] font-semibold text-amber-700 transition-colors hover:bg-amber-100"
+            >
+              <CircleDot className="h-3.5 w-3.5" />状态
+            </button>
+            {activePanel === 'status' ? (
+              <div className="absolute bottom-full left-1/2 z-[10021] mb-2 w-44 -translate-x-1/2 rounded-lg border border-neutral-200 bg-white p-1.5 text-left shadow-xl">
+                <p className="px-2 pb-1 pt-0.5 text-[10px] font-semibold text-neutral-400">变更任务状态</p>
+                <div className="max-h-52 space-y-0.5 overflow-y-auto custom-scrollbar">
+                  {taskStatuses.map((status) => {
+                    const isCurrent = (task.statusId || (task.isDone ? 'status-completed' : 'status-not-started')) === status.id;
+                    return (
+                      <button
+                        key={status.id}
+                        type="button"
+                        onClick={() => {
+                          updateTask(taskId, { statusId: status.id });
+                          setActivePanel(null);
+                          setShowActions(false);
+                        }}
+                        className={`flex h-8 w-full items-center justify-between gap-2 rounded-md px-2 text-[11px] transition-colors ${isCurrent ? 'bg-purple-50 font-semibold text-purple-700' : 'text-neutral-600 hover:bg-neutral-50'}`}
+                      >
+                        <span className="truncate">{status.label}</span>
+                        {isCurrent ? <Check className="h-3.5 w-3.5 shrink-0" /> : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
           </div>
+
           <button
             type="button"
             onClick={() => {
-              if (confirmDelete) removeDraftNode(draftId, id);
-              else setConfirmDelete(true);
+              setActivePanel(null);
+              if (confirmDelete) {
+                removeDraftNode(draftId, id);
+                setShowActions(false);
+              } else setConfirmDelete(true);
             }}
-            className={`mt-2 flex h-8 w-full items-center justify-center gap-1.5 rounded-lg border text-[11px] font-semibold ${confirmDelete ? 'border-rose-500 bg-rose-500 text-white' : 'border-rose-200 bg-rose-50 text-rose-500'}`}
+            className={`flex h-8 w-[68px] items-center justify-center gap-1.5 rounded-md border text-[11px] font-semibold ${confirmDelete ? 'border-rose-500 bg-rose-500 text-white' : 'border-rose-200 bg-rose-50 text-rose-500'}`}
           >
             {confirmDelete ? <Check className="h-3.5 w-3.5" /> : <Trash2 className="h-3.5 w-3.5" />}
-            {confirmDelete ? '再次点击确认移除' : '从当前草稿移除'}
+            {confirmDelete ? '确认' : '删除'}
           </button>
         </div>
       ) : null}

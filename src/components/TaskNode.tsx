@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Handle, NodeProps, NodeResizer, Position } from '@xyflow/react';
-import { Check, ListPlus, Network, PanelRightOpen, Trash2 } from 'lucide-react';
+import { Check, CircleDot, ListPlus, Network, PanelRightOpen, Trash2 } from 'lucide-react';
 import { useAppStore } from '../store';
 import { getComponentLabel, getTaskComponentIds } from '../workspaceComponents';
 
@@ -40,6 +40,7 @@ export const TaskNode = React.memo(({ id, data, selected }: NodeProps) => {
   const addTaskToTodo = useAppStore((state) => state.addTaskToTodo);
   const isInTodo = useAppStore((state) => state.todoItems.some((item) => item.taskId === taskId));
   const components = useAppStore((state) => state.workspaceComponents);
+  const taskStatuses = useAppStore((state) => state.taskStatuses);
   const showActions = useAppStore((state) => state.activeNodeActionsId === id);
   const setActiveNodeActionsId = useAppStore((state) => state.setActiveNodeActionsId);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -48,6 +49,7 @@ export const TaskNode = React.memo(({ id, data, selected }: NodeProps) => {
   const [draftTitle, setDraftTitle] = useState('');
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const [isChoosingComponents, setIsChoosingComponents] = useState(false);
+  const [isChoosingStatus, setIsChoosingStatus] = useState(false);
   const assignedComponentIds = new Set(task ? getTaskComponentIds(task) : []);
 
   useEffect(() => {
@@ -56,6 +58,13 @@ export const TaskNode = React.memo(({ id, data, selected }: NodeProps) => {
       inputRef.current?.select();
     }
   }, [isEditing]);
+
+  useEffect(() => {
+    if (showActions) return;
+    setIsConfirmingDelete(false);
+    setIsChoosingComponents(false);
+    setIsChoosingStatus(false);
+  }, [showActions]);
 
   if (!task) {
     return (
@@ -91,6 +100,8 @@ export const TaskNode = React.memo(({ id, data, selected }: NodeProps) => {
           commitTitle();
         }
         setIsConfirmingDelete(false);
+        setIsChoosingComponents(false);
+        setIsChoosingStatus(false);
         setActiveNodeActionsId(showActions ? null : id);
       }}
       title="单击改名，双击显示节点操作"
@@ -130,6 +141,8 @@ export const TaskNode = React.memo(({ id, data, selected }: NodeProps) => {
                 return;
               }
               setIsConfirmingDelete(true);
+              setIsChoosingComponents(false);
+              setIsChoosingStatus(false);
             }}
             className={`flex h-8 w-[68px] items-center justify-center gap-1.5 rounded-md border text-[11px] font-semibold transition-colors ${
               isConfirmingDelete
@@ -149,6 +162,7 @@ export const TaskNode = React.memo(({ id, data, selected }: NodeProps) => {
                 type="button"
                 onClick={() => {
                   setIsConfirmingDelete(false);
+                  setIsChoosingStatus(false);
                   setIsChoosingComponents((value) => !value);
                 }}
                 className="flex h-8 w-[76px] items-center justify-center gap-1.5 rounded-md border border-purple-200 bg-purple-50 text-[11px] font-semibold text-purple-600 transition-colors hover:bg-purple-100"
@@ -186,11 +200,57 @@ export const TaskNode = React.memo(({ id, data, selected }: NodeProps) => {
             </div>
           ) : null}
 
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => {
+                setIsConfirmingDelete(false);
+                setIsChoosingComponents(false);
+                setIsChoosingStatus((value) => !value);
+              }}
+              className="flex h-8 w-[76px] items-center justify-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 text-[11px] font-semibold text-amber-700 transition-colors hover:bg-amber-100"
+              aria-label="变更任务状态"
+              title="变更任务状态"
+            >
+              <CircleDot className="h-3.5 w-3.5" />
+              <span>状态</span>
+            </button>
+            {isChoosingStatus ? (
+              <div className="absolute bottom-full left-1/2 z-[10001] mb-2 w-44 -translate-x-1/2 rounded-lg border border-neutral-200 bg-white p-1.5 shadow-xl">
+                <p className="px-2 pb-1 pt-0.5 text-[10px] font-semibold text-neutral-400">变更任务状态</p>
+                <div className="max-h-52 space-y-0.5 overflow-y-auto custom-scrollbar">
+                  {taskStatuses.map((status) => {
+                    const isCurrent = (task.statusId || (task.isDone ? 'status-completed' : 'status-not-started')) === status.id;
+                    return (
+                      <button
+                        key={status.id}
+                        type="button"
+                        onClick={() => {
+                          updateTask(taskId, { statusId: status.id });
+                          setIsChoosingStatus(false);
+                          setActiveNodeActionsId(null);
+                        }}
+                        className={`flex h-8 w-full items-center justify-between gap-2 rounded-md px-2 text-left text-[11px] transition-colors ${
+                          isCurrent ? 'bg-purple-50 font-semibold text-purple-700' : 'text-neutral-600 hover:bg-neutral-50'
+                        }`}
+                      >
+                        <span className="truncate">{status.label}</span>
+                        {isCurrent ? <Check className="h-3.5 w-3.5 shrink-0" /> : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+          </div>
+
           <button
             type="button"
             disabled={isInTodo}
             onClick={() => {
               setIsConfirmingDelete(false);
+              setIsChoosingComponents(false);
+              setIsChoosingStatus(false);
               addTaskToTodo(taskId);
             }}
             className="flex h-8 w-[76px] items-center justify-center gap-1.5 rounded-md border border-sky-200 bg-sky-50 text-[11px] font-semibold text-sky-600 transition-colors hover:bg-sky-100 disabled:cursor-default disabled:opacity-50"
@@ -206,6 +266,7 @@ export const TaskNode = React.memo(({ id, data, selected }: NodeProps) => {
             onClick={() => {
               setIsConfirmingDelete(false);
               setIsChoosingComponents(false);
+              setIsChoosingStatus(false);
               setActiveNodeActionsId(null);
               selectTask(taskId);
             }}
