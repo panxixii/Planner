@@ -350,6 +350,11 @@ body {
   transform: translateY(-1px);
 }
 
+/* React Flow nodes are separate stacking contexts; lift the owner of an open popover. */
+.react-flow__node:has(.planner-node-actions-open) {
+  z-index: 10000 !important;
+}
+
 .react-flow__handle.planner-mind-handle {
   width: 9px;
   height: 9px;

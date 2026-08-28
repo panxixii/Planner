@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAppStore } from '../store';
 import {
   AlertCircle,
@@ -8,7 +8,6 @@ import {
   Pencil,
   Plus,
   Settings2,
-  Tags,
   Trash2,
   X,
 } from 'lucide-react';
@@ -49,8 +48,6 @@ export const TaskDrawer: React.FC = () => {
   const selectedTaskId = useAppStore((state) => state.selectedTaskId);
   const selectTask = useAppStore((state) => state.selectTask);
   const tasks = useAppStore((state) => state.tasks);
-  const categories = useAppStore((state) => state.categories);
-  const goals = useAppStore((state) => state.goals);
   const taskStatuses = useAppStore((state) => state.taskStatuses);
   const updateTask = useAppStore((state) => state.updateTask);
   const deleteTask = useAppStore((state) => state.deleteTask);
@@ -59,18 +56,6 @@ export const TaskDrawer: React.FC = () => {
   const deleteTaskStatus = useAppStore((state) => state.deleteTaskStatus);
 
   const task = selectedTaskId ? tasks[selectedTaskId] : null;
-  const assignedCategories = useMemo(() => {
-    if (!selectedTaskId || !task) return [];
-
-    const categoryIds = new Set(task.categoryIds || []);
-    Object.values(goals).forEach((goal) => {
-      if (goal.nodes.some((node) => node.taskId === selectedTaskId)) {
-        categoryIds.add(goal.category);
-      }
-    });
-
-    return categories.filter((category) => categoryIds.has(category.id));
-  }, [categories, goals, selectedTaskId, task]);
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -227,25 +212,6 @@ export const TaskDrawer: React.FC = () => {
                 className="w-full resize-y rounded-lg border border-neutral-200 bg-[#ffffff] px-3 py-2.5 text-sm leading-6 text-neutral-800 outline-none transition-colors placeholder:text-neutral-400 focus:border-purple-300 focus:ring-2 focus:ring-purple-100"
                 placeholder="任务描述"
               />
-            </div>
-          </section>
-
-          <section className="mt-5 border-t border-neutral-200 pt-5">
-            <div className="mb-2 flex items-center gap-1.5">
-              <Tags className="h-3.5 w-3.5 text-neutral-400" />
-              <h3 className={labelClassName}>所属分类</h3>
-            </div>
-            <div className="flex min-h-8 flex-wrap items-center gap-1.5">
-              {assignedCategories.length > 0 ? assignedCategories.map((category) => (
-                <span
-                  key={category.id}
-                  className="inline-flex h-7 items-center rounded-md border border-purple-200 bg-purple-50 px-2.5 text-xs font-medium text-purple-600"
-                >
-                  {category.label}
-                </span>
-              )) : (
-                <span className="text-xs text-neutral-400">未关联分类</span>
-              )}
             </div>
           </section>
 

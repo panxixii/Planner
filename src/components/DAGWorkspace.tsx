@@ -27,46 +27,7 @@ import {
   Maximize
 } from 'lucide-react';
 import { Task, GoalNode } from '../types';
-
-// Helper to find all connected components of a goal or merged workspace
-const getConnectedComponents = (nodes: any[], edges: any[]): { id: string; nodeIds: Set<string> }[] => {
-  const visited = new Set<string>();
-  const components: { id: string; nodeIds: Set<string> }[] = [];
-
-  nodes.forEach((node) => {
-    if (visited.has(node.id)) return;
-
-    const componentNodeIds = new Set<string>([node.id]);
-    const queue = [node.id];
-    visited.add(node.id);
-
-    while (queue.length > 0) {
-      const current = queue.shift()!;
-      edges.forEach((edge) => {
-        let neighbor: string | null = null;
-        if (edge.source === current) {
-          neighbor = edge.target;
-        } else if (edge.target === current) {
-          neighbor = edge.source;
-        }
-        if (neighbor && !visited.has(neighbor)) {
-          if (nodes.some((n) => n.id === neighbor)) {
-            visited.add(neighbor);
-            componentNodeIds.add(neighbor);
-            queue.push(neighbor);
-          }
-        }
-      });
-    }
-
-    components.push({
-      id: `cc-${node.id}`,
-      nodeIds: componentNodeIds
-    });
-  });
-
-  return components;
-};
+import { getComponentLabel, getTaskComponentIds } from '../workspaceComponents';
 
 const DAGInnerWorkspace: React.FC = () => {
   const tasks = useAppStore((state) => state.tasks);
@@ -79,8 +40,8 @@ const DAGInnerWorkspace: React.FC = () => {
   const deleteNodeFromGoal = useAppStore((state) => state.deleteNodeFromGoal);
   const addTask = useAppStore((state) => state.addTask);
   const addNodeToGoal = useAppStore((state) => state.addNodeToGoal);
-  const workspaceCategoryFilter = useAppStore((state) => state.workspaceCategoryFilter);
-  const categories = useAppStore((state) => state.categories);
+  const workspaceComponentFilter = useAppStore((state) => state.workspaceComponentFilter);
+  const workspaceComponents = useAppStore((state) => state.workspaceComponents);
 
   // Independent Merged View state
   const mergedNodePositions = useAppStore((state) => state.mergedNodePositions);
@@ -89,8 +50,10 @@ const DAGInnerWorkspace: React.FC = () => {
   const updateMergedNodePositions = useAppStore((state) => state.updateMergedNodePositions);
   const addWorkspaceNode = useAppStore((state) => state.addWorkspaceNode);
   const addMergedEdge = useAppStore((state) => state.addMergedEdge);
+  const setTaskComponentIds = useAppStore((state) => state.setTaskComponentIds);
   const removeEdgeFromWorkspace = useAppStore((state) => state.removeEdgeFromWorkspace);
   const deleteMergedNodeId = useAppStore((state) => state.deleteMergedNodeId);
+  const updateWorkspaceComponent = useAppStore((state) => state.updateWorkspaceComponent);
   const { screenToFlowPosition, zoomIn, zoomOut, fitView } = useReactFlow();
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -113,29 +76,39 @@ const DAGInnerWorkspace: React.FC = () => {
   // Compute final elements dynamically with local cache
   const [localNodes, setLocalNodes] = useState<Node[]>([]);
   const [localEdges, setLocalEdges] = useState<Edge[]>([]);
-
   // Calculate clean merged nodes and edges whenever underlying store state changes
   useEffect(() => {
     let computedNodes: Node[] = [];
     let computedEdges: Edge[] = [];
 
     if (isMergedView) {
-      // 1. Populate task nodes
+      const selectedComponentIds = new Set(workspaceComponentFilter || []);
+      const visibleTaskIdSet = workspaceComponentFilter === null
+        ? null
+        : new Set(
+            Object.values(tasks)
+              .filter((task) => getTaskComponentIds(task).some((id) => selectedComponentIds.has(id)))
+              .map((task) => task.id),
+          );
+
+      // 1. Populate every node in the complete workspace, then apply connected-block membership.
       const visibleTaskIds = new Set<string>();
-      const activeGoalIds = Object.keys(goals).filter((goalId) => {
-        const goal = goals[goalId];
-        return goal && (workspaceCategoryFilter === null || workspaceCategoryFilter.includes(goal.category));
-      });
+      const activeGoalIds = Object.keys(goals);
       activeGoalIds.forEach((gid, index) => {
         const g = goals[gid];
         if (!g || !g.nodes) return;
         const yOffset = index * 250;
 
         g.nodes.forEach((n) => {
-          if (!n || visibleTaskIds.has(n.taskId)) return;
+          if (!n || visibleTaskIds.has(n.taskId) || (visibleTaskIdSet && !visibleTaskIdSet.has(n.taskId))) return;
           visibleTaskIds.add(n.taskId);
           const mergedPos = mergedNodePositions[n.id];
           const finalPos = mergedPos ? mergedPos : { x: n.position.x, y: n.position.y + yOffset };
+          const taskComponentIds = tasks[n.taskId] ? getTaskComponentIds(tasks[n.taskId]) : [];
+          const styledComponent = workspaceComponents.find((component) => (
+            taskComponentIds.includes(component.id)
+            && (workspaceComponentFilter === null || selectedComponentIds.has(component.id))
+          ));
           computedNodes.push({
             id: n.id,
             type: 'taskNode',
@@ -146,7 +119,8 @@ const DAGInnerWorkspace: React.FC = () => {
               goalTitle: g.title,
               goalId: gid,
               isMerged: true,
-              categoryIds: Array.from(new Set([g.category, ...(tasks[n.taskId]?.categoryIds || [])])),
+              componentIds: taskComponentIds,
+              componentColor: styledComponent?.nodeColor,
             }
           });
         });
@@ -155,11 +129,14 @@ const DAGInnerWorkspace: React.FC = () => {
       workspaceNodes.forEach((node) => {
         const task = tasks[node.taskId];
         if (!task || visibleTaskIds.has(task.id)) return;
-        const isVisible = workspaceCategoryFilter === null
-          || task.categoryIds?.some((categoryId) => workspaceCategoryFilter.includes(categoryId));
-        if (!isVisible) return;
+        if (visibleTaskIdSet && !visibleTaskIdSet.has(task.id)) return;
 
         visibleTaskIds.add(task.id);
+        const taskComponentIds = getTaskComponentIds(task);
+        const styledComponent = workspaceComponents.find((component) => (
+          taskComponentIds.includes(component.id)
+          && (workspaceComponentFilter === null || selectedComponentIds.has(component.id))
+        ));
         computedNodes.push({
           id: node.id,
           type: 'taskNode',
@@ -170,7 +147,8 @@ const DAGInnerWorkspace: React.FC = () => {
             goalTitle: '',
             goalId: null,
             isMerged: true,
-            categoryIds: task.categoryIds || [],
+            componentIds: taskComponentIds,
+            componentColor: styledComponent?.nodeColor,
           },
         });
       });
@@ -184,14 +162,21 @@ const DAGInnerWorkspace: React.FC = () => {
           const hasSource = computedNodes.some(n => n.id === e.source);
           const hasTarget = computedNodes.some(n => n.id === e.target);
           if (hasSource && hasTarget) {
+            const sourceTaskId = (computedNodes.find((node) => node.id === e.source)?.data as { taskId?: string })?.taskId;
+            const targetTaskId = (computedNodes.find((node) => node.id === e.target)?.data as { taskId?: string })?.taskId;
+            const edgeComponent = workspaceComponents.find((component) => (
+              (!sourceTaskId || tasks[sourceTaskId]?.componentIds?.includes(component.id))
+              && (!targetTaskId || tasks[targetTaskId]?.componentIds?.includes(component.id))
+              && (workspaceComponentFilter === null || selectedComponentIds.has(component.id))
+            ));
             computedEdges.push({
               id: e.id,
               source: e.source,
               target: e.target,
-              type: 'bezier',
+              type: edgeComponent?.edgeShape || 'bezier',
               animated: false,
               style: { 
-                stroke: '#a9aec5', 
+                stroke: edgeComponent?.edgeColor || '#a9aec5',
                 strokeWidth: 2,
                 opacity: 0.65
               },
@@ -203,11 +188,6 @@ const DAGInnerWorkspace: React.FC = () => {
 
       // Custom drawn merged connections (cross-goal or custom)
       mergedEdges.forEach((e) => {
-        const isVisibleInWorkspace = workspaceCategoryFilter === null
-          || e.categoryIds === undefined
-          || e.categoryIds.some((categoryId) => workspaceCategoryFilter.includes(categoryId));
-        if (!isVisibleInWorkspace) return;
-
         const hasSource = computedNodes.some(n => n.id === e.source);
         const hasTarget = computedNodes.some(n => n.id === e.target);
         if (hasSource && hasTarget) {
@@ -217,14 +197,21 @@ const DAGInnerWorkspace: React.FC = () => {
           const tNode = computedNodes.find(n => n.id === e.target);
           const isCross = sNode?.data?.goalId !== tNode?.data?.goalId;
 
+          const sourceTaskId = (sNode?.data as { taskId?: string })?.taskId;
+          const targetTaskId = (tNode?.data as { taskId?: string })?.taskId;
+          const edgeComponent = workspaceComponents.find((component) => (
+            (!sourceTaskId || tasks[sourceTaskId]?.componentIds?.includes(component.id))
+            && (!targetTaskId || tasks[targetTaskId]?.componentIds?.includes(component.id))
+            && (workspaceComponentFilter === null || selectedComponentIds.has(component.id))
+          ));
           const newEdgeObj: Edge = {
             id: e.id,
             source: e.source,
             target: e.target,
-            type: 'bezier',
+            type: edgeComponent?.edgeShape || 'bezier',
             animated: false,
             style: { 
-              stroke: '#8d78d5', 
+              stroke: edgeComponent?.edgeColor || '#8d78d5',
               strokeWidth: 2.25,
               opacity: 1,
               strokeDasharray: isCross ? '6,6' : '0'
@@ -243,39 +230,29 @@ const DAGInnerWorkspace: React.FC = () => {
       });
 
       // 3. Calculate connected components of the merged workspace's task nodes & edges, and add handles
-      const components = getConnectedComponents(computedNodes, computedEdges);
-      let ccIndex = 1;
-      components.forEach((component) => {
-        if (component.nodeIds.size >= 2) {
-          const memberNodes = computedNodes.filter((n) => component.nodeIds.has(n.id));
+      workspaceComponents.forEach((component, index) => {
+        if (workspaceComponentFilter !== null && !selectedComponentIds.has(component.id)) return;
+        const memberNodes = computedNodes.filter((node) => {
+          const taskId = (node.data as { taskId?: string }).taskId;
+          return taskId ? tasks[taskId]?.componentIds?.includes(component.id) : false;
+        });
+        {
           const xs = memberNodes.map((n) => n.position.x);
           const ys = memberNodes.map((n) => n.position.y);
-          const minX = Math.min(...xs);
-          const maxX = Math.max(...xs);
-          const minY = Math.min(...ys);
-
-          const handleX = (minX + maxX) / 2 - 50;
-          const handleY = minY - 50;
-
-          const repNode = memberNodes[0];
-          const repTaskId = repNode ? (repNode.data as any)?.taskId : null;
-          const repTask = repTaskId ? tasks[repTaskId] : null;
-          const label = repTask ? `连通块: ${repTask.title.slice(0, 8)}...` : `连通块 #${ccIndex}`;
-
-          // Generate stable ID for renaming
-          const stableId = `cc-${Array.from(component.nodeIds).sort().join(',')}`;
+          const handleX = memberNodes.length > 0 ? (Math.min(...xs) + Math.max(...xs)) / 2 - 50 : component.handlePosition.x;
+          const handleY = memberNodes.length > 0 ? Math.min(...ys) - 50 : component.handlePosition.y;
 
           computedNodes.push({
-            id: `handle-cc-${stableId}`,
+            id: `handle-cc-${component.id}`,
             type: 'componentHandle',
             position: { x: handleX, y: handleY },
             data: {
-              label: label,
-              memberNodeIds: Array.from(component.nodeIds),
-              stableId: stableId
+              label: getComponentLabel(component, index),
+              memberNodeIds: memberNodes.map((node) => node.id),
+              componentId: component.id,
+              color: component.color,
             }
           });
-          ccIndex++;
         }
       });
 
@@ -314,47 +291,11 @@ const DAGInnerWorkspace: React.FC = () => {
         };
       });
 
-      // Calculate connected components of the active goal's nodes and edges
-      const components = getConnectedComponents(computedNodes, goal.edges || []);
-      let ccIndex = 1;
-      components.forEach((component) => {
-        if (component.nodeIds.size >= 2) {
-          const memberNodes = goal.nodes.filter((n) => component.nodeIds.has(n.id));
-          const xs = memberNodes.map((n) => n.position.x);
-          const ys = memberNodes.map((n) => n.position.y);
-          const minX = Math.min(...xs);
-          const maxX = Math.max(...xs);
-          const minY = Math.min(...ys);
-
-          const handleX = (minX + maxX) / 2 - 50;
-          const handleY = minY - 50;
-
-          // Find a representative task title to show on the handle
-          const repNode = memberNodes[0];
-          const repTask = repNode ? tasks[repNode.taskId] : null;
-          const label = repTask ? `连通块: ${repTask.title.slice(0, 8)}...` : `连通块 #${ccIndex}`;
-
-          // Generate stable ID for renaming
-          const stableId = `cc-${Array.from(component.nodeIds).sort().join(',')}`;
-
-          computedNodes.push({
-            id: `handle-cc-${stableId}`,
-            type: 'componentHandle',
-            position: { x: handleX, y: handleY },
-            data: {
-              label: label,
-              memberNodeIds: Array.from(component.nodeIds),
-              stableId: stableId
-            }
-          });
-          ccIndex++;
-        }
-      });
     }
 
     setLocalNodes(computedNodes);
     setLocalEdges(computedEdges);
-  }, [isMergedView, selectedGoalId, goals, mergedNodePositions, workspaceNodes, mergedEdges, tasks, workspaceCategoryFilter]);
+  }, [isMergedView, selectedGoalId, goals, mergedNodePositions, workspaceNodes, mergedEdges, tasks, workspaceComponentFilter, workspaceComponents]);
 
   // Standard React Flow selection and state synchronization handlers
   const onNodesChange = useCallback((changes: NodeChange[]) => {
@@ -417,6 +358,10 @@ const DAGInnerWorkspace: React.FC = () => {
         }
       });
       updateMergedNodePositions(nextPositions);
+      if (node.type === 'componentHandle') {
+        const componentId = (node.data as { componentId?: string }).componentId;
+        if (componentId) updateWorkspaceComponent(componentId, { handlePosition: node.position });
+      }
     } else if (selectedGoalId && goals[selectedGoalId]) {
       const g = goals[selectedGoalId];
       const updatedGoalNodes = g.nodes.map((gn) => {
@@ -431,7 +376,7 @@ const DAGInnerWorkspace: React.FC = () => {
       });
       updateGoalNodes(selectedGoalId, updatedGoalNodes);
     }
-  }, [isMergedView, selectedGoalId, goals, localNodes, updateGoalNodes, updateMergedNodePositions]);
+  }, [isMergedView, selectedGoalId, goals, localNodes, updateGoalNodes, updateMergedNodePositions, updateWorkspaceComponent]);
 
   // Handle Tab keypress to spawn a child concept node directly aligned rightwards
   const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
@@ -477,9 +422,7 @@ const DAGInnerWorkspace: React.FC = () => {
         description: '',
         duration: 0,
         isDone: false,
-        categoryIds: targetGoal
-          ? [targetGoal.category]
-          : (parentTask.categoryIds || []),
+        componentIds: isMergedView ? [...(parentTask.componentIds || [])] : [],
         startTime: '',
         endTime: '',
         color: parentTask.color || 'sky'
@@ -504,9 +447,6 @@ const DAGInnerWorkspace: React.FC = () => {
         id: edgeId,
         source: selectedNode.id,
         target: newNodeId,
-        categoryIds: (isMergedView || !targetGoalId)
-          ? (newTaskObj.categoryIds || [])
-          : undefined,
       };
       if (isMergedView || !targetGoalId) {
         addMergedEdge(newEdge);
@@ -516,30 +456,39 @@ const DAGInnerWorkspace: React.FC = () => {
 
       showToast('已创建思维子节点');
     }
-  }, [localNodes, isMergedView, selectedGoalId, goals, tasks, workspaceCategoryFilter, addTask, addNodeToGoal, addWorkspaceNode, addEdgeToGoal, addMergedEdge, showToast]);
+  }, [localNodes, isMergedView, selectedGoalId, goals, tasks, workspaceComponentFilter, addTask, addNodeToGoal, addWorkspaceNode, addEdgeToGoal, addMergedEdge, showToast]);
 
   // Handle new dependency connections
   const onConnect = useCallback((connection: Connection) => {
     const edgeId = `edge-custom-${Math.random().toString(36).substring(2, 9)}`;
-    const sourceCategoryIds = (localNodes.find((node) => node.id === connection.source)?.data as { categoryIds?: string[] } | undefined)?.categoryIds || [];
-    const targetCategoryIds = (localNodes.find((node) => node.id === connection.target)?.data as { categoryIds?: string[] } | undefined)?.categoryIds || [];
-    const targetCategoryIdSet = new Set(targetCategoryIds);
-    const sharedCategoryIds = sourceCategoryIds.filter((categoryId) => targetCategoryIdSet.has(categoryId));
     const newEdge = {
       id: edgeId,
       source: connection.source!,
       target: connection.target!,
-      categoryIds: isMergedView ? sharedCategoryIds : undefined,
     };
 
     if (isMergedView) {
       addMergedEdge(newEdge);
+      const sourceNode = localNodes.find((node) => node.id === connection.source);
+      const targetNode = localNodes.find((node) => node.id === connection.target);
+      if (sourceNode && targetNode) {
+        const parentNode = sourceNode.position.x <= targetNode.position.x ? sourceNode : targetNode;
+        const childNode = parentNode.id === sourceNode.id ? targetNode : sourceNode;
+        const parentTaskId = (parentNode.data as { taskId?: string }).taskId;
+        const childTaskId = (childNode.data as { taskId?: string }).taskId;
+        if (parentTaskId && childTaskId && tasks[parentTaskId] && tasks[childTaskId]) {
+          setTaskComponentIds(childTaskId, Array.from(new Set([
+            ...(tasks[childTaskId].componentIds || []),
+            ...(tasks[parentTaskId].componentIds || []),
+          ])));
+        }
+      }
       showToast('已添加跨计划连线');
     } else if (selectedGoalId) {
       addEdgeToGoal(selectedGoalId, newEdge);
       showToast('已添加连线');
     }
-  }, [isMergedView, selectedGoalId, localNodes, addMergedEdge, addEdgeToGoal, showToast]);
+  }, [isMergedView, selectedGoalId, localNodes, tasks, addMergedEdge, addEdgeToGoal, setTaskComponentIds, showToast]);
 
   const onConnectStart = useCallback(() => {
     isConnectingRef.current = true;
@@ -553,13 +502,13 @@ const DAGInnerWorkspace: React.FC = () => {
   // Double click edge to delete dependency (RESTRICTED TO CUSTOM WORKSPACE EDGES IN MERGED VIEW ONLY)
   const onEdgeDoubleClick = useCallback((_event: React.MouseEvent, edge: Edge) => {
     if (isMergedView) {
-      removeEdgeFromWorkspace(edge.id, workspaceCategoryFilter);
+      removeEdgeFromWorkspace(edge.id, workspaceComponentFilter);
       showToast('已移除跨计划连线');
     } else if (selectedGoalId) {
       deleteEdgeFromGoal(selectedGoalId, edge.id);
       showToast('已移除连线');
     }
-  }, [isMergedView, selectedGoalId, workspaceCategoryFilter, removeEdgeFromWorkspace, deleteEdgeFromGoal, showToast]);
+  }, [isMergedView, selectedGoalId, workspaceComponentFilter, removeEdgeFromWorkspace, deleteEdgeFromGoal, showToast]);
 
   // Left click backspace deletes node
   const onNodesDelete = useCallback((nodesDeleted: Node[]) => {
@@ -578,12 +527,8 @@ const DAGInnerWorkspace: React.FC = () => {
       return;
     }
 
-    const selectedCategoryIds = workspaceCategoryFilter === null
-      ? categories.map((category) => category.id)
-      : workspaceCategoryFilter;
-
-    if (selectedCategoryIds.length === 0) {
-      showToast('请先勾选至少一个任务分类');
+    if (workspaceComponentFilter?.length === 0) {
+      showToast('请先勾选至少一个联通块，或选择全部');
       return;
     }
 
@@ -595,7 +540,7 @@ const DAGInnerWorkspace: React.FC = () => {
       description: '',
       duration: 0,
       isDone: false,
-      categoryIds: targetGoal ? [targetGoal.category] : [...selectedCategoryIds],
+      componentIds: targetGoal ? [] : [...(workspaceComponentFilter || [])],
       startTime: '',
       endTime: '',
       color: 'indigo'
@@ -621,7 +566,7 @@ const DAGInnerWorkspace: React.FC = () => {
     } else {
       addWorkspaceNode(newGoalNode);
     }
-  }, [workspaceCategoryFilter, categories, isMergedView, selectedGoalId, goals, addTask, addNodeToGoal, addWorkspaceNode, screenToFlowPosition, showToast]);
+  }, [workspaceComponentFilter, isMergedView, selectedGoalId, goals, addTask, addNodeToGoal, addWorkspaceNode, screenToFlowPosition, showToast]);
 
   const activeTitle = isMergedView 
     ? '合并画布' 

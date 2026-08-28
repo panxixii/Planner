@@ -1,12 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Handle, NodeProps, Position } from '@xyflow/react';
-import { Check, PanelRightOpen, Trash2, X } from 'lucide-react';
+import { Check, Network, PanelRightOpen, Trash2, X } from 'lucide-react';
 import { useAppStore } from '../store';
+import { getComponentLabel, getTaskComponentIds } from '../workspaceComponents';
 
 interface TaskNodeData {
   taskId: string;
   goalId?: string | null;
   isMerged?: boolean;
+  componentColor?: string;
 }
 
 const colorMap: Record<string, { accent: string; surface: string; border: string }> = {
@@ -19,14 +21,16 @@ const colorMap: Record<string, { accent: string; surface: string; border: string
 };
 
 export const TaskNode = React.memo(({ id, data, selected }: NodeProps) => {
-  const { taskId, goalId, isMerged } = data as unknown as TaskNodeData;
+  const { taskId, goalId, isMerged, componentColor } = data as unknown as TaskNodeData;
   const task = useAppStore((state) => state.tasks[taskId]);
   const selectTask = useAppStore((state) => state.selectTask);
   const updateTask = useAppStore((state) => state.updateTask);
   const deleteTask = useAppStore((state) => state.deleteTask);
   const removeTaskFromWorkspace = useAppStore((state) => state.removeTaskFromWorkspace);
   const deleteNodeFromGoal = useAppStore((state) => state.deleteNodeFromGoal);
-  const workspaceCategoryFilter = useAppStore((state) => state.workspaceCategoryFilter);
+  const workspaceComponentFilter = useAppStore((state) => state.workspaceComponentFilter);
+  const setTaskComponentIds = useAppStore((state) => state.setTaskComponentIds);
+  const components = useAppStore((state) => state.workspaceComponents);
   const showActions = useAppStore((state) => state.activeNodeActionsId === id);
   const setActiveNodeActionsId = useAppStore((state) => state.setActiveNodeActionsId);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -34,6 +38,8 @@ export const TaskNode = React.memo(({ id, data, selected }: NodeProps) => {
   const [isEditing, setIsEditing] = useState(false);
   const [draftTitle, setDraftTitle] = useState('');
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+  const [isChoosingComponents, setIsChoosingComponents] = useState(false);
+  const assignedComponentIds = new Set(task ? getTaskComponentIds(task) : []);
 
   useEffect(() => {
     if (isEditing) {
@@ -50,7 +56,7 @@ export const TaskNode = React.memo(({ id, data, selected }: NodeProps) => {
     );
   }
 
-  const scheme = colorMap[task.color || 'indigo'] || colorMap.indigo;
+  const scheme = colorMap[componentColor || task.color || 'indigo'] || colorMap.indigo;
 
   const startEditing = () => {
     if (isEditing) return;
@@ -80,7 +86,7 @@ export const TaskNode = React.memo(({ id, data, selected }: NodeProps) => {
       title="单击改名，双击显示节点操作"
       className={`planner-mind-node group relative flex h-10 min-w-28 max-w-52 items-center justify-center rounded-full border px-5 text-center transition-[box-shadow,border-color,transform,opacity] duration-150 ${
         task.isDone ? 'opacity-55' : ''
-      } ${selected ? 'planner-mind-node-selected' : ''}`}
+      } ${selected ? 'planner-mind-node-selected' : ''} ${showActions ? 'planner-node-actions-open' : ''}`}
       style={{
         backgroundColor: task.isDone ? '#f7f8fa' : scheme.surface,
         borderColor: task.isDone ? (selected ? '#9ca3af' : '#d1d5db') : (selected ? scheme.accent : scheme.border),
@@ -93,7 +99,7 @@ export const TaskNode = React.memo(({ id, data, selected }: NodeProps) => {
     >
       {showActions ? (
         <div
-          className="nodrag nopan nowheel absolute bottom-full left-1/2 z-50 mb-2 flex h-10 -translate-x-1/2 items-center gap-1.5 rounded-lg border border-neutral-200 bg-white p-1 shadow-lg"
+          className="nodrag nopan nowheel absolute bottom-full left-1/2 z-50 mb-2 flex -translate-x-1/2 items-center gap-1.5 rounded-lg border border-neutral-200 bg-white p-1 shadow-lg"
           onClick={(event) => event.stopPropagation()}
           onDoubleClick={(event) => event.stopPropagation()}
           onMouseDown={(event) => event.stopPropagation()}
@@ -104,7 +110,7 @@ export const TaskNode = React.memo(({ id, data, selected }: NodeProps) => {
               if (isConfirmingDelete) {
                 setActiveNodeActionsId(null);
                 if (isMerged) {
-                  removeTaskFromWorkspace(taskId, workspaceCategoryFilter);
+                  removeTaskFromWorkspace(taskId, workspaceComponentFilter);
                 } else if (goalId) {
                   deleteNodeFromGoal(goalId, id);
                 } else {
@@ -126,10 +132,54 @@ export const TaskNode = React.memo(({ id, data, selected }: NodeProps) => {
             <span>{isConfirmingDelete ? '确认' : '删除'}</span>
           </button>
 
+          {isMerged ? (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsConfirmingDelete(false);
+                  setIsChoosingComponents((value) => !value);
+                }}
+                className="flex h-8 w-[76px] items-center justify-center gap-1.5 rounded-md border border-purple-200 bg-purple-50 text-[11px] font-semibold text-purple-600 transition-colors hover:bg-purple-100"
+                aria-label="设置归属联通块"
+                title="让此节点也在其他联通块中使用"
+              >
+                <Network className="h-3.5 w-3.5" />
+                <span>归属</span>
+              </button>
+              {isChoosingComponents ? (
+                <div className="absolute bottom-full left-1/2 z-[10001] mb-2 w-56 -translate-x-1/2 rounded-lg border border-neutral-200 bg-white p-2 shadow-xl">
+                  <p className="px-1 pb-1.5 text-[10px] font-semibold text-neutral-500">选择可复用此节点的联通块</p>
+                  <div className="max-h-48 space-y-1 overflow-y-auto custom-scrollbar">
+                    {components.length > 0 ? components.map((component, index) => (
+                      <label key={component.id} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-[11px] text-neutral-600 hover:bg-neutral-50">
+                        <input
+                          type="checkbox"
+                          checked={assignedComponentIds.has(component.id)}
+                          onChange={(event) => {
+                            const nextIds = new Set(assignedComponentIds);
+                            if (event.target.checked) nextIds.add(component.id);
+                            else nextIds.delete(component.id);
+                            setTaskComponentIds(taskId, Array.from(nextIds));
+                          }}
+                          className="h-3.5 w-3.5 accent-[#8d78d5]"
+                        />
+                        <span className="truncate">{getComponentLabel(component, index)}</span>
+                      </label>
+                    )) : (
+                      <span className="block px-2 py-2 text-[11px] text-neutral-400">暂无联通块</span>
+                    )}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
           <button
             type="button"
             onClick={() => {
               setIsConfirmingDelete(false);
+              setIsChoosingComponents(false);
               setActiveNodeActionsId(null);
               selectTask(taskId);
             }}

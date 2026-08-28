@@ -6,22 +6,21 @@ import {
   ChevronRight,
   Layers2,
   ListTodo,
-  Tags,
   Trash2,
   Workflow,
 } from 'lucide-react';
 import { useAppStore } from './store';
 import { TaskDrawer } from './components/TaskDrawer';
 import { DAGWorkspace } from './components/DAGWorkspace';
-import { TaskCategoriesPage } from './components/TaskCategoriesPage';
 import { TimelineLayer } from './components/TimelineLayer';
 import { WorkspaceFilterBar } from './components/WorkspaceFilterBar';
+import { ComponentDetailsDrawer } from './components/ComponentDetailsDrawer';
+import { DataTransferControls } from './components/DataTransferControls';
 
-type MenuId = 'task-pool' | 'task-categories' | 'workspace' | 'statistics';
+type MenuId = 'task-pool' | 'workspace' | 'statistics';
 
 const menuItems = [
   { id: 'task-pool' as const, label: 'Todo', icon: ListTodo },
-  { id: 'task-categories' as const, label: '任务分类', icon: Tags },
   { id: 'workspace' as const, label: '工作区', icon: Workflow },
   { id: 'statistics' as const, label: '统计', icon: BarChart3 },
 ];
@@ -31,7 +30,6 @@ export default function App() {
   const isMergedView = useAppStore((state) => state.isMergedView);
   const setMergedView = useAppStore((state) => state.setMergedView);
   const selectTask = useAppStore((state) => state.selectTask);
-  const setWorkspaceCategoryFilter = useAppStore((state) => state.setWorkspaceCategoryFilter);
   const clearWorkspace = useAppStore((state) => state.clearWorkspace);
   const isSidebarCollapsed = useAppStore((state) => state.isSidebarCollapsed);
   const toggleSidebar = useAppStore((state) => state.toggleSidebar);
@@ -136,18 +134,21 @@ export default function App() {
           </div>
 
           {activeMenu === 'workspace' ? (
-            <button
-              onClick={() => {
-                if (window.confirm('您确定要清空工作区中的所有计划和目标数据吗？')) {
-                  clearWorkspace();
-                }
-              }}
-              className="planner-danger-button flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1 text-xs font-bold shadow-2xs transition-all"
-              title="清空所有自定义计划与任务"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-              <span>清空计划</span>
-            </button>
+            <div className="flex shrink-0 items-center gap-2">
+              <DataTransferControls />
+              <button
+                onClick={() => {
+                  if (window.confirm('您确定要清空工作区中的所有计划和目标数据吗？')) {
+                    clearWorkspace();
+                  }
+                }}
+                className="planner-danger-button flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1 text-xs font-bold shadow-2xs transition-all"
+                title="清空所有自定义计划与任务"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                <span>清空计划</span>
+              </button>
+            </div>
           ) : null}
         </header>
 
@@ -159,20 +160,13 @@ export default function App() {
             </div>
             <TimelineLayer />
           </div>
-        ) : activeMenu === 'task-categories' ? (
-          <TaskCategoriesPage
-            onOpenCategory={(categoryId) => {
-              setWorkspaceCategoryFilter(categoryId === 'all' ? null : [categoryId]);
-              setActiveMenu('workspace');
-              setMergedView(true);
-            }}
-          />
         ) : (
           <div className="min-h-0 flex-1 bg-neutral-50" aria-label={`${activeMenuLabel}页面`} />
         )}
       </main>
 
       {activeMenu === 'workspace' ? <TaskDrawer /> : null}
+      {activeMenu === 'workspace' ? <ComponentDetailsDrawer /> : null}
     </div>
   );
 }

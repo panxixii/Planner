@@ -9,6 +9,7 @@ import {
   LocateFixed,
 } from 'lucide-react';
 import { useAppStore } from '../store';
+import { getTaskComponentIds } from '../workspaceComponents';
 
 type ZoomScaleType = 'minutes' | 'hours' | 'days';
 
@@ -103,12 +104,11 @@ const colorClasses: Record<string, string> = {
 export const TimelineLayer: React.FC = () => {
   const tasks = useAppStore((state) => state.tasks);
   const selectTask = useAppStore((state) => state.selectTask);
-  const goals = useAppStore((state) => state.goals);
   const timelineTaskOrder = useAppStore((state) => state.timelineTaskOrder);
   const setTimelineTaskOrder = useAppStore((state) => state.setTimelineTaskOrder);
   const isTimelineCollapsed = useAppStore((state) => state.isTimelineCollapsed);
   const toggleTimeline = useAppStore((state) => state.toggleTimeline);
-  const workspaceCategoryFilter = useAppStore((state) => state.workspaceCategoryFilter);
+  const workspaceComponentFilter = useAppStore((state) => state.workspaceComponentFilter);
 
   const initialNowRef = useRef(Date.now());
   const timelineRootRef = useRef<HTMLDivElement>(null);
@@ -155,29 +155,16 @@ export const TimelineLayer: React.FC = () => {
   }, [isTimelineCollapsed, rangeStart, scaleDefinition.columnWidth, scaleDefinition.unitMs, taskColumnWidth, zoomScale]);
 
   const visibleTasks = useMemo(() => {
-    const visibleTaskIds = new Set<string>();
-
-    Object.values(goals || {}).forEach((goal) => {
-      if (workspaceCategoryFilter !== null && !workspaceCategoryFilter.includes(goal.category)) return;
-      goal.nodes?.forEach((node) => {
-        if (node.id && node.taskId) visibleTaskIds.add(node.taskId);
-      });
-    });
-
-    Object.values(tasks).forEach((task) => {
-      if (!task.categoryIds?.length) return;
-      if (
-        workspaceCategoryFilter === null
-        || task.categoryIds.some((categoryId) => workspaceCategoryFilter.includes(categoryId))
-      ) {
-        visibleTaskIds.add(task.id);
-      }
-    });
-
-    return Object.values(tasks).filter(
-      (task) => visibleTaskIds.has(task.id) && task.startTime && task.endTime,
-    );
-  }, [goals, tasks, workspaceCategoryFilter]);
+    const selectedIds = new Set(workspaceComponentFilter || []);
+    return Object.values(tasks).filter((task) => (
+      task.startTime
+      && task.endTime
+      && (
+        workspaceComponentFilter === null
+        || getTaskComponentIds(task).some((componentId) => selectedIds.has(componentId))
+      )
+    ));
+  }, [tasks, workspaceComponentFilter]);
 
   const orderedVisibleTasks = useMemo(() => {
     const orderById = new Map(timelineTaskOrder.map((id, index) => [id, index]));

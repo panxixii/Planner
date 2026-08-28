@@ -5,7 +5,8 @@ export interface Task {
   duration: number; // estimated hours, decimals supported
   isDone: boolean;
   statusId?: string; // References a configurable task status.
-  categoryIds?: string[]; // A workspace task can belong to multiple categories.
+  categoryIds?: string[]; // Legacy plan-category data, kept for saved-data compatibility.
+  componentIds?: string[]; // Explicit connected blocks that reuse this node.
   startTime?: string; // YYYY-MM-DD or YYYY-MM-DDTHH:mm
   endTime?: string; // YYYY-MM-DD or YYYY-MM-DDTHH:mm
   color?: string; // e.g. 'emerald', 'sky', 'rose', 'violet', 'amber'
@@ -57,6 +58,18 @@ export interface AppCategory {
 
 export type CategoryType = string;
 
+export type WorkspaceEdgeShape = 'bezier' | 'smoothstep' | 'straight';
+
+export interface WorkspaceComponent {
+  id: string;
+  name: string;
+  color: string;
+  nodeColor: string;
+  edgeColor: string;
+  edgeShape: WorkspaceEdgeShape;
+  handlePosition: { x: number; y: number };
+}
+
 export interface AppState {
   tasks: Record<string, Task>;
   taskStatuses: TaskStatus[];
@@ -69,7 +82,9 @@ export interface AppState {
   selectedTaskId: string | null; // active task for Right Side Drawer
   activeNodeActionsId: string | null; // transient node action popover owner
   activeMergedGoalIds: string[]; // Goals pulled into the consolidated merged workspace (initially empty)
-  workspaceCategoryFilter: string[] | null; // null means all categories
+  workspaceComponentFilter: string[] | null; // null means the complete workspace
+  workspaceComponents: WorkspaceComponent[];
+  activeComponentDetailsId: string | null;
   
   // Actions
   setCategory: (category: CategoryType) => void;
@@ -81,7 +96,10 @@ export interface AppState {
   setMergedView: (val: boolean) => void;
   toggleActiveMergedGoalId: (goalId: string) => void;
   setActiveMergedGoalIds: (goalIds: string[]) => void;
-  setWorkspaceCategoryFilter: (categoryIds: string[] | null) => void;
+  setWorkspaceComponentFilter: (componentIds: string[] | null) => void;
+  addWorkspaceComponent: (name: string) => string;
+  updateWorkspaceComponent: (id: string, updates: Partial<Omit<WorkspaceComponent, 'id'>>) => void;
+  openComponentDetails: (componentId: string | null) => void;
   selectTask: (taskId: string | null) => void;
   setActiveNodeActionsId: (nodeId: string | null) => void;
   
@@ -89,7 +107,8 @@ export interface AppState {
   addTask: (task: Task) => void;
   updateTask: (taskId: string, updates: Partial<Task>) => void;
   deleteTask: (taskId: string) => void;
-  removeTaskFromWorkspace: (taskId: string, categoryIds: string[] | null) => void;
+  setTaskComponentIds: (taskId: string, componentIds: string[]) => void;
+  removeTaskFromWorkspace: (taskId: string, componentIds: string[] | null) => void;
   addTaskStatus: (label: string) => string | null;
   renameTaskStatus: (statusId: string, label: string) => void;
   deleteTaskStatus: (statusId: string) => void;
@@ -137,10 +156,8 @@ export interface AppState {
   addWorkspaceNode: (node: GoalNode) => void;
   addMergedEdge: (edge: GoalEdge) => void;
   deleteMergedEdge: (edgeId: string) => void;
-  removeEdgeFromWorkspace: (edgeId: string, categoryIds: string[] | null) => void;
+  removeEdgeFromWorkspace: (edgeId: string, componentIds: string[] | null) => void;
   addMergedNodeId: (nodeId: string) => void;
   deleteMergedNodeId: (nodeId: string) => void;
   clearMergedNodeIds: () => void;
-  componentNames: Record<string, string>;
-  updateComponentName: (id: string, name: string) => void;
 }
