@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Network, Trash2, X } from 'lucide-react';
+import { Check, Network, Trash2 } from 'lucide-react';
 import { Handle, NodeProps, NodeResizer, Position } from '@xyflow/react';
 import { useAppStore } from '../store';
 import { getComponentLabel } from '../workspaceComponents';
@@ -43,6 +43,7 @@ export const DraftNode = React.memo(({ id, data, selected }: NodeProps) => {
   const [showMembership, setShowMembership] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   const assignedIds = useMemo(() => new Set<string>(task?.componentIds || []), [task?.componentIds]);
 
   useEffect(() => {
@@ -50,6 +51,15 @@ export const DraftNode = React.memo(({ id, data, selected }: NodeProps) => {
     inputRef.current?.focus();
     inputRef.current?.select();
   }, [isEditing]);
+
+  useEffect(() => {
+    if (!showMembership) return;
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as globalThis.Node)) setShowMembership(false);
+    };
+    document.addEventListener('pointerdown', closeOnOutsidePointer, true);
+    return () => document.removeEventListener('pointerdown', closeOnOutsidePointer, true);
+  }, [showMembership]);
 
   if (!task) {
     return <div className="rounded-full border border-rose-200 bg-rose-50 px-4 py-2 text-xs text-rose-500">任务数据已缺失</div>;
@@ -79,6 +89,7 @@ export const DraftNode = React.memo(({ id, data, selected }: NodeProps) => {
 
   return (
     <div
+      ref={rootRef}
       className={`planner-mind-node group relative flex h-full min-h-10 w-full min-w-28 items-center justify-center rounded-[999px] border px-5 text-center shadow-sm ${selected ? 'planner-mind-node-selected' : ''}`}
       style={{ backgroundColor: scheme.surface, borderColor: selected ? scheme.accent : scheme.border }}
       onDoubleClick={(event) => {
@@ -98,9 +109,8 @@ export const DraftNode = React.memo(({ id, data, selected }: NodeProps) => {
           onDoubleClick={(event) => event.stopPropagation()}
           onPointerDown={(event) => event.stopPropagation()}
         >
-          <div className="mb-2 flex items-center justify-between gap-2 px-1">
+          <div className="mb-2 flex items-center gap-2 px-1">
             <span className="flex items-center gap-1.5 text-[11px] font-bold text-neutral-600"><Network className="h-3.5 w-3.5 text-purple-500" />归属联通块</span>
-            <button type="button" onClick={() => setShowMembership(false)} className="flex h-6 w-6 items-center justify-center rounded-md text-neutral-400 hover:bg-neutral-100"><X className="h-3.5 w-3.5" /></button>
           </div>
           <p className="mb-2 px-1 text-[10px] leading-4 text-neutral-400">勾选后，这个节点会进入工作区，并可被对应联通块复用。</p>
           <div className="max-h-44 space-y-1 overflow-y-auto custom-scrollbar">

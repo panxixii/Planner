@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Handle, NodeProps, NodeResizer, Position } from '@xyflow/react';
-import { Check, ListPlus, Network, PanelRightOpen, Trash2, X } from 'lucide-react';
+import { Check, ListPlus, Network, PanelRightOpen, Trash2 } from 'lucide-react';
 import { useAppStore } from '../store';
 import { getComponentLabel, getTaskComponentIds } from '../workspaceComponents';
 
@@ -217,18 +217,6 @@ export const TaskNode = React.memo(({ id, data, selected }: NodeProps) => {
             <span>详情</span>
           </button>
 
-          <button
-            type="button"
-            onClick={() => {
-              setIsConfirmingDelete(false);
-              setActiveNodeActionsId(null);
-            }}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-neutral-200 bg-neutral-50 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-700"
-            aria-label="关闭全部节点操作"
-            title="关闭全部节点操作"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
         </div>
       ) : null}
 

@@ -60,6 +60,7 @@ const DAGInnerWorkspace: React.FC = () => {
   const deleteMergedNodeId = useAppStore((state) => state.deleteMergedNodeId);
   const updateWorkspaceComponent = useAppStore((state) => state.updateWorkspaceComponent);
   const updateWorkspaceNodeSize = useAppStore((state) => state.updateWorkspaceNodeSize);
+  const setActiveNodeActionsId = useAppStore((state) => state.setActiveNodeActionsId);
   const { screenToFlowPosition, zoomIn, zoomOut, fitView } = useReactFlow();
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -709,6 +710,10 @@ const DAGInnerWorkspace: React.FC = () => {
       {/* 6. Real React Flow Canvas */}
       <div
         onKeyDown={handleKeyDown}
+        onPointerDownCapture={(event) => {
+          const target = event.target as HTMLElement;
+          if (!target.closest('.planner-node-actions-open')) setActiveNodeActionsId(null);
+        }}
         tabIndex={0}
         className="flex-1 min-h-0 bg-neutral-50/50 cursor-grab active:cursor-grabbing text-neutral-800 outline-none"
       >
