@@ -26,6 +26,29 @@ body {
     linear-gradient(135deg, #f8fbff 0%, #fff9fc 52%, #f4f7ff 100%);
 }
 
+.planner-hue-slider {
+  background: linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+}
+
+.planner-hue-slider::-webkit-slider-thumb {
+  width: 16px;
+  height: 16px;
+  appearance: none;
+  border: 2px solid white;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 1px 5px rgba(51, 65, 85, 0.35);
+}
+
+.planner-hue-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: 2px solid white;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 1px 5px rgba(51, 65, 85, 0.35);
+}
+
 /* Soft glass surfaces keep the pastel background visible without reducing contrast. */
 .bg-neutral-100 {
   background-color: rgba(244, 247, 255, 0.68);

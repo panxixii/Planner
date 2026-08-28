@@ -105,10 +105,6 @@ const DAGInnerWorkspace: React.FC = () => {
           const mergedPos = mergedNodePositions[n.id];
           const finalPos = mergedPos ? mergedPos : { x: n.position.x, y: n.position.y + yOffset };
           const taskComponentIds = tasks[n.taskId] ? getTaskComponentIds(tasks[n.taskId]) : [];
-          const styledComponent = workspaceComponents.find((component) => (
-            taskComponentIds.includes(component.id)
-            && (workspaceComponentFilter === null || selectedComponentIds.has(component.id))
-          ));
           computedNodes.push({
             id: n.id,
             type: 'taskNode',
@@ -120,7 +116,6 @@ const DAGInnerWorkspace: React.FC = () => {
               goalId: gid,
               isMerged: true,
               componentIds: taskComponentIds,
-              componentColor: styledComponent?.nodeColor,
             }
           });
         });
@@ -133,10 +128,6 @@ const DAGInnerWorkspace: React.FC = () => {
 
         visibleTaskIds.add(task.id);
         const taskComponentIds = getTaskComponentIds(task);
-        const styledComponent = workspaceComponents.find((component) => (
-          taskComponentIds.includes(component.id)
-          && (workspaceComponentFilter === null || selectedComponentIds.has(component.id))
-        ));
         computedNodes.push({
           id: node.id,
           type: 'taskNode',
@@ -148,7 +139,6 @@ const DAGInnerWorkspace: React.FC = () => {
             goalId: null,
             isMerged: true,
             componentIds: taskComponentIds,
-            componentColor: styledComponent?.nodeColor,
           },
         });
       });
@@ -239,8 +229,8 @@ const DAGInnerWorkspace: React.FC = () => {
         {
           const xs = memberNodes.map((n) => n.position.x);
           const ys = memberNodes.map((n) => n.position.y);
-          const handleX = memberNodes.length > 0 ? (Math.min(...xs) + Math.max(...xs)) / 2 - 50 : component.handlePosition.x;
-          const handleY = memberNodes.length > 0 ? Math.min(...ys) - 50 : component.handlePosition.y;
+          const handleX = memberNodes.length > 0 ? Math.min(...xs) - 190 : component.handlePosition.x;
+          const handleY = memberNodes.length > 0 ? (Math.min(...ys) + Math.max(...ys)) / 2 : component.handlePosition.y;
 
           computedNodes.push({
             id: `handle-cc-${component.id}`,
@@ -254,6 +244,25 @@ const DAGInnerWorkspace: React.FC = () => {
             }
           });
         }
+      });
+
+      // A component handle is the root node of its block. Persist and render its outgoing edges.
+      mergedEdges.forEach((edge) => {
+        if (!edge.source.startsWith('handle-cc-')) return;
+        const componentId = edge.source.slice('handle-cc-'.length);
+        const component = workspaceComponents.find((candidate) => candidate.id === componentId);
+        const hasSource = computedNodes.some((node) => node.id === edge.source);
+        const hasTarget = computedNodes.some((node) => node.id === edge.target);
+        if (!component || !hasSource || !hasTarget) return;
+        computedEdges.push({
+          id: edge.id,
+          source: edge.source,
+          target: edge.target,
+          type: component.edgeShape,
+          animated: false,
+          style: { stroke: component.edgeColor, strokeWidth: 2.25, opacity: 1 },
+          interactionWidth: 28,
+        });
       });
 
     } else if (selectedGoalId && goals[selectedGoalId]) {
@@ -472,6 +481,19 @@ const DAGInnerWorkspace: React.FC = () => {
       const sourceNode = localNodes.find((node) => node.id === connection.source);
       const targetNode = localNodes.find((node) => node.id === connection.target);
       if (sourceNode && targetNode) {
+        const sourceComponentId = sourceNode.type === 'componentHandle'
+          ? (sourceNode.data as { componentId?: string }).componentId
+          : undefined;
+        const targetTaskId = (targetNode.data as { taskId?: string }).taskId;
+        if (sourceComponentId && targetTaskId && tasks[targetTaskId]) {
+          setTaskComponentIds(targetTaskId, Array.from(new Set([
+            ...(tasks[targetTaskId].componentIds || []),
+            sourceComponentId,
+          ])));
+          showToast('已将根节点连接到任务，并加入该联通块');
+          return;
+        }
+
         const parentNode = sourceNode.position.x <= targetNode.position.x ? sourceNode : targetNode;
         const childNode = parentNode.id === sourceNode.id ? targetNode : sourceNode;
         const parentTaskId = (parentNode.data as { taskId?: string }).taskId;
