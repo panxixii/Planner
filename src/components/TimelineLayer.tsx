@@ -167,6 +167,7 @@ export const TimelineLayer: React.FC = () => {
   const [taskColumnWidth, setTaskColumnWidth] = useState(DEFAULT_TASK_COLUMN_WIDTH);
   const [taskResizePreview, setTaskResizePreview] = useState<TaskResizeState | null>(null);
   const [collapsedTaskIds, setCollapsedTaskIds] = useState<Set<string>>(() => new Set());
+  const [showCompletedTasks, setShowCompletedTasks] = useState(false);
 
   const scaleDefinition = SCALE_DEFINITIONS[zoomScale];
   const timelineWidth = WINDOW_COLUMN_COUNT * scaleDefinition.columnWidth;
@@ -201,12 +202,13 @@ export const TimelineLayer: React.FC = () => {
     return Object.values(tasks).filter((task) => (
       task.startTime
       && task.endTime
+      && (showCompletedTasks || !task.isDone)
       && (
         workspaceComponentFilter === null
         || getTaskComponentIds(task).some((componentId) => selectedIds.has(componentId))
       )
     ));
-  }, [tasks, workspaceComponentFilter]);
+  }, [showCompletedTasks, tasks, workspaceComponentFilter]);
 
   const orderedVisibleTasks = useMemo(() => {
     const orderById = new Map(timelineTaskOrder.map((id, index) => [id, index]));
@@ -603,6 +605,16 @@ export const TimelineLayer: React.FC = () => {
         </div>
 
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 text-xs">
+          <label className="flex h-7 cursor-pointer items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-2.5 text-[11px] font-medium text-neutral-600 shadow-xs transition-colors hover:border-neutral-300 hover:bg-neutral-50">
+            <input
+              type="checkbox"
+              checked={showCompletedTasks}
+              onChange={(event) => setShowCompletedTasks(event.target.checked)}
+              className="h-3.5 w-3.5 accent-[#8d78d5]"
+            />
+            显示全部
+          </label>
+
           <button
             type="button"
             onClick={handleReturnToNow}
