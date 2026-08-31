@@ -86,9 +86,10 @@ export interface TodoLane {
 }
 
 export interface TodoItem {
+  id: string;
   taskId: string;
   laneId: string;
-  parentTaskId: string | null;
+  parentItemId: string | null;
   order: number;
 }
 
@@ -177,10 +178,14 @@ export interface AppState {
   // Todo execution graph
   addTaskToTodo: (taskId: string) => boolean;
   addComponentToTodo: (componentId: string) => string | null;
+  createTodoTask: (laneId: string) => string | null;
+  toggleTodoTaskComponent: (taskId: string, componentId: string) => void;
   addTodoLane: (name?: string) => string;
   renameTodoLane: (laneId: string, name: string) => void;
   deleteTodoLane: (laneId: string) => void;
-  moveTodoItem: (taskId: string, laneId: string, parentTaskId: string | null, beforeTaskId?: string) => void;
+  moveTodoItem: (itemId: string, laneId: string, parentItemId: string | null, beforeItemId?: string) => void;
+  duplicateTodoItem: (itemId: string, laneId: string) => boolean;
+  removeTodoItem: (itemId: string) => void;
   removeTaskFromTodo: (taskId: string) => void;
 
   // Reusable weekly time backgrounds

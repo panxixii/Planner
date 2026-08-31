@@ -203,7 +203,7 @@ export default function App() {
         )}
       </main>
 
-      {activeMenu === 'workspace' ? <TaskDrawer /> : null}
+      {activeMenu === 'workspace' || activeMenu === 'task-pool' ? <TaskDrawer /> : null}
       {activeMenu === 'workspace' ? <ComponentDetailsDrawer /> : null}
     </div>
   );
