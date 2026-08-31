@@ -8,6 +8,7 @@ import {
   GripVertical,
   LocateFixed,
   Plus,
+  Trash2,
 } from 'lucide-react';
 import { useAppStore } from '../store';
 import { formatLocalDateTime, getTaskBlockTimestamps, getTaskTimeBlocks } from '../taskTimeBlocks';
@@ -21,12 +22,13 @@ type TaskResizeState = {
   pointerId: number;
   taskId: string;
   blockId: string;
-  edge: 'start' | 'end';
+  edge: 'start' | 'end' | 'move';
   startX: number;
   originalStart: number;
   originalEnd: number;
   previewStart: number;
   previewEnd: number;
+  didMove: boolean;
 };
 
 const DEFAULT_TASK_COLUMN_WIDTH = 240;
@@ -121,6 +123,7 @@ export const TimelineLayer: React.FC = () => {
   const addWorkspaceNode = useAppStore((state) => state.addWorkspaceNode);
   const addTaskTimeBlock = useAppStore((state) => state.addTaskTimeBlock);
   const updateTaskTimeBlock = useAppStore((state) => state.updateTaskTimeBlock);
+  const deleteTaskTimeBlock = useAppStore((state) => state.deleteTaskTimeBlock);
   const beginHistoryGroup = useAppStore((state) => state.beginHistoryGroup);
   const endHistoryGroup = useAppStore((state) => state.endHistoryGroup);
   const timelineTaskOrder = useAppStore((state) => state.timelineTaskOrder);
@@ -145,6 +148,7 @@ export const TimelineLayer: React.FC = () => {
   const pendingScrollAdjustmentRef = useRef<number | null>(null);
   const pendingFocusTimestampRef = useRef<number | null>(initialNowRef.current);
   const taskResizeRef = useRef<TaskResizeState | null>(null);
+  const suppressTaskClickRef = useRef<{ key: string; until: number } | null>(null);
 
   const [zoomScale, setZoomScale] = useState<ZoomScaleType>('hours');
   const [rangeStart, setRangeStart] = useState(() => getCenteredRangeStart(initialNowRef.current, 'hours'));
@@ -446,24 +450,42 @@ export const TimelineLayer: React.FC = () => {
     event.stopPropagation();
     const range = getTaskBlockTimestamps(block, task.duration);
     event.currentTarget.setPointerCapture(event.pointerId);
-    const next = { pointerId: event.pointerId, taskId: task.id, blockId: block.id, edge, startX: event.clientX, originalStart: range.start, originalEnd: range.end, previewStart: range.start, previewEnd: range.end };
+    const next = { pointerId: event.pointerId, taskId: task.id, blockId: block.id, edge, startX: event.clientX, originalStart: range.start, originalEnd: range.end, previewStart: range.start, previewEnd: range.end, didMove: false };
+    taskResizeRef.current = next;
+    setTaskResizePreview(next);
+  };
+  const handleTaskMoveStart = (event: React.PointerEvent<HTMLDivElement>, task: Task, block: TaskTimeBlock) => {
+    if (event.button !== 0) return;
+    const range = getTaskBlockTimestamps(block, task.duration);
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const next: TaskResizeState = { pointerId: event.pointerId, taskId: task.id, blockId: block.id, edge: 'move', startX: event.clientX, originalStart: range.start, originalEnd: range.end, previewStart: range.start, previewEnd: range.end, didMove: false };
     taskResizeRef.current = next;
     setTaskResizePreview(next);
   };
   const handleTaskResizeMove = (event: React.PointerEvent<HTMLDivElement>) => {
     const resize = taskResizeRef.current;
     if (!resize || resize.pointerId !== event.pointerId) return;
-    const rawDelta = ((event.clientX - resize.startX) / scaleDefinition.columnWidth) * scaleDefinition.unitMs;
+    const pointerDelta = event.clientX - resize.startX;
+    if (resize.edge === 'move' && !resize.didMove && Math.abs(pointerDelta) < 3) return;
+    const rawDelta = (pointerDelta / scaleDefinition.columnWidth) * scaleDefinition.unitMs;
     const snapMs = zoomScale === 'days' ? 60 * 60_000 : 60_000;
     const delta = Math.round(rawDelta / snapMs) * snapMs;
-    const next = resize.edge === 'start' ? { ...resize, previewStart: Math.min(resize.originalEnd - snapMs, resize.originalStart + delta) } : { ...resize, previewEnd: Math.max(resize.originalStart + snapMs, resize.originalEnd + delta) };
+    const next = resize.edge === 'move'
+      ? { ...resize, previewStart: resize.originalStart + delta, previewEnd: resize.originalEnd + delta, didMove: true }
+      : resize.edge === 'start'
+        ? { ...resize, previewStart: Math.min(resize.originalEnd - snapMs, resize.originalStart + delta), didMove: delta !== 0 }
+        : { ...resize, previewEnd: Math.max(resize.originalStart + snapMs, resize.originalEnd + delta), didMove: delta !== 0 };
     taskResizeRef.current = next;
     setTaskResizePreview(next);
   };
   const handleTaskResizeEnd = (event: React.PointerEvent<HTMLDivElement>) => {
     const resize = taskResizeRef.current;
     if (!resize || resize.pointerId !== event.pointerId) return;
-    updateTaskTimeBlock(resize.taskId, resize.blockId, { startTime: formatLocalDateTime(resize.previewStart), endTime: formatLocalDateTime(resize.previewEnd) });
+    if (resize.didMove) {
+      updateTaskTimeBlock(resize.taskId, resize.blockId, { startTime: formatLocalDateTime(resize.previewStart), endTime: formatLocalDateTime(resize.previewEnd) });
+      if (resize.edge === 'move') suppressTaskClickRef.current = { key: `${resize.taskId}:${resize.blockId}`, until: Date.now() + 300 };
+    }
     taskResizeRef.current = null;
     setTaskResizePreview(null);
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
@@ -533,10 +555,12 @@ export const TimelineLayer: React.FC = () => {
                       const barWidth = Math.min(timelineWidth - barLeft, Math.max(4, ((visibleEnd - visibleStart) / scaleDefinition.unitMs) * scaleDefinition.columnWidth));
                       const barColor = colorClasses[task.color || 'indigo'];
                       const barHex = /^#[0-9a-f]{6}$/i.test(task.color || '') ? task.color! : namedTimelineColors[task.color || 'indigo'];
-                      return <div key={block.id} onDoubleClick={(event) => event.stopPropagation()} style={{ left: barLeft, width: barWidth, ...(!task.isDone && !barColor ? { background: `linear-gradient(to right, ${barHex}, ${barHex}C2)`, borderColor: `${barHex}99`, color: '#fff' } : {}) }} className={`absolute z-10 flex h-7 items-center justify-between gap-1 overflow-hidden rounded-md border bg-gradient-to-r px-2.5 text-left shadow-xs transition-shadow hover:shadow-md ${task.isDone ? 'border-neutral-300 from-neutral-100 to-neutral-200 text-neutral-400 opacity-70 line-through' : (barColor || '')}`}>
+                      const blockKey = `${task.id}:${block.id}`;
+                      return <div key={block.id} role="button" tabIndex={0} onPointerDown={(event) => handleTaskMoveStart(event, task, block)} onPointerMove={handleTaskResizeMove} onPointerUp={handleTaskResizeEnd} onPointerCancel={handleTaskResizeEnd} onClick={(event) => { const suppressed = suppressTaskClickRef.current; if (suppressed?.key === blockKey && Date.now() < suppressed.until) { event.preventDefault(); event.stopPropagation(); return; } selectTask(task.id); }} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); selectTask(task.id); } }} onDoubleClick={(event) => event.stopPropagation()} style={{ left: barLeft, width: barWidth, ...(!task.isDone && !barColor ? { background: `linear-gradient(to right, ${barHex}, ${barHex}C2)`, borderColor: `${barHex}99`, color: '#fff' } : {}) }} className={`group/time-block absolute z-10 flex h-7 touch-none cursor-grab items-center justify-between gap-1 rounded-md border bg-gradient-to-r px-2.5 text-left shadow-xs outline-none transition-shadow hover:z-30 hover:shadow-md focus-visible:ring-2 focus-visible:ring-purple-200 active:cursor-grabbing focus-within:z-30 ${task.isDone ? 'border-neutral-300 from-neutral-100 to-neutral-200 text-neutral-400 opacity-70 line-through' : (barColor || '')}`} title="拖动移动时间块；点击打开任务详情">
                         <div onPointerDown={(event) => handleTaskResizeStart(event, task, block, 'start')} onPointerMove={handleTaskResizeMove} onPointerUp={handleTaskResizeEnd} onPointerCancel={handleTaskResizeEnd} className="absolute inset-y-0 left-0 z-20 w-2 touch-none cursor-ew-resize bg-white/25 opacity-0 hover:opacity-100" title="拖动修改开始时间" />
-                        <button type="button" onClick={() => selectTask(task.id)} className="min-w-0 flex-1 truncate text-left text-[10px] font-medium">{task.title || '未命名任务'}</button>
+                        <span className="pointer-events-none min-w-0 flex-1 truncate text-left text-[10px] font-medium">{task.title || '未命名任务'}</span>
                         {barWidth >= 78 ? <span className="flex shrink-0 items-center gap-0.5 text-[9px] opacity-85"><Clock className="h-2.5 w-2.5" />{formatDuration(blockStart, blockEnd)}</span> : null}
+                        <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); deleteTaskTimeBlock(task.id, block.id); }} onDoubleClick={(event) => event.stopPropagation()} className="absolute -right-2 -top-2 z-30 flex h-5 w-5 items-center justify-center rounded-full border border-rose-200 bg-white text-rose-500 opacity-0 shadow-sm outline-none transition-[opacity,background-color] hover:bg-rose-50 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-rose-200 group-hover/time-block:opacity-100" aria-label={`删除${task.title || '未命名任务'}的这个时间块`} title="删除这个时间块"><Trash2 className="h-3 w-3" /></button>
                         <div onPointerDown={(event) => handleTaskResizeStart(event, task, block, 'end')} onPointerMove={handleTaskResizeMove} onPointerUp={handleTaskResizeEnd} onPointerCancel={handleTaskResizeEnd} className="absolute inset-y-0 right-0 z-20 w-2 touch-none cursor-ew-resize bg-white/25 opacity-0 hover:opacity-100" title="拖动修改结束时间" />
                       </div>;
                     })}
