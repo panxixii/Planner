@@ -18,6 +18,7 @@ import type { Task, TaskTimeBlock } from '../types';
 type ZoomScaleType = 'minutes' | 'hours' | 'days';
 type ScaleDefinition = { unitMs: number; columnWidth: number };
 type TimelineTaskRow = { task: Task; depth: number; hasChildren: boolean };
+type SelectedTimeBlock = { taskId: string; blockId: string };
 type TaskResizeState = {
   pointerId: number;
   taskId: string;
@@ -157,6 +158,7 @@ export const TimelineLayer: React.FC = () => {
   const [dragOverTaskId, setDragOverTaskId] = useState<string | null>(null);
   const [taskColumnWidth, setTaskColumnWidth] = useState(DEFAULT_TASK_COLUMN_WIDTH);
   const [taskResizePreview, setTaskResizePreview] = useState<TaskResizeState | null>(null);
+  const [selectedTimeBlock, setSelectedTimeBlock] = useState<SelectedTimeBlock | null>(null);
   const [collapsedTaskIds, setCollapsedTaskIds] = useState<Set<string>>(() => new Set());
   const [showCompletedTasks, setShowCompletedTasks] = useState(false);
 
@@ -168,6 +170,14 @@ export const TimelineLayer: React.FC = () => {
     const timer = window.setInterval(() => setNowTimestamp(Date.now()), 30_000);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (!selectedTimeBlock) return;
+    const task = tasks[selectedTimeBlock.taskId];
+    if (!task || !getTaskTimeBlocks(task).some((block) => block.id === selectedTimeBlock.blockId)) {
+      setSelectedTimeBlock(null);
+    }
+  }, [selectedTimeBlock, tasks]);
 
   useLayoutEffect(() => {
     const container = scrollContainerRef.current;
@@ -458,6 +468,7 @@ export const TimelineLayer: React.FC = () => {
     if (event.button !== 0) return;
     const range = getTaskBlockTimestamps(block, task.duration);
     event.stopPropagation();
+    setSelectedTimeBlock({ taskId: task.id, blockId: block.id });
     event.currentTarget.setPointerCapture(event.pointerId);
     const next: TaskResizeState = { pointerId: event.pointerId, taskId: task.id, blockId: block.id, edge: 'move', startX: event.clientX, originalStart: range.start, originalEnd: range.end, previewStart: range.start, previewEnd: range.end, didMove: false };
     taskResizeRef.current = next;
@@ -497,12 +508,26 @@ export const TimelineLayer: React.FC = () => {
     return taskIds.indexOf(draggedTaskId) > taskIds.indexOf(taskId) ? 'border-t-2 border-t-purple-500' : 'border-b-2 border-b-purple-500';
   };
 
+  const removeTimeBlock = useCallback((taskId: string, blockId: string) => {
+    deleteTaskTimeBlock(taskId, blockId);
+    setSelectedTimeBlock((current) => current?.taskId === taskId && current.blockId === blockId ? null : current);
+  }, [deleteTaskTimeBlock]);
+
+  const handleTimelineKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!selectedTimeBlock || (event.key !== 'Delete' && event.key !== 'Backspace')) return;
+    const target = event.target as HTMLElement;
+    if (target.closest('input, textarea, select, [contenteditable="true"]')) return;
+    event.preventDefault();
+    event.stopPropagation();
+    removeTimeBlock(selectedTimeBlock.taskId, selectedTimeBlock.blockId);
+  };
+
   const isNowInRange = nowTimestamp >= rangeStart && nowTimestamp < rangeEnd;
   const nowLinePosition = ((nowTimestamp - rangeStart) / scaleDefinition.unitMs) * scaleDefinition.columnWidth;
   const trackBackground = `repeating-linear-gradient(to right, transparent 0, transparent ${scaleDefinition.columnWidth - 1}px, #f0f0f0 ${scaleDefinition.columnWidth - 1}px, #f0f0f0 ${scaleDefinition.columnWidth}px)`;
 
   return (
-    <div ref={timelineRootRef} id="timeline" style={{ '--task-column-width': `${taskColumnWidth}px` } as React.CSSProperties} className={`flex shrink-0 select-none flex-col border-t border-neutral-200 bg-white transition-[height] duration-300 ${isTimelineCollapsed ? 'h-[45px] overflow-hidden' : 'h-80'}`}>
+    <div ref={timelineRootRef} id="timeline" onKeyDown={handleTimelineKeyDown} onPointerDownCapture={(event) => { const target = event.target as HTMLElement; if (!target.closest('[data-time-block="true"]')) setSelectedTimeBlock(null); }} style={{ '--task-column-width': `${taskColumnWidth}px` } as React.CSSProperties} className={`flex shrink-0 select-none flex-col border-t border-neutral-200 bg-white transition-[height] duration-300 ${isTimelineCollapsed ? 'h-[45px] overflow-hidden' : 'h-80'}`}>
       <div ref={dragPreviewRef} aria-hidden="true" className="pointer-events-none fixed -left-[1000px] top-0 z-[-1] h-9 w-56 truncate rounded-md border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-700 shadow-lg" />
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-200 bg-neutral-50/50 px-4 py-2 sm:px-6">
         <div className="flex min-w-0 items-center gap-2"><Calendar className="h-4 w-4 shrink-0 text-purple-500" /><h4 className="text-xs font-bold text-neutral-800">任务排期</h4></div>
@@ -556,11 +581,12 @@ export const TimelineLayer: React.FC = () => {
                       const barColor = colorClasses[task.color || 'indigo'];
                       const barHex = /^#[0-9a-f]{6}$/i.test(task.color || '') ? task.color! : namedTimelineColors[task.color || 'indigo'];
                       const blockKey = `${task.id}:${block.id}`;
-                      return <div key={block.id} role="button" tabIndex={0} onPointerDown={(event) => handleTaskMoveStart(event, task, block)} onPointerMove={handleTaskResizeMove} onPointerUp={handleTaskResizeEnd} onPointerCancel={handleTaskResizeEnd} onClick={(event) => { const suppressed = suppressTaskClickRef.current; if (suppressed?.key === blockKey && Date.now() < suppressed.until) { event.preventDefault(); event.stopPropagation(); return; } selectTask(task.id); }} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); selectTask(task.id); } }} onDoubleClick={(event) => event.stopPropagation()} style={{ left: barLeft, width: barWidth, ...(!task.isDone && !barColor ? { background: `linear-gradient(to right, ${barHex}, ${barHex}C2)`, borderColor: `${barHex}99`, color: '#fff' } : {}) }} className={`group/time-block absolute z-10 flex h-7 touch-none cursor-grab items-center justify-between gap-1 rounded-md border bg-gradient-to-r px-2.5 text-left shadow-xs outline-none transition-shadow hover:z-30 hover:shadow-md focus-visible:ring-2 focus-visible:ring-purple-200 active:cursor-grabbing focus-within:z-30 ${task.isDone ? 'border-neutral-300 from-neutral-100 to-neutral-200 text-neutral-400 opacity-70 line-through' : (barColor || '')}`} title="拖动移动时间块；点击打开任务详情">
+                      const isSelected = selectedTimeBlock?.taskId === task.id && selectedTimeBlock.blockId === block.id;
+                      return <div key={block.id} data-time-block="true" role="button" aria-pressed={isSelected} tabIndex={0} onFocus={() => setSelectedTimeBlock({ taskId: task.id, blockId: block.id })} onPointerDown={(event) => handleTaskMoveStart(event, task, block)} onPointerMove={handleTaskResizeMove} onPointerUp={handleTaskResizeEnd} onPointerCancel={handleTaskResizeEnd} onClick={(event) => { const suppressed = suppressTaskClickRef.current; if (suppressed?.key === blockKey && Date.now() < suppressed.until) { event.preventDefault(); event.stopPropagation(); return; } setSelectedTimeBlock({ taskId: task.id, blockId: block.id }); }} onKeyDown={(event) => { if (event.target === event.currentTarget && event.key === 'Enter') { event.preventDefault(); selectTask(task.id); } }} onDoubleClick={(event) => { event.stopPropagation(); selectTask(task.id); }} style={{ left: barLeft, width: barWidth, ...(!task.isDone && !barColor ? { background: `linear-gradient(to right, ${barHex}, ${barHex}C2)`, borderColor: `${barHex}99`, color: '#fff' } : {}) }} className={`group/time-block absolute z-10 flex h-7 touch-none cursor-grab items-center justify-between gap-1 rounded-md border bg-gradient-to-r px-2.5 text-left shadow-xs outline-none transition-shadow hover:z-30 hover:shadow-md active:cursor-grabbing focus-within:z-30 ${isSelected ? 'z-30 ring-2 ring-purple-500 ring-offset-1' : 'focus-visible:ring-2 focus-visible:ring-purple-200'} ${task.isDone ? 'border-neutral-300 from-neutral-100 to-neutral-200 text-neutral-400 opacity-70 line-through' : (barColor || '')}`} title="单击选中，拖动移动；双击打开任务详情；Delete 删除">
                         <div onPointerDown={(event) => handleTaskResizeStart(event, task, block, 'start')} onPointerMove={handleTaskResizeMove} onPointerUp={handleTaskResizeEnd} onPointerCancel={handleTaskResizeEnd} className="absolute inset-y-0 left-0 z-20 w-2 touch-none cursor-ew-resize bg-white/25 opacity-0 hover:opacity-100" title="拖动修改开始时间" />
                         <span className="pointer-events-none min-w-0 flex-1 truncate text-left text-[10px] font-medium">{task.title || '未命名任务'}</span>
                         {barWidth >= 78 ? <span className="flex shrink-0 items-center gap-0.5 text-[9px] opacity-85"><Clock className="h-2.5 w-2.5" />{formatDuration(blockStart, blockEnd)}</span> : null}
-                        <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); deleteTaskTimeBlock(task.id, block.id); }} onDoubleClick={(event) => event.stopPropagation()} className="absolute -right-2 -top-2 z-30 flex h-5 w-5 items-center justify-center rounded-full border border-rose-200 bg-white text-rose-500 opacity-0 shadow-sm outline-none transition-[opacity,background-color] hover:bg-rose-50 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-rose-200 group-hover/time-block:opacity-100" aria-label={`删除${task.title || '未命名任务'}的这个时间块`} title="删除这个时间块"><Trash2 className="h-3 w-3" /></button>
+                        <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); removeTimeBlock(task.id, block.id); }} onDoubleClick={(event) => event.stopPropagation()} className="absolute -right-2 -top-2 z-30 flex h-5 w-5 items-center justify-center rounded-full border border-rose-200 bg-white text-rose-500 opacity-0 shadow-sm outline-none transition-[opacity,background-color] hover:bg-rose-50 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-rose-200 group-hover/time-block:opacity-100" aria-label={`删除${task.title || '未命名任务'}的这个时间块`} title="删除这个时间块"><Trash2 className="h-3 w-3" /></button>
                         <div onPointerDown={(event) => handleTaskResizeStart(event, task, block, 'end')} onPointerMove={handleTaskResizeMove} onPointerUp={handleTaskResizeEnd} onPointerCancel={handleTaskResizeEnd} className="absolute inset-y-0 right-0 z-20 w-2 touch-none cursor-ew-resize bg-white/25 opacity-0 hover:opacity-100" title="拖动修改结束时间" />
                       </div>;
                     })}

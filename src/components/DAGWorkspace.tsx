@@ -413,10 +413,31 @@ const DAGInnerWorkspace: React.FC = () => {
     }
   }, [isMergedView, selectedGoalId, goals, localNodes, updateGoalNodes, updateMergedNodePositions, updateWorkspaceComponent]);
 
-  // Handle Tab keypress to spawn a child concept node directly aligned rightwards
+  const selectedTaskNodes = useMemo(() => localNodes.filter((node) => node.type === 'taskNode' && node.selected), [localNodes]);
+  const selectedTaskIds = selectedTaskNodes.flatMap((node) => {
+    const taskId = (node.data as { taskId?: string }).taskId;
+    return taskId ? [taskId] : [];
+  });
+
+  const removeSelectedNodes = useCallback(() => {
+    selectedTaskNodes.forEach((node) => {
+      const taskId = (node.data as { taskId?: string }).taskId;
+      if (!taskId) return;
+      if (isMergedView) removeTaskFromWorkspace(taskId, workspaceComponentFilter);
+      else if (selectedGoalId) deleteNodeFromGoal(selectedGoalId, node.id);
+    });
+  }, [deleteNodeFromGoal, isMergedView, removeTaskFromWorkspace, selectedGoalId, selectedTaskNodes, workspaceComponentFilter]);
+
+  // Handle workspace keyboard shortcuts.
   const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
-    // Ignore keypresses if typing inside drawer text boxes
-    if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') {
+    const target = event.target as HTMLElement;
+    if (target.closest('input, textarea, select, [contenteditable="true"]')) return;
+
+    if ((event.key === 'Delete' || event.key === 'Backspace') && selectedTaskNodes.length > 0) {
+      event.preventDefault();
+      event.stopPropagation();
+      removeSelectedNodes();
+      setActiveNodeActionsId(null);
       return;
     }
 
@@ -493,7 +514,7 @@ const DAGInnerWorkspace: React.FC = () => {
 
       showToast('已创建思维子节点');
     }
-  }, [localNodes, isMergedView, selectedGoalId, goals, tasks, workspaceComponentFilter, addTask, addNodeToGoal, addWorkspaceNode, addEdgeToGoal, addMergedEdge, beginHistoryGroup, endHistoryGroup, showToast]);
+  }, [localNodes, isMergedView, selectedGoalId, goals, tasks, workspaceComponentFilter, addTask, addNodeToGoal, addWorkspaceNode, addEdgeToGoal, addMergedEdge, beginHistoryGroup, endHistoryGroup, showToast, selectedTaskNodes.length, removeSelectedNodes, setActiveNodeActionsId]);
 
   // Handle new dependency connections
   const onConnect = useCallback((connection: Connection) => {
@@ -629,21 +650,6 @@ const DAGInnerWorkspace: React.FC = () => {
     : (selectedGoalId ? goals[selectedGoalId]?.title : '选择计划');
 
   const activeDescription = selectedGoalId ? goals[selectedGoalId]?.description : '';
-  const selectedTaskNodes = useMemo(() => localNodes.filter((node) => node.type === 'taskNode' && node.selected), [localNodes]);
-  const selectedTaskIds = selectedTaskNodes.flatMap((node) => {
-    const taskId = (node.data as { taskId?: string }).taskId;
-    return taskId ? [taskId] : [];
-  });
-
-  const removeSelectedNodes = useCallback(() => {
-    selectedTaskNodes.forEach((node) => {
-      const taskId = (node.data as { taskId?: string }).taskId;
-      if (!taskId) return;
-      if (isMergedView) removeTaskFromWorkspace(taskId, workspaceComponentFilter);
-      else if (selectedGoalId) deleteNodeFromGoal(selectedGoalId, node.id);
-    });
-  }, [deleteNodeFromGoal, isMergedView, removeTaskFromWorkspace, selectedGoalId, selectedTaskNodes, workspaceComponentFilter]);
-
   return (
     <div className="flex-1 flex flex-col min-h-0 relative select-none">
       {selectedTaskIds.length > 1 ? <CanvasSelectionToolbar taskIds={selectedTaskIds} onRemove={removeSelectedNodes} /> : null}
@@ -735,6 +741,7 @@ const DAGInnerWorkspace: React.FC = () => {
           onPaneClick={handlePaneClick}
           onEdgeDoubleClick={onEdgeDoubleClick}
           onNodesDelete={onNodesDelete}
+          deleteKeyCode={null}
           nodesDeletable={!isMergedView}
           fitView
           minZoom={0.15}
