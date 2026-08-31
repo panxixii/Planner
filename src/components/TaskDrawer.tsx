@@ -11,9 +11,10 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import type { TaskStatus } from '../types';
+import type { TaskStatus, TaskTimeBlock } from '../types';
 import { DateTimePicker } from './DateTimePicker';
 import { ColorPicker } from './ColorPicker';
+import { formatLocalDateTime, getTaskTimeBlocks } from '../taskTimeBlocks';
 
 const NAMED_COLOR_HEX: Record<string, string> = {
   indigo: '#9387D1', emerald: '#67C8BD', sky: '#79BFD5', rose: '#D78FB5', amber: '#D9B958', violet: '#9B8AE4',
@@ -47,8 +48,7 @@ export const TaskDrawer: React.FC = () => {
   const [description, setDescription] = useState('');
   const [duration, setDuration] = useState(1);
   const [statusId, setStatusId] = useState('status-not-started');
-  const [startTime, setStartTime] = useState('');
-  const [endTime, setEndTime] = useState('');
+  const [timeBlocks, setTimeBlocks] = useState<TaskTimeBlock[]>([]);
   const [color, setColor] = useState('indigo');
   const [textColor, setTextColor] = useState('#334155');
   const [errorMsg, setErrorMsg] = useState('');
@@ -66,8 +66,11 @@ export const TaskDrawer: React.FC = () => {
       setDescription(task.description || '');
       setDuration(task.duration !== undefined ? task.duration : 0);
       setStatusId(task.statusId || (task.isDone ? 'status-completed' : 'status-not-started'));
-      setStartTime(toDateTimeLocal(task.startTime));
-      setEndTime(toDateTimeLocal(task.endTime, true));
+      setTimeBlocks(getTaskTimeBlocks(task).map((block) => ({
+        ...block,
+        startTime: toDateTimeLocal(block.startTime),
+        endTime: toDateTimeLocal(block.endTime, true),
+      })));
       setColor(NAMED_COLOR_HEX[task.color || 'indigo'] || task.color || '#9387D1');
       setTextColor(task.textColor || '#334155');
       setErrorMsg('');
@@ -82,18 +85,21 @@ export const TaskDrawer: React.FC = () => {
   if (!selectedTaskId || !task) return null;
 
   const handleSave = () => {
-    if (startTime && endTime && startTime > endTime) {
-      setErrorMsg('开始日期必须早于/等于结束日期');
+    if (timeBlocks.some((block) => !block.startTime || !block.endTime || block.startTime >= block.endTime)) {
+      setErrorMsg('每个时间段都需要有效的开始和结束时间');
       return;
     }
+
+    const firstBlock = timeBlocks[0];
 
     updateTask(selectedTaskId, {
       title,
       description,
       duration: Number(duration),
       statusId,
-      startTime: startTime || undefined,
-      endTime: endTime || undefined,
+      timeBlocks,
+      startTime: firstBlock?.startTime,
+      endTime: firstBlock?.endTime,
       color,
       textColor,
     });
@@ -139,6 +145,18 @@ export const TaskDrawer: React.FC = () => {
     deleteTaskStatus(targetStatusId);
     if (statusId === targetStatusId) setStatusId('status-not-started');
     setConfirmingStatusDeleteId(null);
+  };
+
+  const addLocalTimeBlock = () => {
+    const start = new Date();
+    start.setMinutes(0, 0, 0);
+    start.setHours(start.getHours() + 1);
+    const end = new Date(start.getTime() + 60 * 60 * 1000);
+    setTimeBlocks((current) => [...current, {
+      id: `task-time-local-${Math.random().toString(36).slice(2, 9)}`,
+      startTime: formatLocalDateTime(start.getTime()),
+      endTime: formatLocalDateTime(end.getTime()),
+    }]);
   };
 
   return (
@@ -352,30 +370,22 @@ export const TaskDrawer: React.FC = () => {
           </section>
 
           <section className="mt-5 space-y-3 border-t border-neutral-200 pt-5">
-            <div className="flex items-center gap-1.5">
-              <Calendar className="h-3.5 w-3.5 text-neutral-400" />
-              <h3 className={labelClassName}>日期与时间</h3>
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-1.5">
+                <Calendar className="h-3.5 w-3.5 text-neutral-400" />
+                <h3 className={labelClassName}>时间段</h3>
+              </div>
+              <button type="button" onClick={addLocalTimeBlock} className="flex h-7 items-center gap-1 rounded-md border border-neutral-200 bg-white px-2 text-[10px] font-semibold text-neutral-600 hover:bg-neutral-50"><Plus className="h-3 w-3" />添加</button>
             </div>
 
-            <div className="space-y-1.5">
-              <label htmlFor="task-start-time" className="text-[11px] font-medium text-neutral-500">开始时间</label>
-              <DateTimePicker
-                id="task-start-time"
-                value={startTime}
-                onChange={setStartTime}
-                placeholder="选择开始日期与时间"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label htmlFor="task-end-time" className="text-[11px] font-medium text-neutral-500">结束时间</label>
-              <DateTimePicker
-                id="task-end-time"
-                value={endTime}
-                onChange={setEndTime}
-                placeholder="选择结束日期与时间"
-              />
-            </div>
+            {timeBlocks.length === 0 ? <div className="rounded-lg border border-dashed border-neutral-200 px-3 py-5 text-center text-xs text-neutral-400">暂无时间段</div> : null}
+            {timeBlocks.map((block, index) => (
+              <div key={block.id} className="space-y-2 border-b border-neutral-100 pb-3 last:border-b-0">
+                <div className="flex items-center justify-between"><span className="text-[10px] font-semibold text-neutral-400">时间段 {index + 1}</span><button type="button" onClick={() => setTimeBlocks((current) => current.filter((candidate) => candidate.id !== block.id))} className="flex h-6 w-6 items-center justify-center rounded text-neutral-400 hover:bg-rose-50 hover:text-rose-600" title="删除时间段"><Trash2 className="h-3.5 w-3.5" /></button></div>
+                <DateTimePicker id={`task-time-start-${block.id}`} value={block.startTime} onChange={(value) => setTimeBlocks((current) => current.map((candidate) => candidate.id === block.id ? { ...candidate, startTime: value } : candidate))} placeholder="选择开始日期与时间" />
+                <DateTimePicker id={`task-time-end-${block.id}`} value={block.endTime} onChange={(value) => setTimeBlocks((current) => current.map((candidate) => candidate.id === block.id ? { ...candidate, endTime: value } : candidate))} placeholder="选择结束日期与时间" />
+              </div>
+            ))}
           </section>
 
           <section className="mt-5 border-t border-neutral-200 pt-5">
