@@ -1,3 +1,9 @@
+export interface TaskTimeBlock {
+  id: string;
+  startTime: string;
+  endTime: string;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -9,6 +15,7 @@ export interface Task {
   componentIds?: string[]; // Explicit connected blocks that reuse this node.
   startTime?: string; // YYYY-MM-DD or YYYY-MM-DDTHH:mm
   endTime?: string; // YYYY-MM-DD or YYYY-MM-DDTHH:mm
+  timeBlocks?: TaskTimeBlock[]; // Multiple scheduled periods; legacy start/end remain the first period.
   color?: string; // e.g. 'emerald', 'sky', 'rose', 'violet', 'amber'
   textColor?: string; // Node title color; defaults to the application ink color.
 }
@@ -169,6 +176,7 @@ export interface AppState {
 
   // Todo execution graph
   addTaskToTodo: (taskId: string) => boolean;
+  addComponentToTodo: (componentId: string) => string | null;
   addTodoLane: (name?: string) => string;
   renameTodoLane: (laneId: string, name: string) => void;
   deleteTodoLane: (laneId: string) => void;
@@ -177,6 +185,7 @@ export interface AppState {
 
   // Reusable weekly time backgrounds
   addTimeTemplate: (type: TimeTemplate['type'], name?: string) => string;
+  duplicateTimeTemplate: (id: string) => string | null;
   renameTimeTemplate: (id: string, name: string) => void;
   deleteTimeTemplate: (id: string) => void;
   setActiveTimeTemplate: (type: TimeTemplate['type'], id: string | null) => void;
@@ -202,6 +211,9 @@ export interface AppState {
   // Task Actions
   addTask: (task: Task) => void;
   updateTask: (taskId: string, updates: Partial<Task>) => void;
+  addTaskTimeBlock: (taskId: string, block: Omit<TaskTimeBlock, 'id'>) => string | null;
+  updateTaskTimeBlock: (taskId: string, blockId: string, updates: Partial<Omit<TaskTimeBlock, 'id'>>) => void;
+  deleteTaskTimeBlock: (taskId: string, blockId: string) => void;
   deleteTask: (taskId: string) => void;
   setTaskComponentIds: (taskId: string, componentIds: string[]) => void;
   removeTaskFromWorkspace: (taskId: string, componentIds: string[] | null) => void;

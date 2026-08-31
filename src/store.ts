@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { AppState, Task, Goal, BOMTreeItem, CategoryType, DraftBoard, DraftStroke, GoalNode, GoalEdge, AppCategory, TaskStatus, TimeTemplate, TimeTemplateBlock, TodoItem, TodoLane, WorkspaceComponent } from './types';
 import { getDescendantTaskIds, getWorkspaceGraph } from './workspaceComponents';
+import { getTaskTimeBlocks, normalizeTaskTimeBlocks } from './taskTimeBlocks';
 
 // Helper to generate IDs
 const genId = () => Math.random().toString(36).substring(2, 11);
@@ -142,6 +143,114 @@ const DEFAULT_TASK_STATUSES: TaskStatus[] = [
 
 const DEFAULT_TODO_LANES: TodoLane[] = [{ id: 'todo-main', name: '主线' }];
 const DEFAULT_TIME_TEMPLATES: TimeTemplate[] = [];
+
+const buildTodoItemsForTasks = (
+  state: AppState,
+  requestedTaskIds: Set<string>,
+  laneId: string,
+  rootOrderStart = 0,
+  forcedRootTaskIds: Set<string> = new Set(),
+): TodoItem[] => {
+  const existingTaskIds = new Set(state.todoItems.map((item) => item.taskId));
+  const taskIds = new Set(
+    Array.from(requestedTaskIds).filter((taskId) => state.tasks[taskId] && !existingTaskIds.has(taskId)),
+  );
+  if (taskIds.size === 0) return [];
+
+  const graph = getWorkspaceGraph(state.goals, state.workspaceNodes, state.mergedEdges, state.mergedNodePositions);
+  const positionByTaskId = new Map<string, { x: number; y: number }>();
+  graph.nodeTaskIds.forEach((taskId, nodeId) => {
+    if (!taskIds.has(taskId)) return;
+    const position = graph.nodePositions.get(nodeId);
+    if (!position) return;
+    const current = positionByTaskId.get(taskId);
+    if (!current || position.x < current.x || (position.x === current.x && position.y < current.y)) {
+      positionByTaskId.set(taskId, position);
+    }
+  });
+
+  const parentCandidates = new Map<string, Array<{ taskId: string; distance: number }>>();
+  graph.edges.forEach((edge) => {
+    const sourceTaskId = graph.nodeTaskIds.get(edge.source);
+    const targetTaskId = graph.nodeTaskIds.get(edge.target);
+    const sourcePosition = graph.nodePositions.get(edge.source);
+    const targetPosition = graph.nodePositions.get(edge.target);
+    if (
+      !sourceTaskId
+      || !targetTaskId
+      || sourceTaskId === targetTaskId
+      || !sourcePosition
+      || !targetPosition
+      || !taskIds.has(sourceTaskId)
+      || !taskIds.has(targetTaskId)
+    ) return;
+
+    const sourceIsParent = sourcePosition.x <= targetPosition.x;
+    const parentTaskId = sourceIsParent ? sourceTaskId : targetTaskId;
+    const childTaskId = sourceIsParent ? targetTaskId : sourceTaskId;
+    if (forcedRootTaskIds.has(childTaskId)) return;
+    const candidates = parentCandidates.get(childTaskId) || [];
+    candidates.push({ taskId: parentTaskId, distance: Math.abs(targetPosition.x - sourcePosition.x) });
+    parentCandidates.set(childTaskId, candidates);
+  });
+
+  const parentByTaskId = new Map<string, string>();
+  const orderedTaskIds = Array.from(taskIds).sort((leftId, rightId) => {
+    const left = positionByTaskId.get(leftId) || { x: 0, y: 0 };
+    const right = positionByTaskId.get(rightId) || { x: 0, y: 0 };
+    return left.x - right.x || left.y - right.y || leftId.localeCompare(rightId);
+  });
+  orderedTaskIds.forEach((childTaskId) => {
+    if (forcedRootTaskIds.has(childTaskId)) return;
+    const candidates = (parentCandidates.get(childTaskId) || []).sort((left, right) => (
+      left.distance - right.distance || left.taskId.localeCompare(right.taskId)
+    ));
+    const candidate = candidates.find(({ taskId: parentTaskId }) => {
+      let ancestorId: string | undefined = parentTaskId;
+      while (ancestorId) {
+        if (ancestorId === childTaskId) return false;
+        ancestorId = parentByTaskId.get(ancestorId);
+      }
+      return true;
+    });
+    if (candidate) parentByTaskId.set(childTaskId, candidate.taskId);
+  });
+
+  const compareByPosition = (leftId: string, rightId: string) => {
+    const left = positionByTaskId.get(leftId) || { x: 0, y: 0 };
+    const right = positionByTaskId.get(rightId) || { x: 0, y: 0 };
+    return left.y - right.y || left.x - right.x || leftId.localeCompare(rightId);
+  };
+  const childrenByTaskId = new Map<string | null, string[]>();
+  taskIds.forEach((taskId) => {
+    const parentTaskId = parentByTaskId.get(taskId) || null;
+    const children = childrenByTaskId.get(parentTaskId) || [];
+    children.push(taskId);
+    childrenByTaskId.set(parentTaskId, children);
+  });
+  childrenByTaskId.forEach((children) => children.sort(compareByPosition));
+
+  const items: TodoItem[] = [];
+  const visited = new Set<string>();
+  const appendTask = (taskId: string, parentTaskId: string | null, order: number) => {
+    if (visited.has(taskId)) return;
+    visited.add(taskId);
+    items.push({ taskId, laneId, parentTaskId, order });
+    (childrenByTaskId.get(taskId) || []).forEach((childTaskId, childOrder) => {
+      appendTask(childTaskId, taskId, childOrder);
+    });
+  };
+  (childrenByTaskId.get(null) || []).forEach((taskId, index) => {
+    appendTask(taskId, null, rootOrderStart + index);
+  });
+  orderedTaskIds.forEach((taskId) => {
+    if (!visited.has(taskId)) {
+      const rootCount = items.filter((item) => item.parentTaskId === null).length;
+      appendTask(taskId, null, rootOrderStart + rootCount);
+    }
+  });
+  return items;
+};
 
 // Helper to load state from localStorage with robust schema verification & fallback migration
 const loadSavedState = () => {
@@ -835,16 +944,41 @@ export const useAppStore = create<AppState>((set, get) => {
 
     addTaskToTodo: (taskId) => {
       const state = get();
-      if (!state.tasks[taskId] || state.todoItems.some((item) => item.taskId === taskId)) return false;
+      if (!state.tasks[taskId]) return false;
       const mainLaneId = state.todoLanes[0]?.id || 'todo-main';
       const nextOrder = state.todoItems
         .filter((item) => item.laneId === mainLaneId && item.parentTaskId === null)
         .reduce((max, item) => Math.max(max, item.order), -1) + 1;
+      const graph = getWorkspaceGraph(state.goals, state.workspaceNodes, state.mergedEdges, state.mergedNodePositions);
+      const taskIds = getDescendantTaskIds(graph, taskId);
+      taskIds.add(taskId);
+      const nextItems = buildTodoItemsForTasks(state, taskIds, mainLaneId, nextOrder, new Set([taskId]));
+      if (nextItems.length === 0) return false;
       persistSet((current: AppState) => ({
         todoLanes: current.todoLanes.length > 0 ? current.todoLanes : DEFAULT_TODO_LANES,
-        todoItems: [...current.todoItems, { taskId, laneId: mainLaneId, parentTaskId: null, order: nextOrder }],
+        todoItems: [...current.todoItems, ...nextItems],
       }));
       return true;
+    },
+    addComponentToTodo: (componentId) => {
+      const state = get();
+      const componentIndex = state.workspaceComponents.findIndex((component) => component.id === componentId);
+      const component = state.workspaceComponents[componentIndex];
+      if (!component) return null;
+      const taskIds = new Set(
+        Object.values(state.tasks)
+          .filter((task) => task.componentIds?.includes(componentId))
+          .map((task) => task.id),
+      );
+      const laneId = `todo-lane-${genId()}`;
+      const nextItems = buildTodoItemsForTasks(state, taskIds, laneId);
+      if (nextItems.length === 0) return null;
+      const laneName = component.name.trim() || `未命名联通块 ${componentIndex + 1}`;
+      persistSet((current: AppState) => ({
+        todoLanes: [...current.todoLanes, { id: laneId, name: laneName }],
+        todoItems: [...current.todoItems, ...nextItems],
+      }));
+      return laneId;
     },
     addTodoLane: (name) => {
       const id = `todo-lane-${genId()}`;
@@ -940,6 +1074,35 @@ export const useAppStore = create<AppState>((set, get) => {
         ],
       }));
       return id;
+    },
+    duplicateTimeTemplate: (id) => {
+      const source = get().timeTemplates.find((template) => template.id === id);
+      if (!source) return null;
+
+      const copyId = `time-template-${genId()}`;
+      const existingNames = new Set(get().timeTemplates.map((template) => template.name));
+      const baseName = `${source.name || (source.type === 'daily' ? '24 小时模版' : '周模版')} 副本`;
+      let copyName = baseName;
+      let copyNumber = 2;
+      while (existingNames.has(copyName)) {
+        copyName = `${baseName} ${copyNumber}`;
+        copyNumber += 1;
+      }
+
+      const copy: TimeTemplate = {
+        ...source,
+        id: copyId,
+        name: copyName,
+        blocks: source.blocks.map((block) => ({ ...block, id: `time-block-${genId()}` })),
+      };
+      persistSet((state: AppState) => {
+        const sourceIndex = state.timeTemplates.findIndex((template) => template.id === id);
+        const insertionIndex = sourceIndex >= 0 ? sourceIndex + 1 : state.timeTemplates.length;
+        const nextTemplates = [...state.timeTemplates];
+        nextTemplates.splice(insertionIndex, 0, copy);
+        return { timeTemplates: nextTemplates };
+      });
+      return copyId;
     },
     renameTimeTemplate: (id, name) => persistSet((state: AppState) => ({
       timeTemplates: state.timeTemplates.map((template) => (
@@ -1039,10 +1202,58 @@ export const useAppStore = create<AppState>((set, get) => {
         normalizedUpdates.statusId = updates.isDone ? 'status-completed' : 'status-not-started';
       }
 
+      if (
+        updates.timeBlocks === undefined
+        && (updates.startTime !== undefined || updates.endTime !== undefined)
+        && currentTask.timeBlocks?.length
+      ) {
+        const [firstBlock, ...remainingBlocks] = currentTask.timeBlocks;
+        normalizedUpdates.timeBlocks = [{
+          ...firstBlock,
+          ...(updates.startTime !== undefined ? { startTime: updates.startTime || '' } : {}),
+          ...(updates.endTime !== undefined ? { endTime: updates.endTime || '' } : {}),
+        }, ...remainingBlocks].filter((block) => block.startTime && block.endTime);
+      }
+
       const updatedTask = { ...currentTask, ...normalizedUpdates };
       return {
         tasks: { ...state.tasks, [taskId]: updatedTask }
       };
+    }),
+
+    addTaskTimeBlock: (taskId, block) => {
+      const currentTask = get().tasks[taskId];
+      if (!currentTask || !block.startTime || !block.endTime) return null;
+      const id = `task-time-${genId()}`;
+      persistSet((state: AppState) => {
+        const task = state.tasks[taskId];
+        if (!task) return {};
+        const existingBlocks = getTaskTimeBlocks(task).map((currentBlock) => (
+          currentBlock.id.startsWith('legacy-') ? { ...currentBlock, id: `task-time-${genId()}` } : currentBlock
+        ));
+        const nextBlocks = [...existingBlocks, { ...block, id }];
+        return { tasks: { ...state.tasks, [taskId]: { ...task, ...normalizeTaskTimeBlocks(task, nextBlocks) } } };
+      });
+      return id;
+    },
+    updateTaskTimeBlock: (taskId, blockId, updates) => persistSet((state: AppState) => {
+      const task = state.tasks[taskId];
+      if (!task) return {};
+      const blocks = getTaskTimeBlocks(task);
+      const nextBlocks = blocks.map((block) => (
+        block.id === blockId || (blockId.startsWith('legacy-') && block.id.startsWith('legacy-'))
+          ? { ...block, ...updates, id: block.id.startsWith('legacy-') ? `task-time-${genId()}` : block.id }
+          : block
+      ));
+      return { tasks: { ...state.tasks, [taskId]: { ...task, ...normalizeTaskTimeBlocks(task, nextBlocks) } } };
+    }),
+    deleteTaskTimeBlock: (taskId, blockId) => persistSet((state: AppState) => {
+      const task = state.tasks[taskId];
+      if (!task) return {};
+      const nextBlocks = getTaskTimeBlocks(task).filter((block) => (
+        block.id !== blockId && !(blockId.startsWith('legacy-') && block.id.startsWith('legacy-'))
+      ));
+      return { tasks: { ...state.tasks, [taskId]: { ...task, ...normalizeTaskTimeBlocks(task, nextBlocks) } } };
     }),
 
     setTaskComponentIds: (taskId, componentIds) => persistSet((state: AppState) => {
