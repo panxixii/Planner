@@ -1,8 +1,22 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Check, Pipette, Star, X } from 'lucide-react';
 import { useAppStore } from '../store';
 
-const QUICK_COLORS = ['#9387D1', '#67C8BD', '#79BFD5', '#D78FB5', '#D9B958', '#9B8AE4', '#334155', '#F97316'];
+const UI_COLOR_PALETTE = [
+  { name: '云紫', value: '#8D78D5' },
+  { name: '薰衣草', value: '#9B8AE4' },
+  { name: '薄荷青', value: '#67C8BD' },
+  { name: '湖水蓝', value: '#5FAEC6' },
+  { name: '雾霾蓝', value: '#6F91BF' },
+  { name: '鼠尾草', value: '#79A982' },
+  { name: '灰粉', value: '#C779A2' },
+  { name: '珊瑚', value: '#D37B70' },
+  { name: '琥珀', value: '#C4A044' },
+  { name: '陶橙', value: '#C98355' },
+  { name: '岩灰', value: '#74839C' },
+  { name: '墨蓝', value: '#334155' },
+] as const;
 const NAMED_COLORS: Record<string, string> = {
   indigo: '#9387D1', emerald: '#67C8BD', sky: '#79BFD5', rose: '#D78FB5', amber: '#D9B958', violet: '#9B8AE4',
 };
@@ -74,6 +88,15 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({ value, onChange, label
     setHexDraft(currentValue);
   }, [currentValue]);
 
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsOpen(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen]);
+
   const setRgbChannel = (channel: 'r' | 'g' | 'b', nextValue: string) => {
     const nextRgb = { ...rgb, [channel]: Number(nextValue) || 0 };
     setDraftColor(rgbToHex(nextRgb.r, nextRgb.g, nextRgb.b));
@@ -92,35 +115,56 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({ value, onChange, label
         <span className="flex items-center gap-2"><span className="h-5 w-5 rounded-md border border-black/10 shadow-inner" style={{ backgroundColor: currentValue }} /><span>{label}</span></span>
         <span className="font-mono text-[10px] text-neutral-400">{currentValue}</span>
       </button>
-      {isOpen ? (
-        <div className="absolute right-0 top-full z-[120] mt-2 w-80 rounded-xl border border-neutral-200 bg-white p-4 shadow-2xl" onClick={(event) => event.stopPropagation()}>
-          <div className="mb-3 flex items-center justify-between"><span className="flex items-center gap-1.5 text-xs font-bold text-neutral-700"><Pipette className="h-3.5 w-3.5 text-purple-500" />选择颜色</span><button type="button" onClick={() => setIsOpen(false)} className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 hover:bg-neutral-100"><X className="h-3.5 w-3.5" /></button></div>
+      {isOpen ? createPortal(
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" onClick={(event) => event.stopPropagation()}>
+          <button type="button" onClick={() => setIsOpen(false)} className="absolute inset-0 bg-neutral-900/15" aria-label="关闭颜色选择器" />
+          <section role="dialog" aria-modal="true" aria-label="选择颜色" className="relative flex max-h-[calc(100dvh-2rem)] w-full max-w-sm flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-2xl">
+            <header className="flex shrink-0 items-center justify-between border-b border-neutral-100 px-4 py-3"><span className="flex items-center gap-1.5 text-xs font-bold text-neutral-700"><Pipette className="h-3.5 w-3.5 text-purple-500" />选择颜色</span><button type="button" onClick={() => setIsOpen(false)} className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-400 hover:bg-neutral-100" aria-label="关闭颜色选择器"><X className="h-3.5 w-3.5" /></button></header>
 
-          <div className="space-y-2">
-            <span className="text-[10px] font-semibold text-neutral-500">完整色卡</span>
-            <div
-              onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); updateSaturationValue(event); }}
-              onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) updateSaturationValue(event); }}
-              onPointerUp={(event) => event.currentTarget.releasePointerCapture(event.pointerId)}
-              className="relative h-28 touch-none cursor-crosshair overflow-hidden rounded-lg border border-neutral-200"
-              style={{ background: `linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, hsl(${hsv.h} 100% 50%))` }}
-            >
-              <span className="pointer-events-none absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow" style={{ left: `${hsv.s * 100}%`, top: `${(1 - hsv.v) * 100}%` }} />
+            <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto p-4">
+              <div className="space-y-2">
+                <span className="text-[10px] font-semibold text-neutral-500">完整色卡</span>
+                <div
+                  onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); updateSaturationValue(event); }}
+                  onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) updateSaturationValue(event); }}
+                  onPointerUp={(event) => event.currentTarget.releasePointerCapture(event.pointerId)}
+                  className="relative h-28 touch-none cursor-crosshair overflow-hidden rounded-lg border border-neutral-200"
+                  style={{ background: `linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, hsl(${hsv.h} 100% 50%))` }}
+                >
+                  <span className="pointer-events-none absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow" style={{ left: `${hsv.s * 100}%`, top: `${(1 - hsv.v) * 100}%` }} />
+                </div>
+                <input type="range" min="0" max="359" value={Math.round(hsv.h)} onChange={(event) => setDraftColor(hsvToHex(Number(event.target.value), hsv.s, hsv.v))} className="planner-hue-slider h-3 w-full cursor-ew-resize appearance-none rounded-full" aria-label="色相" />
+              </div>
+
+              {favorites.length > 0 ? (
+                <div className="mt-3">
+                  <div className="mb-2"><span className="text-[10px] font-semibold text-neutral-500">我的常用</span></div>
+                  <div className="grid grid-cols-6 gap-2">
+                    {favorites.map((color) => <button key={color} type="button" onClick={() => setDraftColor(color)} onDoubleClick={() => removeFavorite(color)} className="flex h-8 w-8 items-center justify-center justify-self-center rounded-full border border-black/10 shadow-sm outline-none transition-shadow hover:ring-2 hover:ring-purple-200 focus-visible:ring-2 focus-visible:ring-purple-400" style={{ backgroundColor: color }} title={`${color}（双击移除常用）`} aria-label={`选择常用颜色 ${color}`}>{normalizedValue === color ? <Check className="h-3.5 w-3.5 text-white drop-shadow" /> : null}</button>)}
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="mt-3">
+                <div className="mb-2"><span className="text-[10px] font-semibold text-neutral-500">常用色卡</span></div>
+                <div className="grid grid-cols-6 gap-2">
+                  {UI_COLOR_PALETTE.map((color) => <button key={color.value} type="button" onClick={() => setDraftColor(color.value)} className="flex h-8 w-8 items-center justify-center justify-self-center rounded-full border border-black/10 shadow-sm outline-none transition-shadow hover:ring-2 hover:ring-purple-200 focus-visible:ring-2 focus-visible:ring-purple-400" style={{ backgroundColor: color.value }} title={`${color.name} · ${color.value}`} aria-label={`选择${color.name} ${color.value}`}>{normalizedValue === color.value ? <Check className="h-3.5 w-3.5 text-white drop-shadow" /> : null}</button>)}
+                </div>
+              </div>
+
+              <div className="mt-4 grid grid-cols-[1.3fr_repeat(3,1fr)] gap-2">
+                <label className="space-y-1"><span className="text-[9px] font-bold text-neutral-400">HEX</span><input value={hexDraft} onChange={(event) => { setHexDraft(event.target.value); const color = normalizeHex(event.target.value); if (color) setDraftColor(color); }} onBlur={() => setHexDraft(normalizedValue)} className="h-8 w-full rounded-md border border-neutral-200 px-2 font-mono text-[10px] outline-none focus:border-purple-300" /></label>
+                {(['r', 'g', 'b'] as const).map((channel) => <label key={channel} className="space-y-1"><span className="text-[9px] font-bold uppercase text-neutral-400">{channel}</span><input type="number" min="0" max="255" value={rgb[channel]} onChange={(event) => setRgbChannel(channel, event.target.value)} className="h-8 w-full rounded-md border border-neutral-200 px-2 text-[10px] outline-none focus:border-purple-300" /></label>)}
+              </div>
             </div>
-            <input type="range" min="0" max="359" value={Math.round(hsv.h)} onChange={(event) => setDraftColor(hsvToHex(Number(event.target.value), hsv.s, hsv.v))} className="planner-hue-slider h-3 w-full cursor-ew-resize appearance-none rounded-full" aria-label="色相" />
-          </div>
 
-          <div className="mt-3"><div className="mb-1.5"><span className="text-[10px] font-semibold text-neutral-500">快捷颜色</span></div><div className="flex flex-wrap gap-2">{[...favorites, ...QUICK_COLORS.filter((color) => !favorites.includes(color))].map((color, index) => <button key={`${color}-${index}`} type="button" onClick={() => setDraftColor(color)} onDoubleClick={() => favorites.includes(color) && removeFavorite(color)} className="flex h-7 w-7 items-center justify-center rounded-full border border-black/10 shadow-sm transition-transform hover:scale-110" style={{ backgroundColor: color }} title={favorites.includes(color) ? `${color}（双击移除常用）` : color}>{normalizedValue === color ? <Check className="h-3.5 w-3.5 text-white drop-shadow" /> : null}</button>)}</div></div>
-
-          <div className="mt-4 grid grid-cols-[1.3fr_repeat(3,1fr)] gap-2">
-            <label className="space-y-1"><span className="text-[9px] font-bold text-neutral-400">HEX</span><input value={hexDraft} onChange={(event) => { setHexDraft(event.target.value); const color = normalizeHex(event.target.value); if (color) setDraftColor(color); }} onBlur={() => setHexDraft(normalizedValue)} className="h-8 w-full rounded-md border border-neutral-200 px-2 font-mono text-[10px] outline-none focus:border-purple-300" /></label>
-            {(['r', 'g', 'b'] as const).map((channel) => <label key={channel} className="space-y-1"><span className="text-[9px] font-bold uppercase text-neutral-400">{channel}</span><input type="number" min="0" max="255" value={rgb[channel]} onChange={(event) => setRgbChannel(channel, event.target.value)} className="h-8 w-full rounded-md border border-neutral-200 px-2 text-[10px] outline-none focus:border-purple-300" /></label>)}
-          </div>
-          <div className="mt-4 grid grid-cols-2 gap-2">
-            <button type="button" onClick={() => { onChange(normalizedValue); setIsOpen(false); }} className="h-9 rounded-lg bg-purple-600 px-3 text-xs font-semibold text-white">保存颜色</button>
-            <button type="button" onClick={() => favorites.includes(normalizedValue) ? removeFavorite(normalizedValue) : addFavorite(normalizedValue)} className="flex h-9 items-center justify-center gap-1.5 rounded-lg border border-purple-200 bg-purple-50 px-3 text-xs font-semibold text-purple-600"><Star className={`h-3.5 w-3.5 ${favorites.includes(normalizedValue) ? 'fill-current' : ''}`} />{favorites.includes(normalizedValue) ? '取消常用' : '设为常用'}</button>
-          </div>
-        </div>
+            <footer className="grid shrink-0 grid-cols-2 gap-2 border-t border-neutral-100 bg-white p-4">
+              <button type="button" onClick={() => { onChange(normalizedValue); setIsOpen(false); }} className="h-9 rounded-lg bg-purple-600 px-3 text-xs font-semibold text-white">保存颜色</button>
+              <button type="button" onClick={() => favorites.includes(normalizedValue) ? removeFavorite(normalizedValue) : addFavorite(normalizedValue)} className="flex h-9 items-center justify-center gap-1.5 rounded-lg border border-purple-200 bg-purple-50 px-3 text-xs font-semibold text-purple-600"><Star className={`h-3.5 w-3.5 ${favorites.includes(normalizedValue) ? 'fill-current' : ''}`} />{favorites.includes(normalizedValue) ? '取消常用' : '设为常用'}</button>
+            </footer>
+          </section>
+        </div>,
+        document.body,
       ) : null}
     </div>
   );
