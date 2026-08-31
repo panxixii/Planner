@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Handle, NodeProps, NodeResizer, Position } from '@xyflow/react';
-import { Check, CircleDot, ListPlus, Network, PanelRightOpen, Trash2 } from 'lucide-react';
+import { Check, CircleDot, ListMinus, ListPlus, Network, PanelRightOpen, Trash2 } from 'lucide-react';
 import { useAppStore } from '../store';
 import { getComponentLabel, getTaskComponentIds } from '../workspaceComponents';
 
@@ -44,6 +44,7 @@ export const TaskNode = React.memo(({ id, data, selected }: NodeProps) => {
   const workspaceComponentFilter = useAppStore((state) => state.workspaceComponentFilter);
   const setTaskComponentIds = useAppStore((state) => state.setTaskComponentIds);
   const addTaskToTodo = useAppStore((state) => state.addTaskToTodo);
+  const removeTaskFromTodo = useAppStore((state) => state.removeTaskFromTodo);
   const isInTodo = useAppStore((state) => state.todoItems.some((item) => item.taskId === taskId));
   const components = useAppStore((state) => state.workspaceComponents);
   const taskStatuses = useAppStore((state) => state.taskStatuses);
@@ -54,6 +55,7 @@ export const TaskNode = React.memo(({ id, data, selected }: NodeProps) => {
   const [isEditing, setIsEditing] = useState(false);
   const [draftTitle, setDraftTitle] = useState('');
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+  const [isConfirmingTodoRemoval, setIsConfirmingTodoRemoval] = useState(false);
   const [isChoosingComponents, setIsChoosingComponents] = useState(false);
   const [isChoosingStatus, setIsChoosingStatus] = useState(false);
   const assignedComponentIds = new Set(task ? getTaskComponentIds(task) : []);
@@ -68,6 +70,7 @@ export const TaskNode = React.memo(({ id, data, selected }: NodeProps) => {
   useEffect(() => {
     if (showActions) return;
     setIsConfirmingDelete(false);
+    setIsConfirmingTodoRemoval(false);
     setIsChoosingComponents(false);
     setIsChoosingStatus(false);
   }, [showActions]);
@@ -98,19 +101,25 @@ export const TaskNode = React.memo(({ id, data, selected }: NodeProps) => {
 
   return (
     <div
-      onClick={startEditing}
-      onDoubleClick={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        if (isEditing) {
-          commitTitle();
-        }
+      onClick={(event) => {
+        if (event.detail > 1 || isEditing) return;
         setIsConfirmingDelete(false);
+        setIsConfirmingTodoRemoval(false);
         setIsChoosingComponents(false);
         setIsChoosingStatus(false);
         setActiveNodeActionsId(showActions ? null : id);
       }}
-      title="单击改名，双击显示节点操作"
+      onDoubleClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setIsConfirmingDelete(false);
+        setIsConfirmingTodoRemoval(false);
+        setIsChoosingComponents(false);
+        setIsChoosingStatus(false);
+        setActiveNodeActionsId(null);
+        startEditing();
+      }}
+      title="单击显示节点操作，双击编辑标题"
       className={`planner-mind-node group relative flex h-full min-h-10 w-full min-w-28 items-center justify-center rounded-[999px] border px-5 text-center transition-[box-shadow,border-color,transform] duration-150 ${selected ? 'planner-mind-node-selected' : ''} ${showActions ? 'planner-node-actions-open' : ''}`}
       style={{
         backgroundColor: task.isDone ? '#f7f8fa' : scheme.surface,
@@ -145,6 +154,7 @@ export const TaskNode = React.memo(({ id, data, selected }: NodeProps) => {
                 return;
               }
               setIsConfirmingDelete(true);
+              setIsConfirmingTodoRemoval(false);
               setIsChoosingComponents(false);
               setIsChoosingStatus(false);
             }}
@@ -166,6 +176,7 @@ export const TaskNode = React.memo(({ id, data, selected }: NodeProps) => {
                 type="button"
                 onClick={() => {
                   setIsConfirmingDelete(false);
+                  setIsConfirmingTodoRemoval(false);
                   setIsChoosingStatus(false);
                   setIsChoosingComponents((value) => !value);
                 }}
@@ -209,6 +220,7 @@ export const TaskNode = React.memo(({ id, data, selected }: NodeProps) => {
               type="button"
               onClick={() => {
                 setIsConfirmingDelete(false);
+                setIsConfirmingTodoRemoval(false);
                 setIsChoosingComponents(false);
                 setIsChoosingStatus((value) => !value);
               }}
@@ -250,25 +262,42 @@ export const TaskNode = React.memo(({ id, data, selected }: NodeProps) => {
 
           <button
             type="button"
-            disabled={isInTodo}
             onClick={() => {
               setIsConfirmingDelete(false);
               setIsChoosingComponents(false);
               setIsChoosingStatus(false);
-              addTaskToTodo(taskId);
+              if (!isInTodo) {
+                addTaskToTodo(taskId);
+                setActiveNodeActionsId(null);
+                return;
+              }
+              if (isConfirmingTodoRemoval) {
+                removeTaskFromTodo(taskId);
+                setIsConfirmingTodoRemoval(false);
+                setActiveNodeActionsId(null);
+                return;
+              }
+              setIsConfirmingTodoRemoval(true);
             }}
-            className="flex h-8 w-[76px] items-center justify-center gap-1.5 rounded-md border border-sky-200 bg-sky-50 text-[11px] font-semibold text-sky-600 transition-colors hover:bg-sky-100 disabled:cursor-default disabled:opacity-50"
-            aria-label={isInTodo ? '已加入 Todo' : '加入 Todo 主线'}
-            title={isInTodo ? '此任务已在 Todo 中' : '按点击顺序加入 Todo 主线尾部'}
+            className={`flex h-8 w-[68px] items-center justify-center gap-1.5 rounded-md border px-2 text-[11px] font-semibold transition-colors ${
+              isConfirmingTodoRemoval
+                ? 'border-rose-500 bg-rose-600 text-white hover:bg-rose-700'
+                : isInTodo
+                  ? 'border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100'
+                  : 'border-sky-200 bg-sky-50 text-sky-600 hover:bg-sky-100'
+            }`}
+            aria-label={isConfirmingTodoRemoval ? '确认从 Todo 移除' : isInTodo ? '从 Todo 移除' : '加入 Todo 主线'}
+            title={isConfirmingTodoRemoval ? '再次点击确认移除' : isInTodo ? '从 Todo 移除此任务' : '加入此任务及其子节点'}
           >
-            {isInTodo ? <Check className="h-3.5 w-3.5" /> : <ListPlus className="h-3.5 w-3.5" />}
-            <span>{isInTodo ? '已加入' : 'Todo'}</span>
+            {isConfirmingTodoRemoval ? <Trash2 className="h-3.5 w-3.5" /> : isInTodo ? <ListMinus className="h-3.5 w-3.5" /> : <ListPlus className="h-3.5 w-3.5" />}
+            <span>Todo</span>
           </button>
 
           <button
             type="button"
             onClick={() => {
               setIsConfirmingDelete(false);
+              setIsConfirmingTodoRemoval(false);
               setIsChoosingComponents(false);
               setIsChoosingStatus(false);
               setActiveNodeActionsId(null);
