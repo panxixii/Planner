@@ -1,5 +1,4 @@
 import React, { useCallback, useMemo, useRef, useState, useEffect } from 'react';
-import { createPortal } from 'react-dom';
 import { 
   ReactFlow, 
   Background, 
@@ -30,10 +29,8 @@ import {
   ZoomIn, 
   ZoomOut, 
   Maximize,
-  FolderPlus,
-  ListTodo,
 } from 'lucide-react';
-import { Task, GoalNode, WorkspaceDirectory } from '../types';
+import { Task, GoalNode } from '../types';
 import { getComponentLabel, getTaskComponentIds } from '../workspaceComponents';
 
 const DAGInnerWorkspace: React.FC = () => {
@@ -50,7 +47,6 @@ const DAGInnerWorkspace: React.FC = () => {
   const workspaceComponentFilter = useAppStore((state) => state.workspaceComponentFilter);
   const workspaceComponents = useAppStore((state) => state.workspaceComponents);
   const workspaceDirectories = useAppStore((state) => state.workspaceDirectories);
-  const addWorkspaceDirectory = useAppStore((state) => state.addWorkspaceDirectory);
   const updateWorkspaceDirectory = useAppStore((state) => state.updateWorkspaceDirectory);
   const deleteWorkspaceDirectory = useAppStore((state) => state.deleteWorkspaceDirectory);
 
@@ -74,7 +70,6 @@ const DAGInnerWorkspace: React.FC = () => {
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [canvasTool, setCanvasTool] = useState<'pan' | 'select'>('pan');
-  const [creationMenu, setCreationMenu] = useState<{ screenX: number; screenY: number; flowX: number; flowY: number } | null>(null);
   const isConnectingRef = useRef(false);
   const suppressPaneClickUntilRef = useRef(0);
 
@@ -688,27 +683,9 @@ const DAGInnerWorkspace: React.FC = () => {
     if (targetGoal && selectedGoalId) addNodeToGoal(selectedGoalId, newGoalNode);
     else addWorkspaceNode(newGoalNode);
     endHistoryGroup();
-    setCreationMenu(null);
   }, [addNodeToGoal, addTask, addWorkspaceNode, beginHistoryGroup, endHistoryGroup, goals, isMergedView, selectedGoalId, workspaceComponentFilter]);
 
-  const createDirectoryAtPosition = useCallback((flowX: number, flowY: number) => {
-    if (!isMergedView) {
-      showToast('目录节点请在全部工作区中创建');
-      return;
-    }
-    const directory: WorkspaceDirectory = {
-      id: `directory-${Math.random().toString(36).substring(2, 9)}`,
-      name: '新目录',
-      position: { x: flowX - 89, y: flowY - 29 },
-      color: '#9387d1',
-      componentIds: [...(workspaceComponentFilter || [])],
-      isCollapsed: false,
-    };
-    addWorkspaceDirectory(directory);
-    setCreationMenu(null);
-  }, [addWorkspaceDirectory, isMergedView, showToast, workspaceComponentFilter]);
-
-  // Open the task/directory chooser exactly where the user double-clicks.
+  // Double-clicking empty canvas creates a task; it can be converted from its action bar.
   const handlePaneClick = useCallback((event: React.MouseEvent) => {
     if (event.detail !== 2) return;
     if (isConnectingRef.current || Date.now() < suppressPaneClickUntilRef.current) {
@@ -724,8 +701,8 @@ const DAGInnerWorkspace: React.FC = () => {
       x: event.clientX,
       y: event.clientY,
     });
-    setCreationMenu({ screenX: event.clientX, screenY: event.clientY, flowX: clickedPosition.x, flowY: clickedPosition.y });
-  }, [screenToFlowPosition, showToast, workspaceComponentFilter]);
+    createTaskAtPosition(clickedPosition.x, clickedPosition.y);
+  }, [createTaskAtPosition, screenToFlowPosition, showToast, workspaceComponentFilter]);
 
   const activeTitle = isMergedView 
     ? '合并画布' 
@@ -734,13 +711,6 @@ const DAGInnerWorkspace: React.FC = () => {
   const activeDescription = selectedGoalId ? goals[selectedGoalId]?.description : '';
   return (
     <div className="flex-1 flex flex-col min-h-0 relative select-none">
-      {creationMenu && typeof document !== 'undefined' ? createPortal(
-        <div className="fixed z-[10020] flex w-40 flex-col gap-1 rounded-xl border border-neutral-200 bg-white p-2 shadow-xl" style={{ left: creationMenu.screenX + 6, top: creationMenu.screenY + 6 }}>
-          <button type="button" onClick={() => createTaskAtPosition(creationMenu.flowX, creationMenu.flowY)} className="flex h-9 items-center gap-2 rounded-lg px-2 text-left text-xs font-semibold text-neutral-700 hover:bg-purple-50 hover:text-purple-700"><ListTodo className="h-4 w-4" />任务节点</button>
-          <button type="button" disabled={!isMergedView} onClick={() => createDirectoryAtPosition(creationMenu.flowX, creationMenu.flowY)} className="flex h-9 items-center gap-2 rounded-lg px-2 text-left text-xs font-semibold text-neutral-700 hover:bg-purple-50 hover:text-purple-700 disabled:cursor-not-allowed disabled:opacity-40"><FolderPlus className="h-4 w-4" />分类目录</button>
-        </div>,
-        document.body,
-      ) : null}
       {selectedTaskIds.length > 1 ? <CanvasSelectionToolbar taskIds={selectedTaskIds} onRemove={removeSelectedNodes} /> : null}
       <div className="absolute left-1/2 bottom-6 z-30 flex -translate-x-1/2 items-center gap-1 rounded-xl border border-neutral-200 bg-white/95 p-1 shadow-lg">
         <button type="button" onClick={() => setCanvasTool('pan')} className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-semibold ${canvasTool === 'pan' ? 'bg-purple-100 text-purple-600' : 'text-neutral-500 hover:bg-neutral-50'}`}><MousePointer2 className="h-3.5 w-3.5" />移动</button>
