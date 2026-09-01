@@ -84,6 +84,8 @@ export interface WorkspaceDirectory {
   id: string;
   name: string;
   position: { x: number; y: number };
+  width?: number;
+  height?: number;
   color: string;
   componentIds: string[];
   isCollapsed: boolean;

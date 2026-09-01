@@ -85,9 +85,15 @@ const DraggableTodoNode: React.FC<{
   onDuplicateToNewLane: () => void;
   onRemove: () => void;
   onToggle: () => void;
-}> = ({ item, task, x, y, lanes, components, isSynced, acceptsChildren, onOpenDetails, onToggleAssignment, onDuplicate, onDuplicateToNewLane, onRemove, onToggle }) => {
+  onRename: (title: string) => void;
+}> = ({ item, task, x, y, lanes, components, isSynced, acceptsChildren, onOpenDetails, onToggleAssignment, onDuplicate, onDuplicateToNewLane, onRemove, onToggle, onRename }) => {
+  const [showActions, setShowActions] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [draftTitle, setDraftTitle] = useState(task.title);
   const [isDuplicateMenuOpen, setIsDuplicateMenuOpen] = useState(false);
   const [isAssignmentMenuOpen, setIsAssignmentMenuOpen] = useState(false);
+  const nodeRef = useRef<HTMLDivElement>(null);
+  const titleInputRef = useRef<HTMLInputElement>(null);
   const actionBarRef = useRef<HTMLDivElement>(null);
   const portalMenuRef = useRef<HTMLDivElement>(null);
   const [menuPosition, setMenuPosition] = useState({ left: 0, top: 0 });
@@ -98,6 +104,44 @@ const DraggableTodoNode: React.FC<{
     left: x,
     top: y,
     visibility: draggable.isDragging ? 'hidden' : 'visible',
+  };
+
+  useEffect(() => {
+    if (!isEditing) return;
+    titleInputRef.current?.focus();
+    titleInputRef.current?.select();
+  }, [isEditing]);
+
+  useEffect(() => {
+    if (!showActions && !isEditing) return;
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (nodeRef.current?.contains(target) || portalMenuRef.current?.contains(target)) return;
+      setShowActions(false);
+      setIsDuplicateMenuOpen(false);
+      setIsAssignmentMenuOpen(false);
+      if (isEditing) {
+        const nextTitle = draftTitle.trim() || '未命名任务';
+        if (nextTitle !== task.title) onRename(nextTitle);
+        setIsEditing(false);
+      }
+    };
+    document.addEventListener('pointerdown', closeOnOutsidePointer);
+    return () => document.removeEventListener('pointerdown', closeOnOutsidePointer);
+  }, [draftTitle, isEditing, onRename, showActions, task.title]);
+
+  const startEditing = () => {
+    setShowActions(false);
+    setIsDuplicateMenuOpen(false);
+    setIsAssignmentMenuOpen(false);
+    setDraftTitle(task.title);
+    setIsEditing(true);
+  };
+
+  const commitTitle = () => {
+    const nextTitle = draftTitle.trim() || '未命名任务';
+    if (nextTitle !== task.title) onRename(nextTitle);
+    setIsEditing(false);
   };
 
   useEffect(() => {
@@ -156,24 +200,47 @@ const DraggableTodoNode: React.FC<{
   );
 
   return (
-    <div ref={draggable.setNodeRef} data-todo-node="true" style={style} className="absolute z-10 flex w-[108px] flex-col items-center hover:z-40 focus-within:z-40">
+    <div
+      ref={(element) => {
+        draggable.setNodeRef(element);
+        nodeRef.current = element;
+      }}
+      data-todo-node="true"
+      style={style}
+      className={`absolute z-10 flex w-[108px] flex-col items-center hover:z-40 focus-within:z-40 ${showActions ? 'z-40' : ''}`}
+      onClick={(event) => {
+        if (event.detail > 1 || isEditing) return;
+        event.stopPropagation();
+        setIsDuplicateMenuOpen(false);
+        setIsAssignmentMenuOpen(false);
+        setShowActions((open) => !open);
+      }}
+      onDoubleClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        startEditing();
+      }}
+      title="单击显示节点操作，双击编辑标题"
+    >
       <div className="group relative">
         <button
           ref={childDrop.setNodeRef}
           type="button"
           {...draggable.listeners}
           {...draggable.attributes}
-          onClick={onToggle}
           className={`cursor-grab rounded-full outline-none active:cursor-grabbing ${childDrop.isOver ? 'ring-4 ring-purple-200' : ''}`}
-          title="拖动调整顺序；将其他任务拖到这里可设为子任务"
+          title="拖动调整顺序；单击显示操作；将其他任务拖到这里可设为子任务"
         >
           <TodoDot task={task} isDone={effectiveIsDone} />
         </button>
         <div
           ref={actionBarRef}
-          className={`absolute left-9 top-0 z-30 flex items-center gap-0.5 rounded-md border border-neutral-200 bg-white p-0.5 shadow-md transition-opacity ${isDuplicateMenuOpen || isAssignmentMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100'}`}
+          className={`absolute left-9 top-0 z-30 flex items-center gap-0.5 rounded-md border border-neutral-200 bg-white p-0.5 shadow-md transition-opacity ${showActions ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'}`}
+          onClick={(event) => event.stopPropagation()}
+          onDoubleClick={(event) => event.stopPropagation()}
           onPointerDown={(event) => event.stopPropagation()}
         >
+          <button type="button" onClick={onToggle} className={`flex h-6 w-6 items-center justify-center rounded ${effectiveIsDone ? 'bg-emerald-50 text-emerald-600' : 'text-neutral-400 hover:bg-emerald-50 hover:text-emerald-600'}`} title={effectiveIsDone ? '标记为未完成' : '标记为完成'} aria-label={effectiveIsDone ? '标记为未完成' : '标记为完成'}><Check className="h-3.5 w-3.5" /></button>
           <button type="button" onClick={onOpenDetails} className="flex h-6 w-6 items-center justify-center rounded text-neutral-400 hover:bg-purple-50 hover:text-purple-600" title="打开任务详情" aria-label="打开任务详情"><PanelRightOpen className="h-3.5 w-3.5" /></button>
           <button type="button" onClick={() => { setIsAssignmentMenuOpen((open) => !open); setIsDuplicateMenuOpen(false); }} className="flex h-6 w-6 items-center justify-center rounded text-neutral-400 hover:bg-purple-50 hover:text-purple-600" title="设置工作区归属" aria-label="设置工作区归属" aria-expanded={isAssignmentMenuOpen}><Network className="h-3.5 w-3.5" /></button>
           <button type="button" onClick={() => { setIsDuplicateMenuOpen((open) => !open); setIsAssignmentMenuOpen(false); }} className="flex h-6 w-6 items-center justify-center rounded text-neutral-400 hover:bg-sky-50 hover:text-sky-600" title="创建分身" aria-label="创建分身" aria-expanded={isDuplicateMenuOpen}><CopyPlus className="h-3.5 w-3.5" /></button>
@@ -183,7 +250,30 @@ const DraggableTodoNode: React.FC<{
       {portalMenu}
       <div className="mt-1.5 flex max-w-full items-center gap-0.5 text-center text-[10px] font-semibold leading-3.5 text-neutral-700">
         <GripVertical className="h-2.5 w-2.5 shrink-0 text-neutral-300" />
-        <span className={`line-clamp-2 ${effectiveIsDone ? 'text-emerald-600' : ''}`}>{task.title || '未命名任务'}</span>
+        {isEditing ? (
+          <input
+            ref={titleInputRef}
+            value={draftTitle}
+            onChange={(event) => setDraftTitle(event.target.value)}
+            onClick={(event) => event.stopPropagation()}
+            onDoubleClick={(event) => event.stopPropagation()}
+            onBlur={commitTitle}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                commitTitle();
+              } else if (event.key === 'Escape') {
+                event.preventDefault();
+                setDraftTitle(task.title);
+                setIsEditing(false);
+              }
+            }}
+            className="w-[90px] rounded border border-purple-200 bg-white px-1 py-0.5 text-center text-[10px] font-semibold text-neutral-700 outline-none focus:ring-2 focus:ring-purple-100"
+            aria-label="任务标题"
+          />
+        ) : (
+          <span className={`line-clamp-2 ${effectiveIsDone ? 'text-emerald-600' : ''}`}>{task.title || '未命名任务'}</span>
+        )}
       </div>
     </div>
   );
@@ -359,7 +449,7 @@ const TodoLaneGraph: React.FC<{ lane: TodoLane; isMain: boolean; isDragging: boo
           <svg className="pointer-events-none absolute inset-0 h-full w-full overflow-visible">
             {layout.edges.map((edge, index) => <path key={`${edge.fromX}-${edge.toX}-${index}`} d={`M ${edge.fromX} ${edge.fromY} C ${edge.fromX} ${(edge.fromY + edge.toY) / 2}, ${edge.toX} ${(edge.fromY + edge.toY) / 2}, ${edge.toX} ${edge.toY}`} fill="none" stroke="#aeb6c5" strokeWidth="2.5" strokeLinecap="round" />)}
           </svg>
-          {layout.nodes.map((node) => <React.Fragment key={node.item.id}>{!isSynced ? <BeforeDrop laneId={lane.id} parentItemId={node.item.parentItemId} itemId={node.item.id} x={node.x - 8} y={node.y - 11} /> : null}<DraggableTodoNode item={node.item} task={tasks[node.item.taskId]} x={node.x} y={node.y} lanes={lanes.filter((targetLane) => targetLane.type !== 'category-sync')} components={components} isSynced={isSynced} acceptsChildren={!isSynced} onOpenDetails={() => selectTask(node.item.taskId)} onToggleAssignment={(componentId) => toggleTodoTaskComponent(node.item.taskId, componentId)} onDuplicate={(targetLaneId) => isSynced ? copyTaskToLane(node.item.taskId, targetLaneId) : duplicateItem(node.item.id, targetLaneId)} onDuplicateToNewLane={() => { const targetLaneId = addLane(`${tasks[node.item.taskId].title || '任务'}分线`); if (isSynced) copyTaskToLane(node.item.taskId, targetLaneId); else duplicateItem(node.item.id, targetLaneId); }} onRemove={() => removeItem(node.item.id)} onToggle={() => isSynced ? updateTask(node.item.taskId, { isDone: !tasks[node.item.taskId].isDone }) : toggleItemDone(node.item.id)} /></React.Fragment>)}
+          {layout.nodes.map((node) => <React.Fragment key={node.item.id}>{!isSynced ? <BeforeDrop laneId={lane.id} parentItemId={node.item.parentItemId} itemId={node.item.id} x={node.x - 8} y={node.y - 11} /> : null}<DraggableTodoNode item={node.item} task={tasks[node.item.taskId]} x={node.x} y={node.y} lanes={lanes.filter((targetLane) => targetLane.type !== 'category-sync')} components={components} isSynced={isSynced} acceptsChildren={!isSynced} onOpenDetails={() => selectTask(node.item.taskId)} onToggleAssignment={(componentId) => toggleTodoTaskComponent(node.item.taskId, componentId)} onDuplicate={(targetLaneId) => isSynced ? copyTaskToLane(node.item.taskId, targetLaneId) : duplicateItem(node.item.id, targetLaneId)} onDuplicateToNewLane={() => { const targetLaneId = addLane(`${tasks[node.item.taskId].title || '任务'}分线`); if (isSynced) copyTaskToLane(node.item.taskId, targetLaneId); else duplicateItem(node.item.id, targetLaneId); }} onRemove={() => removeItem(node.item.id)} onToggle={() => isSynced ? updateTask(node.item.taskId, { isDone: !tasks[node.item.taskId].isDone }) : toggleItemDone(node.item.id)} onRename={(title) => updateTask(node.item.taskId, { title })} /></React.Fragment>)}
         </div>
       </div>
     </section>

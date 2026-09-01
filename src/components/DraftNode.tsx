@@ -3,6 +3,7 @@ import { Check, CircleDot, Network, Trash2 } from 'lucide-react';
 import { Handle, NodeProps, NodeResizer, Position } from '@xyflow/react';
 import { useAppStore } from '../store';
 import { getComponentLabel } from '../workspaceComponents';
+import { getNodeColorScheme } from '../nodeColors';
 
 interface DraftNodeData {
   draftId: string;
@@ -10,29 +11,6 @@ interface DraftNodeData {
   onResizeStart?: () => void;
   onResizeEnd?: (nodeId: string, width: number, height: number) => void;
 }
-
-const colorMap: Record<string, { accent: string; surface: string; border: string }> = {
-  emerald: { accent: '#67c8bd', surface: '#f0fbf8', border: '#b9e5df' },
-  rose: { accent: '#d78fb5', surface: '#fff5fa', border: '#efc9dc' },
-  sky: { accent: '#79bfd5', surface: '#f2fbfd', border: '#bedfe8' },
-  amber: { accent: '#d9b958', surface: '#fffbed', border: '#eadb9f' },
-  violet: { accent: '#9b8ae4', surface: '#f8f5ff', border: '#d6ccf1' },
-  indigo: { accent: '#9387d1', surface: '#f6f5fc', border: '#d1cbea' },
-};
-
-const mixHexWithWhite = (color: string, colorRatio: number) => {
-  const channels = color.slice(1).match(/.{2}/g)?.map((channel) => Number.parseInt(channel, 16));
-  if (!channels || channels.length !== 3) return '#f6f5fc';
-  return `#${channels.map((channel) => Math.round(255 - (255 - channel) * colorRatio).toString(16).padStart(2, '0')).join('')}`;
-};
-
-const getScheme = (color: string) => {
-  if (colorMap[color]) return colorMap[color];
-  if (/^#[0-9a-f]{6}$/i.test(color)) {
-    return { accent: color, surface: mixHexWithWhite(color, 0.08), border: mixHexWithWhite(color, 0.34) };
-  }
-  return colorMap.indigo;
-};
 
 export const DraftNode = React.memo(({ id, data, selected }: NodeProps) => {
   const { draftId, taskId, onResizeStart, onResizeEnd } = data as unknown as DraftNodeData;
@@ -77,7 +55,7 @@ export const DraftNode = React.memo(({ id, data, selected }: NodeProps) => {
     return <div className="rounded-full border border-rose-200 bg-rose-50 px-4 py-2 text-xs text-rose-500">任务数据已缺失</div>;
   }
 
-  const scheme = getScheme(task.color || 'indigo');
+  const scheme = getNodeColorScheme(task.color);
   const commitTitle = () => {
     const nextTitle = title.trim();
     if (nextTitle !== task.title) updateTask(taskId, { title: nextTitle });
@@ -102,17 +80,25 @@ export const DraftNode = React.memo(({ id, data, selected }: NodeProps) => {
   return (
     <div
       ref={rootRef}
-      className={`planner-mind-node group relative flex h-full min-h-10 w-full min-w-28 items-center justify-center rounded-[999px] border px-5 text-center shadow-sm ${selected ? 'planner-mind-node-selected' : ''}`}
+      className={`planner-mind-node group relative flex h-full min-h-10 w-full min-w-28 items-center justify-center rounded-[999px] border px-5 text-center shadow-sm ${selected ? 'planner-mind-node-selected' : ''} ${showActions ? 'planner-node-actions-open' : ''}`}
       style={{ backgroundColor: scheme.surface, borderColor: selected ? scheme.accent : scheme.border }}
-      onDoubleClick={(event) => {
-        event.preventDefault();
+      onClick={(event) => {
+        if (event.detail > 1 || isEditing) return;
         event.stopPropagation();
-        if (isEditing) commitTitle();
         setConfirmDelete(false);
         setActivePanel(null);
         setShowActions((value) => !value);
       }}
-      title="单击改名，双击显示节点操作"
+      onDoubleClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setConfirmDelete(false);
+        setActivePanel(null);
+        setShowActions(false);
+        setTitle(task.title);
+        setIsEditing(true);
+      }}
+      title="单击显示节点操作，双击编辑标题"
     >
       <NodeResizer isVisible={selected} minWidth={112} minHeight={40} maxWidth={420} maxHeight={180} color={scheme.accent} handleStyle={{ width: 8, height: 8, borderRadius: 3 }} lineStyle={{ borderWidth: 1 }} onResizeStart={() => onResizeStart?.()} onResizeEnd={(_event, params) => onResizeEnd?.(id, params.width, params.height)} />
       {showActions ? (
@@ -208,13 +194,6 @@ export const DraftNode = React.memo(({ id, data, selected }: NodeProps) => {
         ref={inputRef}
         value={isEditing ? title : task.title}
         readOnly={!isEditing}
-        onClick={(event) => {
-          event.stopPropagation();
-          if (!isEditing) {
-            setTitle(task.title);
-            setIsEditing(true);
-          }
-        }}
         onChange={(event) => setTitle(event.target.value)}
         onBlur={commitTitle}
         onKeyDown={(event) => {

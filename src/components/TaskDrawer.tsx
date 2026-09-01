@@ -1,20 +1,17 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useAppStore } from '../store';
 import {
-  AlertCircle,
-  Calendar,
   Check,
-  Clock,
+  FolderTree,
   Pencil,
   Plus,
   Settings2,
   Trash2,
   X,
 } from 'lucide-react';
-import type { TaskStatus, TaskTimeBlock } from '../types';
-import { DateTimePicker } from './DateTimePicker';
+import type { TaskStatus } from '../types';
 import { ColorPicker } from './ColorPicker';
-import { formatLocalDateTime, getTaskTimeBlocks } from '../taskTimeBlocks';
+import { getTaskOwnershipPaths } from '../workspaceComponents';
 
 const NAMED_COLOR_HEX: Record<string, string> = {
   indigo: '#9387D1', emerald: '#67C8BD', sky: '#79BFD5', rose: '#D78FB5', amber: '#D9B958', violet: '#9B8AE4',
@@ -22,14 +19,6 @@ const NAMED_COLOR_HEX: Record<string, string> = {
 
 const fieldClassName = 'h-10 w-full rounded-lg border border-neutral-200 bg-[#ffffff] px-3 text-sm text-neutral-800 outline-none transition-colors placeholder:text-neutral-400 focus:border-purple-300 focus:ring-2 focus:ring-purple-100';
 const labelClassName = 'text-xs font-semibold text-neutral-600';
-
-const toDateTimeLocal = (value: string | undefined, isEnd = false) => {
-  if (!value) return '';
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return `${value}T${isEnd ? '23:59' : '00:00'}`;
-  }
-  return value.slice(0, 16);
-};
 
 export const TaskDrawer: React.FC = () => {
   const selectedTaskId = useAppStore((state) => state.selectedTaskId);
@@ -41,17 +30,19 @@ export const TaskDrawer: React.FC = () => {
   const addTaskStatus = useAppStore((state) => state.addTaskStatus);
   const renameTaskStatus = useAppStore((state) => state.renameTaskStatus);
   const deleteTaskStatus = useAppStore((state) => state.deleteTaskStatus);
+  const categories = useAppStore((state) => state.categories);
+  const goals = useAppStore((state) => state.goals);
+  const workspaceNodes = useAppStore((state) => state.workspaceNodes);
+  const directories = useAppStore((state) => state.workspaceDirectories);
+  const mergedEdges = useAppStore((state) => state.mergedEdges);
+  const mergedNodePositions = useAppStore((state) => state.mergedNodePositions);
 
   const task = selectedTaskId ? tasks[selectedTaskId] : null;
 
   const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [duration, setDuration] = useState(1);
   const [statusId, setStatusId] = useState('status-not-started');
-  const [timeBlocks, setTimeBlocks] = useState<TaskTimeBlock[]>([]);
   const [color, setColor] = useState('indigo');
   const [textColor, setTextColor] = useState('#334155');
-  const [errorMsg, setErrorMsg] = useState('');
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const [isManagingStatuses, setIsManagingStatuses] = useState(false);
   const [newStatusLabel, setNewStatusLabel] = useState('');
@@ -63,17 +54,9 @@ export const TaskDrawer: React.FC = () => {
   useEffect(() => {
     if (task) {
       setTitle(task.title || '');
-      setDescription(task.description || '');
-      setDuration(task.duration !== undefined ? task.duration : 0);
       setStatusId(task.statusId || (task.isDone ? 'status-completed' : 'status-not-started'));
-      setTimeBlocks(getTaskTimeBlocks(task).map((block) => ({
-        ...block,
-        startTime: toDateTimeLocal(block.startTime),
-        endTime: toDateTimeLocal(block.endTime, true),
-      })));
       setColor(NAMED_COLOR_HEX[task.color || 'indigo'] || task.color || '#9387D1');
       setTextColor(task.textColor || '#334155');
-      setErrorMsg('');
       setIsConfirmingDelete(false);
       setIsManagingStatuses(false);
       setNewStatusLabel('');
@@ -82,24 +65,23 @@ export const TaskDrawer: React.FC = () => {
     }
   }, [task, selectedTaskId]);
 
+  const ownershipPaths = useMemo(() => selectedTaskId ? getTaskOwnershipPaths({
+    taskId: selectedTaskId,
+    tasks,
+    categories,
+    goals,
+    workspaceNodes,
+    directories,
+    mergedEdges,
+    mergedNodePositions,
+  }) : [], [categories, directories, goals, mergedEdges, mergedNodePositions, selectedTaskId, tasks, workspaceNodes]);
+
   if (!selectedTaskId || !task) return null;
 
   const handleSave = () => {
-    if (timeBlocks.some((block) => !block.startTime || !block.endTime || block.startTime >= block.endTime)) {
-      setErrorMsg('每个时间段都需要有效的开始和结束时间');
-      return;
-    }
-
-    const firstBlock = timeBlocks[0];
-
     updateTask(selectedTaskId, {
       title,
-      description,
-      duration: Number(duration),
       statusId,
-      timeBlocks,
-      startTime: firstBlock?.startTime,
-      endTime: firstBlock?.endTime,
       color,
       textColor,
     });
@@ -147,18 +129,6 @@ export const TaskDrawer: React.FC = () => {
     setConfirmingStatusDeleteId(null);
   };
 
-  const addLocalTimeBlock = () => {
-    const start = new Date();
-    start.setMinutes(0, 0, 0);
-    start.setHours(start.getHours() + 1);
-    const end = new Date(start.getTime() + 60 * 60 * 1000);
-    setTimeBlocks((current) => [...current, {
-      id: `task-time-local-${Math.random().toString(36).slice(2, 9)}`,
-      startTime: formatLocalDateTime(start.getTime()),
-      endTime: formatLocalDateTime(end.getTime()),
-    }]);
-  };
-
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
       <button
@@ -190,13 +160,6 @@ export const TaskDrawer: React.FC = () => {
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 custom-scrollbar">
-          {errorMsg ? (
-            <div className="mb-5 flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2.5 text-xs text-rose-700">
-              <AlertCircle className="h-4 w-4 shrink-0 text-rose-600" />
-              <span>{errorMsg}</span>
-            </div>
-          ) : null}
-
           <section className="space-y-4">
             <div className="space-y-1.5">
               <label htmlFor="task-title" className={labelClassName}>任务标题</label>
@@ -210,38 +173,15 @@ export const TaskDrawer: React.FC = () => {
             </div>
 
             <div className="space-y-1.5">
-              <label htmlFor="task-description" className={labelClassName}>描述</label>
-              <textarea
-                id="task-description"
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-                rows={4}
-                className="w-full resize-y rounded-lg border border-neutral-200 bg-[#ffffff] px-3 py-2.5 text-sm leading-6 text-neutral-800 outline-none transition-colors placeholder:text-neutral-400 focus:border-purple-300 focus:ring-2 focus:ring-purple-100"
-                placeholder="任务描述"
-              />
+              <div className={`flex items-center gap-1.5 ${labelClassName}`}><FolderTree className="h-3.5 w-3.5 text-neutral-400" /><span>归属路径</span></div>
+              <div className="divide-y divide-neutral-100 rounded-lg border border-neutral-200 bg-white px-3">
+                {ownershipPaths.map((path) => <div key={path} className="break-all py-2.5 text-xs leading-5 text-neutral-600">{path}</div>)}
+              </div>
             </div>
           </section>
 
           <section className="mt-5 border-t border-neutral-200 pt-5">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="min-w-0 space-y-1.5">
-              <label htmlFor="task-duration" className={`flex items-center gap-1.5 ${labelClassName}`}>
-                <Clock className="h-3.5 w-3.5 text-neutral-400" />
-                预期（小时）
-              </label>
-              <input
-                id="task-duration"
-                type="number"
-                min="0"
-                step="0.25"
-                value={duration || ''}
-                onChange={(event) => setDuration(Math.max(0, Number(event.target.value)))}
-                className={fieldClassName}
-                placeholder="未设置"
-              />
-              </div>
-
-              <div className="min-w-0 space-y-1.5">
+            <div className="space-y-1.5">
                 <div className="flex items-center justify-between gap-2">
                   <label htmlFor="task-status" className={labelClassName}>状态</label>
                   <button
@@ -266,7 +206,6 @@ export const TaskDrawer: React.FC = () => {
                     <option key={status.id} value={status.id}>{status.label}</option>
                   ))}
                 </select>
-              </div>
             </div>
 
             {isManagingStatuses ? (
@@ -367,25 +306,6 @@ export const TaskDrawer: React.FC = () => {
                 </div>
               </div>
             ) : null}
-          </section>
-
-          <section className="mt-5 space-y-3 border-t border-neutral-200 pt-5">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-1.5">
-                <Calendar className="h-3.5 w-3.5 text-neutral-400" />
-                <h3 className={labelClassName}>时间段</h3>
-              </div>
-              <button type="button" onClick={addLocalTimeBlock} className="flex h-7 items-center gap-1 rounded-md border border-neutral-200 bg-white px-2 text-[10px] font-semibold text-neutral-600 hover:bg-neutral-50"><Plus className="h-3 w-3" />添加</button>
-            </div>
-
-            {timeBlocks.length === 0 ? <div className="rounded-lg border border-dashed border-neutral-200 px-3 py-5 text-center text-xs text-neutral-400">暂无时间段</div> : null}
-            {timeBlocks.map((block, index) => (
-              <div key={block.id} className="space-y-2 border-b border-neutral-100 pb-3 last:border-b-0">
-                <div className="flex items-center justify-between"><span className="text-[10px] font-semibold text-neutral-400">时间段 {index + 1}</span><button type="button" onClick={() => setTimeBlocks((current) => current.filter((candidate) => candidate.id !== block.id))} className="flex h-6 w-6 items-center justify-center rounded text-neutral-400 hover:bg-rose-50 hover:text-rose-600" title="删除时间段"><Trash2 className="h-3.5 w-3.5" /></button></div>
-                <DateTimePicker id={`task-time-start-${block.id}`} value={block.startTime} onChange={(value) => setTimeBlocks((current) => current.map((candidate) => candidate.id === block.id ? { ...candidate, startTime: value } : candidate))} placeholder="选择开始日期与时间" />
-                <DateTimePicker id={`task-time-end-${block.id}`} value={block.endTime} onChange={(value) => setTimeBlocks((current) => current.map((candidate) => candidate.id === block.id ? { ...candidate, endTime: value } : candidate))} placeholder="选择结束日期与时间" />
-              </div>
-            ))}
           </section>
 
           <section className="mt-5 border-t border-neutral-200 pt-5">

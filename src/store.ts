@@ -1931,6 +1931,7 @@ export const useAppStore = create<AppState>((set, get) => {
         nodes: goal.nodes.map((node) => node.id === nodeId ? { ...node, width, height } : node),
       }])),
       workspaceNodes: state.workspaceNodes.map((node) => node.id === nodeId ? { ...node, width, height } : node),
+      workspaceDirectories: state.workspaceDirectories.map((directory) => directory.id === nodeId ? { ...directory, width, height } : directory),
     })),
 
     addWorkspaceNode: (node) => persistSet((state: AppState) => {
@@ -2007,6 +2008,8 @@ export const useAppStore = create<AppState>((set, get) => {
         id: nodeId,
         name: task.title.trim() || '未命名目录',
         position,
+        width: sourceNode.width,
+        height: sourceNode.height,
         color: task.color && /^#[0-9a-f]{6}$/i.test(task.color) ? task.color : TASK_COLOR_HEX[task.color || 'indigo'] || TASK_COLOR_HEX.indigo,
         componentIds: [...(task.componentIds || [])],
         isCollapsed: false,
@@ -2074,7 +2077,7 @@ export const useAppStore = create<AppState>((set, get) => {
         tasks: { ...state.tasks, [taskId]: task },
         workspaceNodes: [
           ...state.workspaceNodes.filter((node) => node.id !== directoryId && node.taskId !== taskId),
-          { id: directoryId, taskId, position },
+          { id: directoryId, taskId, position, width: directory.width, height: directory.height },
         ],
         workspaceDirectories: state.workspaceDirectories.filter((item) => item.id !== directoryId),
         todoLanes: state.todoLanes.map((lane) => lane.directoryId === directoryId ? { ...lane, directoryId: null } : lane),
