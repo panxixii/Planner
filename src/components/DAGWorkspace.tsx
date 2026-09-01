@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState, useEffect } from 'react';
+import React, { useCallback, useMemo, useRef, useState, useEffect, useLayoutEffect } from 'react';
 import { 
   ReactFlow, 
   Background, 
@@ -74,8 +74,41 @@ const DAGInnerWorkspace: React.FC = () => {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [canvasTool, setCanvasTool] = useState<'pan' | 'select'>('pan');
   const [creationMenu, setCreationMenu] = useState<{ screenX: number; screenY: number; flowX: number; flowY: number } | null>(null);
+  const [creationMenuPosition, setCreationMenuPosition] = useState({ left: 0, top: 0 });
+  const creationMenuRef = useRef<HTMLDivElement>(null);
   const isConnectingRef = useRef(false);
   const suppressPaneClickUntilRef = useRef(0);
+
+  useLayoutEffect(() => {
+    if (!creationMenu) return;
+
+    const updateCreationMenuPosition = () => {
+      const menu = creationMenuRef.current;
+      const menuWidth = menu?.offsetWidth || 160;
+      const menuHeight = menu?.offsetHeight || 88;
+      const gap = 12;
+      const viewportPadding = 8;
+      const rightSpace = window.innerWidth - creationMenu.screenX;
+      const bottomSpace = window.innerHeight - creationMenu.screenY;
+      const opensLeft = rightSpace < menuWidth + gap + viewportPadding;
+      const opensUp = bottomSpace < menuHeight + gap + viewportPadding;
+      const preferredLeft = opensLeft
+        ? creationMenu.screenX - menuWidth - gap
+        : creationMenu.screenX + gap;
+      const preferredTop = opensUp
+        ? creationMenu.screenY - menuHeight - gap
+        : creationMenu.screenY + gap;
+
+      setCreationMenuPosition({
+        left: Math.max(viewportPadding, Math.min(preferredLeft, window.innerWidth - menuWidth - viewportPadding)),
+        top: Math.max(viewportPadding, Math.min(preferredTop, window.innerHeight - menuHeight - viewportPadding)),
+      });
+    };
+
+    updateCreationMenuPosition();
+    window.addEventListener('resize', updateCreationMenuPosition);
+    return () => window.removeEventListener('resize', updateCreationMenuPosition);
+  }, [creationMenu]);
 
   const showToast = useCallback((msg: string) => {
     setToastMessage(msg);
@@ -718,6 +751,7 @@ const DAGInnerWorkspace: React.FC = () => {
       y: event.clientY,
     });
     setCreationMenu({ screenX: event.clientX, screenY: event.clientY, flowX: clickedPosition.x, flowY: clickedPosition.y });
+    setCreationMenuPosition({ left: event.clientX + 12, top: event.clientY + 12 });
   }, [screenToFlowPosition, showToast, workspaceComponentFilter]);
 
   const activeTitle = isMergedView 
@@ -728,7 +762,7 @@ const DAGInnerWorkspace: React.FC = () => {
   return (
     <div className="flex-1 flex flex-col min-h-0 relative select-none">
       {creationMenu ? (
-        <div className="fixed z-[10020] flex w-40 flex-col gap-1 rounded-xl border border-neutral-200 bg-white p-2 shadow-xl" style={{ left: creationMenu.screenX, top: creationMenu.screenY }}>
+        <div ref={creationMenuRef} className="fixed z-[10020] flex w-40 flex-col gap-1 rounded-xl border border-neutral-200 bg-white p-2 shadow-xl" style={creationMenuPosition}>
           <button type="button" onClick={() => createTaskAtPosition(creationMenu.flowX, creationMenu.flowY)} className="flex h-9 items-center gap-2 rounded-lg px-2 text-left text-xs font-semibold text-neutral-700 hover:bg-purple-50 hover:text-purple-700"><ListTodo className="h-4 w-4" />任务节点</button>
           <button type="button" disabled={!isMergedView} onClick={() => createDirectoryAtPosition(creationMenu.flowX, creationMenu.flowY)} className="flex h-9 items-center gap-2 rounded-lg px-2 text-left text-xs font-semibold text-neutral-700 hover:bg-purple-50 hover:text-purple-700 disabled:cursor-not-allowed disabled:opacity-40"><FolderPlus className="h-4 w-4" />分类目录</button>
         </div>
