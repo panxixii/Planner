@@ -15,7 +15,7 @@ import {
 import { useAppStore } from '../store';
 import { formatLocalDateTime, getTaskBlockTimestamps, getTaskTimeBlocks } from '../taskTimeBlocks';
 import { getTaskComponentIds, getWorkspaceGraph } from '../workspaceComponents';
-import type { Task, TaskTimeBlock, WorkspaceDirectory } from '../types';
+import type { Task, TaskTimeBlock, TimeTemplateBlock, WorkspaceDirectory } from '../types';
 
 type ZoomScaleType = 'minutes' | 'hours' | 'days';
 type ScaleDefinition = { unitMs: number; columnWidth: number };
@@ -78,6 +78,29 @@ const colorClasses: Record<string, string> = {
 };
 const namedTimelineColors: Record<string, string> = {
   emerald: '#67c8bd', rose: '#d78fb5', sky: '#79bfd5', amber: '#d9b958', violet: '#9b8ae4', indigo: '#9387d1',
+};
+
+const normalizeCycleMinute = (minutes: number, cycleMinutes: number) => (
+  ((minutes % cycleMinutes) + cycleMinutes) % cycleMinutes
+);
+
+const getTemplateBlockRange = (block: TimeTemplateBlock, cycleMinutes: number) => {
+  const rawDuration = block.endMinute - block.startMinute;
+  if (!Number.isFinite(rawDuration) || rawDuration <= 0) return null;
+  return {
+    startMinute: normalizeCycleMinute(block.startMinute, cycleMinutes),
+    duration: Math.min(cycleMinutes, rawDuration),
+  };
+};
+
+const isMinuteInTemplateBlock = (block: TimeTemplateBlock, minute: number, cycleMinutes: number) => {
+  const range = getTemplateBlockRange(block, cycleMinutes);
+  if (!range) return false;
+  if (range.duration >= cycleMinutes) return true;
+  const endMinute = range.startMinute + range.duration;
+  return endMinute <= cycleMinutes
+    ? minute >= range.startMinute && minute < endMinute
+    : minute >= range.startMinute || minute < endMinute - cycleMinutes;
 };
 
 const alignTimestamp = (timestamp: number, scale: ZoomScaleType) => {
@@ -353,10 +376,13 @@ export const TimelineLayer: React.FC = () => {
     firstCycle.setHours(0, 0, 0, 0);
     if (activeTimeTemplate.type === 'weekly') firstCycle.setDate(firstCycle.getDate() - firstCycle.getDay());
     const cycleMs = cycleDays * 24 * 60 * 60_000;
-    for (let cycleStart = firstCycle.getTime(); cycleStart <= rangeEnd; cycleStart += cycleMs) {
+    const cycleMinutes = cycleDays * 24 * 60;
+    for (let cycleStart = firstCycle.getTime() - cycleMs; cycleStart <= rangeEnd; cycleStart += cycleMs) {
       activeTimeTemplate.blocks.forEach((block) => {
-        const start = cycleStart + block.startMinute * 60_000;
-        const end = cycleStart + block.endMinute * 60_000;
+        const blockRange = getTemplateBlockRange(block, cycleMinutes);
+        if (!blockRange) return;
+        const start = cycleStart + blockRange.startMinute * 60_000;
+        const end = start + blockRange.duration * 60_000;
         const visibleStart = Math.max(start, rangeStart);
         const visibleEnd = Math.min(end, rangeEnd);
         if (visibleEnd <= visibleStart) return;
@@ -371,7 +397,8 @@ export const TimelineLayer: React.FC = () => {
     const date = new Date(timestamp);
     const minuteOfDay = date.getHours() * 60 + date.getMinutes();
     const cycleMinute = activeTimeTemplate.type === 'daily' ? minuteOfDay : date.getDay() * 1440 + minuteOfDay;
-    return activeTimeTemplate.blocks.find((block) => cycleMinute >= block.startMinute && cycleMinute < block.endMinute)?.color || null;
+    const cycleMinutes = activeTimeTemplate.type === 'daily' ? 1440 : 7 * 1440;
+    return activeTimeTemplate.blocks.find((block) => isMinuteInTemplateBlock(block, cycleMinute, cycleMinutes))?.color || null;
   }, [activeTimeTemplate]);
 
   const getViewportCenterTimestamp = useCallback(() => {

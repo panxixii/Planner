@@ -161,7 +161,7 @@ const normalizeTodoItems = (
   if (!Array.isArray(value)) return [];
 
   const normalLaneIds = lanes
-    ? new Set(lanes.filter((lane) => lane.type !== 'category-sync').map((lane) => lane.id))
+    ? new Set(lanes.map((lane) => lane.id))
     : null;
   const validItems = value.filter((item): item is Record<string, unknown> => (
     Boolean(item)
@@ -218,43 +218,26 @@ const normalizeTodoItems = (
   });
 };
 
-const normalizeTodoLanes = (value: unknown, categories: AppCategory[]): TodoLane[] => {
+const normalizeTodoLanes = (value: unknown): TodoLane[] => {
   const loadedLanes: TodoLane[] = Array.isArray(value)
     ? value.flatMap((lane: unknown): TodoLane[] => {
         if (!lane || typeof lane !== 'object') return [];
         const candidate = lane as Partial<TodoLane>;
         if (typeof candidate.id !== 'string' || typeof candidate.name !== 'string') return [];
-        const type = candidate.id === 'todo-main'
-          ? 'main'
-          : candidate.type === 'category-sync' ? 'category-sync' : 'custom';
-        return [{ id: candidate.id, name: candidate.name, type, categoryId: candidate.categoryId, directoryId: candidate.directoryId || null }];
+        if ((candidate.type as string) === 'category-sync' || candidate.id.startsWith('todo-category-')) return [];
+        const type = candidate.id === 'todo-main' ? 'main' : 'custom';
+        return [{ id: candidate.id, name: candidate.name, type }];
       })
     : [];
   const main = loadedLanes.find((lane) => lane.id === 'todo-main');
-  const syncByCategoryId = new Map<string, TodoLane>();
-  loadedLanes.forEach((lane) => {
-    if (lane.type === 'category-sync' && lane.categoryId && !syncByCategoryId.has(lane.categoryId)) {
-      syncByCategoryId.set(lane.categoryId, lane);
-    }
-  });
-  const reservedIds = new Set(['todo-main', ...categories.map((category) => `todo-category-${category.id}`)]);
+  const reservedIds = new Set(['todo-main']);
   const usedCustomIds = new Set<string>();
   const customLanes = loadedLanes.filter((lane) => {
-    if (lane.type !== 'custom' || reservedIds.has(lane.id) || usedCustomIds.has(lane.id)) return false;
+    if (lane.type !== 'custom' || reservedIds.has(lane.id) || lane.id.startsWith('todo-category-') || usedCustomIds.has(lane.id)) return false;
     usedCustomIds.add(lane.id);
     return true;
   });
-  const syncLanes = categories.map((category): TodoLane => {
-    const loaded = syncByCategoryId.get(category.id);
-    return {
-      id: `todo-category-${category.id}`,
-      name: category.label,
-      type: 'category-sync',
-      categoryId: category.id,
-      directoryId: loaded?.directoryId || null,
-    };
-  });
-  return [{ ...(main || DEFAULT_TODO_LANES[0]), id: 'todo-main', name: '主线', type: 'main' }, ...syncLanes, ...customLanes];
+  return [{ ...(main || DEFAULT_TODO_LANES[0]), id: 'todo-main', name: '主线', type: 'main' }, ...customLanes];
 };
 
 const removeTodoTaskInstances = (items: TodoItem[], taskId: string): TodoItem[] => {
@@ -488,7 +471,7 @@ const loadSavedState = () => {
         const cleanedBOMTree = filterBOMTree(parsed.bomTree || []);
         const finalBOMTree = cleanedBOMTree.length > 0 ? cleanedBOMTree : EMPTY_BOM_TREE;
 
-        const normalizedTodoLanes = normalizeTodoLanes(parsed.todoLanes, safeCategories);
+        const normalizedTodoLanes = normalizeTodoLanes(parsed.todoLanes);
         return {
           tasks: validatedTasks,
           goals: validatedGoals,
@@ -637,7 +620,7 @@ const initialActiveMergedGoalIds = savedState ? savedState.activeMergedGoalIds :
 const initialWorkspaceComponentFilter = savedState ? savedState.workspaceComponentFilter : null;
 const initialWorkspaceComponents = savedState ? savedState.workspaceComponents : [];
 const initialWorkspaceDirectories = savedState ? savedState.workspaceDirectories : [];
-const initialTodoLanes = normalizeTodoLanes(savedState?.todoLanes, initialCategories);
+const initialTodoLanes = normalizeTodoLanes(savedState?.todoLanes);
 const initialTodoItems = savedState ? savedState.todoItems : [];
 const initialTimeTemplates = savedState ? savedState.timeTemplates : DEFAULT_TIME_TEMPLATES;
 const initialActiveTimeTemplateIds = savedState ? savedState.activeTimeTemplateIds : { daily: null, weekly: null };
@@ -843,10 +826,7 @@ export const useAppStore = create<AppState>((set, get) => {
     addCategory: (label, parentId) => persistSet((state: AppState) => {
       const newId = 'cat-' + genId();
       const categories = [...state.categories, { id: newId, label, parentId: parentId || undefined }];
-      return {
-        categories,
-        todoLanes: normalizeTodoLanes(state.todoLanes, categories),
-      };
+      return { categories };
     }),
 
     renameCategory: (id, newLabel, parentId) => persistSet((state: AppState) => ({
@@ -860,7 +840,6 @@ export const useAppStore = create<AppState>((set, get) => {
         }
         return c;
       }),
-      todoLanes: state.todoLanes.map((lane) => lane.type === 'category-sync' && lane.categoryId === id ? { ...lane, name: newLabel } : lane),
     })),
 
     deleteCategory: (id) => persistSet((state: AppState) => {
@@ -880,13 +859,8 @@ export const useAppStore = create<AppState>((set, get) => {
       const nextSelectedGoalId = state.selectedGoalId && state.goals[state.selectedGoalId]?.category === id
         ? null
         : state.selectedGoalId;
-      const removedLaneIds = new Set(state.todoLanes
-        .filter((lane) => lane.type === 'category-sync' && lane.categoryId === id)
-        .map((lane) => lane.id));
       return {
         categories: nextCategories,
-        todoLanes: normalizeTodoLanes(state.todoLanes, nextCategories),
-        todoItems: state.todoItems.filter((item) => !removedLaneIds.has(item.laneId)),
         selectedCategoryId: nextSelectedCategoryId,
         goals: nextGoals,
         tasks: Object.fromEntries(Object.entries(state.tasks).map(([taskId, task]) => [
@@ -1063,7 +1037,7 @@ export const useAppStore = create<AppState>((set, get) => {
     restoreFromBackup: (data) => persistSet((state: AppState) => {
       const nextTasks = data.tasks && typeof data.tasks === 'object' && !Array.isArray(data.tasks) ? data.tasks as Record<string, Task> : state.tasks;
       const nextCategories = Array.isArray(data.categories) ? data.categories as AppCategory[] : state.categories;
-      const nextTodoLanes = normalizeTodoLanes(data.todoLanes, nextCategories);
+      const nextTodoLanes = normalizeTodoLanes(data.todoLanes);
       return {
         tasks: nextTasks,
         taskStatuses: Array.isArray(data.taskStatuses) ? data.taskStatuses as TaskStatus[] : state.taskStatuses,
@@ -1154,7 +1128,7 @@ export const useAppStore = create<AppState>((set, get) => {
     createTodoTask: (laneId) => {
       const state = get();
       const lane = state.todoLanes.find((candidate) => candidate.id === laneId);
-      if (!lane || lane.type === 'category-sync') return null;
+      if (!lane) return null;
       const taskId = `t-todo-${genId()}`;
       const itemId = `todo-item-${genId()}`;
       const nextOrder = state.todoItems
@@ -1223,11 +1197,6 @@ export const useAppStore = create<AppState>((set, get) => {
       nextLanes.splice(targetIndex >= 0 ? targetIndex : nextLanes.length, 0, movedLane);
       return { todoLanes: nextLanes };
     }),
-    setTodoLaneDirectory: (laneId, directoryId) => persistSet((state: AppState) => ({
-      todoLanes: state.todoLanes.map((lane) => lane.id === laneId && lane.type === 'category-sync'
-        ? { ...lane, directoryId: directoryId && state.workspaceDirectories.some((directory) => directory.id === directoryId) ? directoryId : null }
-        : lane),
-    })),
     renameTodoLane: (laneId, name) => persistSet((state: AppState) => ({
       todoLanes: state.todoLanes.map((lane) => lane.id === laneId && lane.type === 'custom' ? { ...lane, name } : lane),
     })),
@@ -1252,7 +1221,7 @@ export const useAppStore = create<AppState>((set, get) => {
     moveTodoItem: (itemId, laneId, parentItemId, beforeItemId) => persistSet((state: AppState) => {
       const movedItem = state.todoItems.find((item) => item.id === itemId);
       const targetLane = state.todoLanes.find((candidate) => candidate.id === laneId);
-      if (!movedItem || !targetLane || targetLane.type === 'category-sync' || itemId === parentItemId) return {};
+      if (!movedItem || !targetLane || itemId === parentItemId) return {};
       const byParent = new Map(state.todoItems.map((item) => [item.id, item.parentItemId]));
       let ancestorId = parentItemId;
       while (ancestorId) {
@@ -1302,7 +1271,7 @@ export const useAppStore = create<AppState>((set, get) => {
     copyTaskToTodoLane: (taskId, laneId, parentItemId = null, beforeItemId, isDone) => {
       const state = get();
       const targetLane = state.todoLanes.find((lane) => lane.id === laneId);
-      if (!state.tasks[taskId] || !targetLane || targetLane.type === 'category-sync') return false;
+      if (!state.tasks[taskId] || !targetLane) return false;
       const siblings = state.todoItems
         .filter((item) => item.laneId === laneId && item.parentItemId === parentItemId)
         .sort((left, right) => left.order - right.order);
@@ -1954,7 +1923,6 @@ export const useAppStore = create<AppState>((set, get) => {
 
     deleteWorkspaceDirectory: (directoryId) => persistSet((state: AppState) => ({
       workspaceDirectories: state.workspaceDirectories.filter((directory) => directory.id !== directoryId),
-      todoLanes: state.todoLanes.map((lane) => lane.directoryId === directoryId ? { ...lane, directoryId: null } : lane),
       mergedEdges: state.mergedEdges.filter((edge) => edge.source !== directoryId && edge.target !== directoryId),
     })),
 
@@ -2080,7 +2048,6 @@ export const useAppStore = create<AppState>((set, get) => {
           { id: directoryId, taskId, position, width: directory.width, height: directory.height },
         ],
         workspaceDirectories: state.workspaceDirectories.filter((item) => item.id !== directoryId),
-        todoLanes: state.todoLanes.map((lane) => lane.directoryId === directoryId ? { ...lane, directoryId: null } : lane),
         activeNodeActionsId: null,
       }));
       return taskId;
@@ -2128,7 +2095,7 @@ export const useAppStore = create<AppState>((set, get) => {
       workspaceComponents: [],
       workspaceDirectories: [],
       drafts: [],
-      todoLanes: normalizeTodoLanes([], state.categories),
+      todoLanes: normalizeTodoLanes([]),
       todoItems: [],
       crossGoalEdges: [],
       bomTree: EMPTY_BOM_TREE,

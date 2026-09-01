@@ -97,9 +97,7 @@ export interface WorkspaceDirectory {
 export interface TodoLane {
   id: string;
   name: string;
-  type: 'main' | 'category-sync' | 'custom';
-  categoryId?: string;
-  directoryId?: string | null;
+  type: 'main' | 'custom';
 }
 
 export interface TodoItem {
@@ -114,7 +112,7 @@ export interface TodoItem {
 export interface TimeTemplateBlock {
   id: string;
   startMinute: number; // Minutes since the start of this repeating cycle.
-  endMinute: number;
+  endMinute: number; // May exceed the cycle boundary; endMinute - startMinute is the duration.
   label: string;
   color: string;
 }
@@ -202,7 +200,6 @@ export interface AppState {
   toggleTodoTaskComponent: (taskId: string, componentId: string) => void;
   addTodoLane: (name?: string) => string;
   moveTodoLane: (laneId: string, beforeLaneId?: string) => void;
-  setTodoLaneDirectory: (laneId: string, directoryId: string | null) => void;
   renameTodoLane: (laneId: string, name: string) => void;
   deleteTodoLane: (laneId: string) => void;
   moveTodoItem: (itemId: string, laneId: string, parentItemId: string | null, beforeItemId?: string) => void;
