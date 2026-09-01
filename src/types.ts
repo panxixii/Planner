@@ -87,6 +87,7 @@ export interface WorkspaceDirectory {
   color: string;
   componentIds: string[];
   isCollapsed: boolean;
+  sourceTaskId?: string;
   startTime?: string;
   endTime?: string;
 }
@@ -287,6 +288,8 @@ export interface AppState {
   addWorkspaceDirectory: (directory: WorkspaceDirectory) => void;
   updateWorkspaceDirectory: (directoryId: string, updates: Partial<Omit<WorkspaceDirectory, 'id'>>) => void;
   deleteWorkspaceDirectory: (directoryId: string) => void;
+  convertWorkspaceTaskNodeToDirectory: (nodeId: string) => boolean;
+  convertWorkspaceDirectoryToTask: (directoryId: string) => string | null;
   mergedEdges: GoalEdge[];
   mergedNodeIds: string[];
   updateMergedNodePositions: (positions: Record<string, { x: number; y: number }>) => void;

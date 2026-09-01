@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Handle, NodeProps, NodeResizer, Position } from '@xyflow/react';
-import { Check, CircleDot, ListMinus, ListPlus, Network, PanelRightOpen, Trash2 } from 'lucide-react';
+import { Check, CircleDot, FolderInput, ListMinus, ListPlus, Network, PanelRightOpen, Trash2 } from 'lucide-react';
 import { useAppStore } from '../store';
 import { getComponentLabel, getTaskComponentIds } from '../workspaceComponents';
 
@@ -43,6 +43,7 @@ export const TaskNode = React.memo(({ id, data, selected }: NodeProps) => {
   const deleteNodeFromGoal = useAppStore((state) => state.deleteNodeFromGoal);
   const workspaceComponentFilter = useAppStore((state) => state.workspaceComponentFilter);
   const setTaskComponentIds = useAppStore((state) => state.setTaskComponentIds);
+  const convertToDirectory = useAppStore((state) => state.convertWorkspaceTaskNodeToDirectory);
   const addTaskToTodo = useAppStore((state) => state.addTaskToTodo);
   const removeTaskFromTodo = useAppStore((state) => state.removeTaskFromTodo);
   const isInTodo = useAppStore((state) => state.todoItems.some((item) => item.taskId === taskId));
@@ -171,48 +172,60 @@ export const TaskNode = React.memo(({ id, data, selected }: NodeProps) => {
           </button>
 
           {isMerged ? (
-            <div className="relative">
+            <>
               <button
                 type="button"
-                onClick={() => {
-                  setIsConfirmingDelete(false);
-                  setIsConfirmingTodoRemoval(false);
-                  setIsChoosingStatus(false);
-                  setIsChoosingComponents((value) => !value);
-                }}
-                className="flex h-8 w-[76px] items-center justify-center gap-1.5 rounded-md border border-purple-200 bg-purple-50 text-[11px] font-semibold text-purple-600 transition-colors hover:bg-purple-100"
-                aria-label="设置归属联通块"
-                title="让此节点也在其他联通块中使用"
+                onClick={() => convertToDirectory(id)}
+                className="flex h-8 w-[68px] items-center justify-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 text-[11px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-100"
+                aria-label="转换为分类目录"
+                title="保留位置和连线并转换为分类目录"
               >
-                <Network className="h-3.5 w-3.5" />
-                <span>归属</span>
+                <FolderInput className="h-3.5 w-3.5" />
+                <span>目录</span>
               </button>
-              {isChoosingComponents ? (
-                <div className="planner-node-popover absolute bottom-full left-1/2 z-[10001] mb-2 w-56 -translate-x-1/2 rounded-lg border border-neutral-200 bg-white p-2 shadow-xl">
-                  <p className="px-1 pb-1.5 text-[10px] font-semibold text-neutral-500">所属联通块</p>
-                  <div className="max-h-48 space-y-1 overflow-y-auto custom-scrollbar">
-                    {components.length > 0 ? components.map((component, index) => (
-                      <label key={component.id} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-[11px] text-neutral-600 hover:bg-neutral-50">
-                        <input
-                          type="checkbox"
-                          checked={assignedComponentIds.has(component.id)}
-                          onChange={(event) => {
-                            const nextIds = new Set(assignedComponentIds);
-                            if (event.target.checked) nextIds.add(component.id);
-                            else nextIds.delete(component.id);
-                            setTaskComponentIds(taskId, Array.from(nextIds));
-                          }}
-                          className="h-3.5 w-3.5 accent-[#8d78d5]"
-                        />
-                        <span className="truncate">{getComponentLabel(component, index)}</span>
-                      </label>
-                    )) : (
-                      <span className="block px-2 py-2 text-[11px] text-neutral-400">暂无联通块</span>
-                    )}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsConfirmingDelete(false);
+                    setIsConfirmingTodoRemoval(false);
+                    setIsChoosingStatus(false);
+                    setIsChoosingComponents((value) => !value);
+                  }}
+                  className="flex h-8 w-[76px] items-center justify-center gap-1.5 rounded-md border border-purple-200 bg-purple-50 text-[11px] font-semibold text-purple-600 transition-colors hover:bg-purple-100"
+                  aria-label="设置归属联通块"
+                  title="让此节点也在其他联通块中使用"
+                >
+                  <Network className="h-3.5 w-3.5" />
+                  <span>归属</span>
+                </button>
+                {isChoosingComponents ? (
+                  <div className="planner-node-popover absolute bottom-full left-1/2 z-[10001] mb-2 w-56 -translate-x-1/2 rounded-lg border border-neutral-200 bg-white p-2 shadow-xl">
+                    <p className="px-1 pb-1.5 text-[10px] font-semibold text-neutral-500">所属联通块</p>
+                    <div className="max-h-48 space-y-1 overflow-y-auto custom-scrollbar">
+                      {components.length > 0 ? components.map((component, index) => (
+                        <label key={component.id} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-[11px] text-neutral-600 hover:bg-neutral-50">
+                          <input
+                            type="checkbox"
+                            checked={assignedComponentIds.has(component.id)}
+                            onChange={(event) => {
+                              const nextIds = new Set(assignedComponentIds);
+                              if (event.target.checked) nextIds.add(component.id);
+                              else nextIds.delete(component.id);
+                              setTaskComponentIds(taskId, Array.from(nextIds));
+                            }}
+                            className="h-3.5 w-3.5 accent-[#8d78d5]"
+                          />
+                          <span className="truncate">{getComponentLabel(component, index)}</span>
+                        </label>
+                      )) : (
+                        <span className="block px-2 py-2 text-[11px] text-neutral-400">暂无联通块</span>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ) : null}
-            </div>
+                ) : null}
+              </div>
+            </>
           ) : null}
 
           <div className="relative">

@@ -144,6 +144,15 @@ const DEFAULT_TASK_STATUSES: TaskStatus[] = [
 const DEFAULT_TODO_LANES: TodoLane[] = [{ id: 'todo-main', name: '主线', type: 'main' }];
 const DEFAULT_TIME_TEMPLATES: TimeTemplate[] = [];
 
+const TASK_COLOR_HEX: Record<string, string> = {
+  emerald: '#67c8bd',
+  rose: '#d78fb5',
+  sky: '#79bfd5',
+  amber: '#d9b958',
+  violet: '#9b8ae4',
+  indigo: '#9387d1',
+};
+
 const normalizeTodoItems = (
   value: unknown,
   tasks?: Record<string, Task>,
@@ -1947,6 +1956,132 @@ export const useAppStore = create<AppState>((set, get) => {
       todoLanes: state.todoLanes.map((lane) => lane.directoryId === directoryId ? { ...lane, directoryId: null } : lane),
       mergedEdges: state.mergedEdges.filter((edge) => edge.source !== directoryId && edge.target !== directoryId),
     })),
+
+    convertWorkspaceTaskNodeToDirectory: (nodeId) => {
+      const state = get();
+      const sourceNode = state.workspaceNodes.find((node) => node.id === nodeId)
+        || Object.values(state.goals).flatMap((goal) => goal.nodes).find((node) => node.id === nodeId);
+      const task = sourceNode ? state.tasks[sourceNode.taskId] : undefined;
+      if (!sourceNode || !task || state.workspaceDirectories.some((directory) => directory.id === nodeId)) return false;
+
+      const convertedNodeIds = new Set<string>();
+      state.workspaceNodes.forEach((node) => { if (node.taskId === task.id) convertedNodeIds.add(node.id); });
+      Object.values(state.goals).forEach((goal) => goal.nodes.forEach((node) => {
+        if (node.taskId === task.id) convertedNodeIds.add(node.id);
+      }));
+      const rewriteEdge = (edge: GoalEdge): GoalEdge | null => {
+        const source = convertedNodeIds.has(edge.source) ? nodeId : edge.source;
+        const target = convertedNodeIds.has(edge.target) ? nodeId : edge.target;
+        return source === target ? null : { ...edge, source, target };
+      };
+      const movedGoalEdges: GoalEdge[] = [];
+      const goals = Object.fromEntries(Object.entries(state.goals).map(([goalId, goal]) => {
+        const remainingEdges: GoalEdge[] = [];
+        goal.edges.forEach((edge) => {
+          if (convertedNodeIds.has(edge.source) || convertedNodeIds.has(edge.target)) {
+            const rewritten = rewriteEdge(edge);
+            if (rewritten) movedGoalEdges.push(rewritten);
+          } else {
+            remainingEdges.push(edge);
+          }
+        });
+        return [goalId, {
+          ...goal,
+          nodes: goal.nodes.filter((node) => node.taskId !== task.id),
+          edges: remainingEdges,
+        }];
+      }));
+      const edgeByEndpoints = new Map<string, GoalEdge>();
+      [...state.mergedEdges, ...movedGoalEdges].forEach((edge) => {
+        const rewritten = rewriteEdge(edge);
+        if (!rewritten) return;
+        const key = [rewritten.source, rewritten.target].sort().join(':');
+        if (!edgeByEndpoints.has(key)) edgeByEndpoints.set(key, rewritten);
+      });
+      const mergedNodePositions = { ...state.mergedNodePositions };
+      convertedNodeIds.forEach((id) => { if (id !== nodeId) delete mergedNodePositions[id]; });
+      const position = state.mergedNodePositions[nodeId] || sourceNode.position;
+      mergedNodePositions[nodeId] = position;
+      const firstTimeBlock = getTaskTimeBlocks(task)[0];
+      const directory: WorkspaceDirectory = {
+        id: nodeId,
+        name: task.title.trim() || '未命名目录',
+        position,
+        color: task.color && /^#[0-9a-f]{6}$/i.test(task.color) ? task.color : TASK_COLOR_HEX[task.color || 'indigo'] || TASK_COLOR_HEX.indigo,
+        componentIds: [...(task.componentIds || [])],
+        isCollapsed: false,
+        sourceTaskId: task.id,
+        startTime: firstTimeBlock?.startTime,
+        endTime: firstTimeBlock?.endTime,
+      };
+      persistSet(() => ({
+        goals,
+        workspaceNodes: state.workspaceNodes.filter((node) => node.taskId !== task.id),
+        workspaceDirectories: [...state.workspaceDirectories, directory],
+        mergedEdges: Array.from(edgeByEndpoints.values()),
+        crossGoalEdges: state.crossGoalEdges.flatMap((edge) => {
+          const rewritten = rewriteEdge(edge);
+          return rewritten ? [rewritten] : [];
+        }),
+        mergedNodePositions,
+        mergedNodeIds: state.mergedNodeIds.filter((id) => !convertedNodeIds.has(id)),
+        activeNodeActionsId: null,
+      }));
+      return true;
+    },
+
+    convertWorkspaceDirectoryToTask: (directoryId) => {
+      const state = get();
+      const directory = state.workspaceDirectories.find((item) => item.id === directoryId);
+      if (!directory) return null;
+      const existingTask = directory.sourceTaskId ? state.tasks[directory.sourceTaskId] : undefined;
+      const taskId = existingTask?.id || `t-directory-${genId()}`;
+      const existingTimeBlocks = existingTask ? getTaskTimeBlocks(existingTask) : [];
+      const convertedTime = existingTask && directory.startTime && directory.endTime
+        ? normalizeTaskTimeBlocks(existingTask, [
+            {
+              id: existingTimeBlocks[0]?.id.startsWith('legacy-') || !existingTimeBlocks[0]
+                ? `task-time-${genId()}`
+                : existingTimeBlocks[0].id,
+              startTime: directory.startTime,
+              endTime: directory.endTime,
+            },
+            ...existingTimeBlocks.slice(1),
+          ])
+        : {};
+      const task: Task = existingTask
+        ? {
+            ...existingTask,
+            title: directory.name,
+            componentIds: [...directory.componentIds],
+            color: directory.color,
+            ...convertedTime,
+          }
+        : {
+            id: taskId,
+            title: directory.name,
+            description: '',
+            duration: 0,
+            isDone: false,
+            statusId: 'status-not-started',
+            componentIds: [...directory.componentIds],
+            startTime: directory.startTime || '',
+            endTime: directory.endTime || '',
+            color: directory.color,
+          };
+      const position = state.mergedNodePositions[directoryId] || directory.position;
+      persistSet(() => ({
+        tasks: { ...state.tasks, [taskId]: task },
+        workspaceNodes: [
+          ...state.workspaceNodes.filter((node) => node.id !== directoryId && node.taskId !== taskId),
+          { id: directoryId, taskId, position },
+        ],
+        workspaceDirectories: state.workspaceDirectories.filter((item) => item.id !== directoryId),
+        todoLanes: state.todoLanes.map((lane) => lane.directoryId === directoryId ? { ...lane, directoryId: null } : lane),
+        activeNodeActionsId: null,
+      }));
+      return taskId;
+    },
 
     addMergedEdge: (edge) => persistSet((state: AppState) => ({
       mergedEdges: [...state.mergedEdges, edge]

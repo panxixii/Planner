@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Handle, NodeProps, Position } from '@xyflow/react';
-import { AlertTriangle, Check, ChevronDown, ChevronRight, Clock3, Folder, ListPlus, Trash2, X } from 'lucide-react';
+import { AlertTriangle, Check, ChevronDown, ChevronRight, Clock3, Folder, ListPlus, ListTodo, Trash2, X } from 'lucide-react';
 import { useAppStore } from '../store';
 import { getTaskBlockTimestamps, getTaskTimeBlocks } from '../taskTimeBlocks';
 import { getDirectoryDescendantTaskIds, getWorkspaceGraph } from '../workspaceComponents';
@@ -32,6 +32,7 @@ export const DirectoryNode = React.memo(({ id, data, selected }: NodeProps) => {
   const updateDirectory = useAppStore((state) => state.updateWorkspaceDirectory);
   const deleteDirectory = useAppStore((state) => state.deleteWorkspaceDirectory);
   const addDirectoryToTodo = useAppStore((state) => state.addDirectoryToTodo);
+  const convertToTask = useAppStore((state) => state.convertWorkspaceDirectoryToTask);
   const showActions = useAppStore((state) => state.activeNodeActionsId === id);
   const setActiveNodeActionsId = useAppStore((state) => state.setActiveNodeActionsId);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -152,6 +153,7 @@ export const DirectoryNode = React.memo(({ id, data, selected }: NodeProps) => {
             ) : null}
           </div>
           <button type="button" onClick={() => addDirectoryToTodo(directory.id)} className="flex h-8 items-center gap-1 rounded-md border border-sky-200 bg-sky-50 px-2 text-[11px] font-semibold text-sky-600 hover:bg-sky-100" title="将目录下任务加入同名 Todo 分线"><ListPlus className="h-3.5 w-3.5" />Todo</button>
+          <button type="button" onClick={() => convertToTask(directory.id)} className="flex h-8 items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100" title="保留位置和连线并转换为任务节点"><ListTodo className="h-3.5 w-3.5" />任务</button>
           <button type="button" onClick={() => { if (isConfirmingDelete) { deleteDirectory(directory.id); setActiveNodeActionsId(null); } else setIsConfirmingDelete(true); }} className={`flex h-8 items-center gap-1 rounded-md border px-2 text-[11px] font-semibold ${isConfirmingDelete ? 'border-rose-500 bg-rose-600 text-white' : 'border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100'}`}>{isConfirmingDelete ? <Check className="h-3.5 w-3.5" /> : <Trash2 className="h-3.5 w-3.5" />}{isConfirmingDelete ? '确认' : '删除'}</button>
         </div>
       ) : null}
