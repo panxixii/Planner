@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { CollisionDetection, DndContext, DragEndEvent, DragOverlay, DragStartEvent, PointerSensor, pointerWithin, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
 import type { Modifier } from '@dnd-kit/core';
 import { Check, CopyPlus, GripVertical, Network, PanelRightOpen, Plus, Trash2, X } from 'lucide-react';
@@ -84,6 +85,9 @@ const DraggableTodoNode: React.FC<{
 }> = ({ item, task, x, y, lanes, components, onOpenDetails, onToggleAssignment, onDuplicate, onDuplicateToNewLane, onRemove, onToggle }) => {
   const [isDuplicateMenuOpen, setIsDuplicateMenuOpen] = useState(false);
   const [isAssignmentMenuOpen, setIsAssignmentMenuOpen] = useState(false);
+  const actionBarRef = useRef<HTMLDivElement>(null);
+  const portalMenuRef = useRef<HTMLDivElement>(null);
+  const [menuPosition, setMenuPosition] = useState({ left: 0, top: 0 });
   const draggable = useDraggable({ id: `todo-drag-${item.id}`, data: { itemId: item.id, taskId: item.taskId } });
   const childDrop = useDroppable({ id: `todo-child-${item.id}`, data: { kind: 'child', laneId: item.laneId, itemId: item.id } });
   const style: React.CSSProperties = {
@@ -91,6 +95,61 @@ const DraggableTodoNode: React.FC<{
     top: y,
     visibility: draggable.isDragging ? 'hidden' : 'visible',
   };
+
+  useEffect(() => {
+    if (!isDuplicateMenuOpen && !isAssignmentMenuOpen) return;
+    const updatePosition = () => {
+      const rect = actionBarRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const width = isAssignmentMenuOpen ? 176 : 160;
+      const estimatedHeight = isAssignmentMenuOpen ? Math.min(260, 48 + components.length * 32) : Math.min(260, 76 + lanes.length * 28);
+      const opensUpward = rect.bottom + 6 + estimatedHeight > window.innerHeight - 8;
+      setMenuPosition({
+        left: Math.max(8, Math.min(window.innerWidth - width - 8, rect.left)),
+        top: Math.max(8, opensUpward ? rect.top - estimatedHeight - 6 : rect.bottom + 6),
+      });
+    };
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [components.length, isAssignmentMenuOpen, isDuplicateMenuOpen, lanes.length]);
+
+  useEffect(() => {
+    if (!isDuplicateMenuOpen && !isAssignmentMenuOpen) return;
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (actionBarRef.current?.contains(target) || portalMenuRef.current?.contains(target)) return;
+      setIsDuplicateMenuOpen(false);
+      setIsAssignmentMenuOpen(false);
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    };
+    document.addEventListener('pointerdown', closeOnOutsidePointer);
+    return () => document.removeEventListener('pointerdown', closeOnOutsidePointer);
+  }, [isAssignmentMenuOpen, isDuplicateMenuOpen]);
+
+  const portalMenu = typeof document === 'undefined' ? null : createPortal(
+    isAssignmentMenuOpen ? (
+      <div ref={portalMenuRef} className="custom-scrollbar fixed z-[10050] max-h-[260px] w-44 overflow-y-auto rounded-md border border-neutral-200 bg-white p-1 shadow-xl" style={menuPosition} onPointerDown={(event) => event.stopPropagation()}>
+        <div className="px-2 py-1 text-[10px] font-semibold text-neutral-400">工作区归属</div>
+        {components.length === 0 ? <div className="px-2 py-2 text-[11px] text-neutral-400">暂无联通块</div> : null}
+        {components.map((component, index) => {
+          const isAssigned = (task.componentIds || []).includes(component.id);
+          return <button key={component.id} type="button" onClick={() => onToggleAssignment(component.id)} className={`flex h-8 w-full items-center gap-2 rounded px-2 text-left text-[11px] ${isAssigned ? 'bg-purple-50 font-semibold text-purple-700' : 'text-neutral-600 hover:bg-neutral-50'}`} title={getComponentLabel(component, index)}><span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ backgroundColor: component.color }} /><span className="min-w-0 flex-1 truncate">{getComponentLabel(component, index)}</span>{isAssigned ? <Check className="h-3.5 w-3.5 shrink-0" /> : null}</button>;
+        })}
+      </div>
+    ) : isDuplicateMenuOpen ? (
+      <div ref={portalMenuRef} className="custom-scrollbar fixed z-[10050] max-h-[260px] w-40 overflow-y-auto rounded-md border border-neutral-200 bg-white p-1 shadow-xl" style={menuPosition} onPointerDown={(event) => event.stopPropagation()}>
+        <div className="px-2 py-1 text-[10px] font-semibold text-neutral-400">分身到</div>
+        {lanes.map((lane) => <button key={lane.id} type="button" onClick={() => { onDuplicate(lane.id); setIsDuplicateMenuOpen(false); }} className="flex h-7 w-full items-center truncate rounded px-2 text-left text-[11px] text-neutral-600 hover:bg-purple-50 hover:text-purple-700" title={lane.name}><span className="truncate">{lane.name}{lane.id === item.laneId ? '（当前）' : ''}</span></button>)}
+        <button type="button" onClick={() => { onDuplicateToNewLane(); setIsDuplicateMenuOpen(false); }} className="mt-1 flex h-7 w-full items-center gap-1 border-t border-neutral-100 px-2 text-left text-[11px] font-semibold text-sky-600 hover:bg-sky-50"><Plus className="h-3 w-3" />新建分线</button>
+      </div>
+    ) : null,
+    document.body,
+  );
 
   return (
     <div ref={draggable.setNodeRef} data-todo-node="true" style={style} className="absolute z-10 flex w-[108px] flex-col items-center hover:z-40 focus-within:z-40">
@@ -107,6 +166,7 @@ const DraggableTodoNode: React.FC<{
           <TodoDot task={task} />
         </button>
         <div
+          ref={actionBarRef}
           className={`absolute left-9 top-0 z-30 flex items-center gap-0.5 rounded-md border border-neutral-200 bg-white p-0.5 shadow-md transition-opacity ${isDuplicateMenuOpen || isAssignmentMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100'}`}
           onPointerDown={(event) => event.stopPropagation()}
         >
@@ -114,35 +174,9 @@ const DraggableTodoNode: React.FC<{
           <button type="button" onClick={() => { setIsAssignmentMenuOpen((open) => !open); setIsDuplicateMenuOpen(false); }} className="flex h-6 w-6 items-center justify-center rounded text-neutral-400 hover:bg-purple-50 hover:text-purple-600" title="设置工作区归属" aria-label="设置工作区归属" aria-expanded={isAssignmentMenuOpen}><Network className="h-3.5 w-3.5" /></button>
           <button type="button" onClick={() => { setIsDuplicateMenuOpen((open) => !open); setIsAssignmentMenuOpen(false); }} className="flex h-6 w-6 items-center justify-center rounded text-neutral-400 hover:bg-sky-50 hover:text-sky-600" title="创建分身" aria-label="创建分身" aria-expanded={isDuplicateMenuOpen}><CopyPlus className="h-3.5 w-3.5" /></button>
           <button type="button" onClick={onRemove} className="flex h-6 w-6 items-center justify-center rounded text-neutral-400 hover:bg-rose-50 hover:text-rose-500" title="从当前分线移除" aria-label="从当前分线移除"><X className="h-3.5 w-3.5" /></button>
-          {isAssignmentMenuOpen ? (
-            <div className="absolute left-0 top-8 z-50 w-44 rounded-md border border-neutral-200 bg-white p-1 shadow-lg">
-              <div className="px-2 py-1 text-[10px] font-semibold text-neutral-400">工作区归属</div>
-              {components.length === 0 ? <div className="px-2 py-2 text-[11px] text-neutral-400">暂无联通块</div> : null}
-              {components.map((component, index) => {
-                const isAssigned = (task.componentIds || []).includes(component.id);
-                return (
-                  <button key={component.id} type="button" onClick={() => onToggleAssignment(component.id)} className={`flex h-8 w-full items-center gap-2 rounded px-2 text-left text-[11px] ${isAssigned ? 'bg-purple-50 font-semibold text-purple-700' : 'text-neutral-600 hover:bg-neutral-50'}`} title={getComponentLabel(component, index)}>
-                    <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ backgroundColor: component.color }} />
-                    <span className="min-w-0 flex-1 truncate">{getComponentLabel(component, index)}</span>
-                    {isAssigned ? <Check className="h-3.5 w-3.5 shrink-0" /> : null}
-                  </button>
-                );
-              })}
-            </div>
-          ) : null}
-          {isDuplicateMenuOpen ? (
-            <div className="absolute left-0 top-8 z-50 w-40 rounded-md border border-neutral-200 bg-white p-1 shadow-lg">
-              <div className="px-2 py-1 text-[10px] font-semibold text-neutral-400">分身到</div>
-              {lanes.map((lane) => (
-                <button key={lane.id} type="button" onClick={() => { onDuplicate(lane.id); setIsDuplicateMenuOpen(false); }} className="flex h-7 w-full items-center truncate rounded px-2 text-left text-[11px] text-neutral-600 hover:bg-purple-50 hover:text-purple-700" title={lane.name}>
-                  <span className="truncate">{lane.name}{lane.id === item.laneId ? '（当前）' : ''}</span>
-                </button>
-              ))}
-              <button type="button" onClick={() => { onDuplicateToNewLane(); setIsDuplicateMenuOpen(false); }} className="mt-1 flex h-7 w-full items-center gap-1 rounded border-t border-neutral-100 px-2 text-left text-[11px] font-semibold text-sky-600 hover:bg-sky-50"><Plus className="h-3 w-3" />新建分线</button>
-            </div>
-          ) : null}
         </div>
       </div>
+      {portalMenu}
       <div className="mt-1.5 flex max-w-full items-center gap-0.5 text-center text-[10px] font-semibold leading-3.5 text-neutral-700">
         <GripVertical className="h-2.5 w-2.5 shrink-0 text-neutral-300" />
         <span className={`line-clamp-2 ${task.isDone ? 'text-emerald-600' : ''}`}>{task.title || '未命名任务'}</span>
@@ -202,7 +236,7 @@ const buildLaneLayout = (items: TodoItem[]) => {
   return { nodes, edges, width: Math.max(600, nextColumn * (ITEM_WIDTH + ITEM_GAP) + 60), height: Math.max(110, (Math.max(0, ...nodes.map((node) => node.y)) + ROW_HEIGHT)) };
 };
 
-const TodoLaneGraph: React.FC<{ lane: TodoLane; isMain: boolean }> = ({ lane, isMain }) => {
+const TodoLaneGraph: React.FC<{ lane: TodoLane; isMain: boolean; isDragging: boolean; isDragOver: boolean; onLaneDragStart: (event: React.DragEvent<HTMLElement>) => void; onLaneDragOver: (event: React.DragEvent<HTMLElement>) => void; onLaneDrop: (event: React.DragEvent<HTMLElement>) => void; onLaneDragEnd: () => void }> = ({ lane, isMain, isDragging, isDragOver, onLaneDragStart, onLaneDragOver, onLaneDrop, onLaneDragEnd }) => {
   const tasks = useAppStore((state) => state.tasks);
   const allItems = useAppStore((state) => state.todoItems);
   const lanes = useAppStore((state) => state.todoLanes);
@@ -230,9 +264,9 @@ const TodoLaneGraph: React.FC<{ lane: TodoLane; isMain: boolean }> = ({ lane, is
   };
 
   return (
-    <section className="rounded-2xl border border-neutral-200 bg-white/85 shadow-sm">
-      <header className="flex h-14 items-center justify-between border-b border-neutral-200 px-5">
-        <div className="flex min-w-0 items-center gap-3"><span className={`h-2.5 w-2.5 rounded-full ${isMain ? 'bg-purple-500' : 'bg-sky-400'}`} /><input value={lane.name} onFocus={beginHistoryGroup} onChange={(event) => renameLane(lane.id, event.target.value)} onBlur={endHistoryGroup} className="min-w-0 bg-transparent text-sm font-bold text-neutral-800 outline-none" aria-label="Todo 分类名称" /></div>
+    <section onDragOver={onLaneDragOver} onDrop={onLaneDrop} className={`rounded-2xl border bg-white/85 shadow-sm transition-all ${isDragOver ? 'border-purple-400 ring-2 ring-purple-100' : 'border-neutral-200'} ${isDragging ? 'opacity-45' : ''}`}>
+      <header draggable onDragStart={onLaneDragStart} onDragEnd={onLaneDragEnd} className="flex h-14 cursor-grab items-center justify-between border-b border-neutral-200 px-5 active:cursor-grabbing">
+        <div className="flex min-w-0 items-center gap-3"><GripVertical className="h-4 w-4 shrink-0 text-neutral-300" /><span className={`h-2.5 w-2.5 rounded-full ${isMain ? 'bg-purple-500' : 'bg-sky-400'}`} /><input value={lane.name} draggable={false} onClick={(event) => event.stopPropagation()} onFocus={beginHistoryGroup} onChange={(event) => renameLane(lane.id, event.target.value)} onBlur={endHistoryGroup} className="min-w-0 bg-transparent text-sm font-bold text-neutral-800 outline-none" aria-label="Todo 分类名称" /></div>
         {!isMain ? <button type="button" onClick={() => deleteLane(lane.id)} className="flex h-8 items-center gap-1 rounded-md px-2 text-xs text-neutral-400 hover:bg-rose-50 hover:text-rose-500" title="删除分线并移回主线"><Trash2 className="h-3.5 w-3.5" />删除分线</button> : null}
       </header>
       <div ref={laneDrop.setNodeRef} onDoubleClick={handleCanvasDoubleClick} className={`min-h-[158px] overflow-x-auto p-6 custom-scrollbar ${laneDrop.isOver ? 'bg-purple-50/40 ring-2 ring-inset ring-purple-200' : ''}`} title="双击空白处创建任务">
@@ -252,8 +286,11 @@ export const TodoPage: React.FC = () => {
   const lanes = useAppStore((state) => state.todoLanes);
   const tasks = useAppStore((state) => state.tasks);
   const addLane = useAppStore((state) => state.addTodoLane);
+  const moveLane = useAppStore((state) => state.moveTodoLane);
   const moveItem = useAppStore((state) => state.moveTodoItem);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+  const [draggedLaneId, setDraggedLaneId] = useState<string | null>(null);
+  const [dragOverLaneId, setDragOverLaneId] = useState<string | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
   const handleDragStart = (event: DragStartEvent) => setActiveTaskId((event.active.data.current as { taskId?: string } | undefined)?.taskId || null);
@@ -271,8 +308,8 @@ export const TodoPage: React.FC = () => {
     <DndContext sensors={sensors} collisionDetection={todoCollisionDetection} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setActiveTaskId(null)}>
       <div className="min-h-0 flex-1 overflow-y-auto bg-neutral-50 p-6 custom-scrollbar">
         <div className="mx-auto max-w-[1500px] space-y-5">
-          <div className="flex items-center justify-between"><h2 className="text-lg font-bold text-neutral-800">Todo 执行路线</h2><button type="button" onClick={() => addLane()} className="flex h-9 items-center gap-1.5 rounded-lg border border-purple-200 bg-purple-50 px-3 text-xs font-semibold text-purple-600"><Plus className="h-4 w-4" />新增分线</button></div>
-          {lanes.map((lane, index) => <TodoLaneGraph key={lane.id} lane={lane} isMain={index === 0} />)}
+          <div className="flex items-center justify-between"><h2 className="text-lg font-bold text-neutral-800">Todo List</h2><button type="button" onClick={() => addLane()} className="flex h-9 items-center gap-1.5 rounded-lg border border-purple-200 bg-purple-50 px-3 text-xs font-semibold text-purple-600"><Plus className="h-4 w-4" />新增分线</button></div>
+          {lanes.map((lane) => <TodoLaneGraph key={lane.id} lane={lane} isMain={lane.id === 'todo-main'} isDragging={draggedLaneId === lane.id} isDragOver={dragOverLaneId === lane.id && draggedLaneId !== lane.id} onLaneDragStart={(event) => { setDraggedLaneId(lane.id); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', lane.id); }} onLaneDragOver={(event) => { if (!draggedLaneId || draggedLaneId === lane.id) return; event.preventDefault(); setDragOverLaneId(lane.id); }} onLaneDrop={(event) => { event.preventDefault(); if (draggedLaneId && draggedLaneId !== lane.id) moveLane(draggedLaneId, lane.id); setDraggedLaneId(null); setDragOverLaneId(null); }} onLaneDragEnd={() => { setDraggedLaneId(null); setDragOverLaneId(null); }} />)}
         </div>
       </div>
       <DragOverlay modifiers={[snapOverlayCenterToCursor]}>{activeTaskId && tasks[activeTaskId] ? <TodoDot task={tasks[activeTaskId]} active /> : null}</DragOverlay>
