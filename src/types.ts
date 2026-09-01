@@ -94,6 +94,9 @@ export interface WorkspaceDirectory {
 export interface TodoLane {
   id: string;
   name: string;
+  type: 'main' | 'category-sync' | 'custom';
+  categoryId?: string;
+  directoryId?: string | null;
 }
 
 export interface TodoItem {
@@ -102,6 +105,7 @@ export interface TodoItem {
   laneId: string;
   parentItemId: string | null;
   order: number;
+  isDone: boolean;
 }
 
 export interface TimeTemplateBlock {
@@ -195,10 +199,13 @@ export interface AppState {
   toggleTodoTaskComponent: (taskId: string, componentId: string) => void;
   addTodoLane: (name?: string) => string;
   moveTodoLane: (laneId: string, beforeLaneId?: string) => void;
+  setTodoLaneDirectory: (laneId: string, directoryId: string | null) => void;
   renameTodoLane: (laneId: string, name: string) => void;
   deleteTodoLane: (laneId: string) => void;
   moveTodoItem: (itemId: string, laneId: string, parentItemId: string | null, beforeItemId?: string) => void;
   duplicateTodoItem: (itemId: string, laneId: string) => boolean;
+  copyTaskToTodoLane: (taskId: string, laneId: string, parentItemId?: string | null, beforeItemId?: string, isDone?: boolean) => boolean;
+  toggleTodoItemDone: (itemId: string) => void;
   removeTodoItem: (itemId: string) => void;
   removeTaskFromTodo: (taskId: string) => void;
 

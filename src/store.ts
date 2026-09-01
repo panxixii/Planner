@@ -141,18 +141,27 @@ const DEFAULT_TASK_STATUSES: TaskStatus[] = [
   { id: 'status-completed', label: '已完成', isCompleted: true, isSystem: true },
 ];
 
-const DEFAULT_TODO_LANES: TodoLane[] = [{ id: 'todo-main', name: '主线' }];
+const DEFAULT_TODO_LANES: TodoLane[] = [{ id: 'todo-main', name: '主线', type: 'main' }];
 const DEFAULT_TIME_TEMPLATES: TimeTemplate[] = [];
 
-const normalizeTodoItems = (value: unknown): TodoItem[] => {
+const normalizeTodoItems = (
+  value: unknown,
+  tasks?: Record<string, Task>,
+  lanes?: TodoLane[],
+): TodoItem[] => {
   if (!Array.isArray(value)) return [];
 
+  const normalLaneIds = lanes
+    ? new Set(lanes.filter((lane) => lane.type !== 'category-sync').map((lane) => lane.id))
+    : null;
   const validItems = value.filter((item): item is Record<string, unknown> => (
     Boolean(item)
     && typeof item === 'object'
     && typeof (item as Record<string, unknown>).taskId === 'string'
     && typeof (item as Record<string, unknown>).laneId === 'string'
     && typeof (item as Record<string, unknown>).order === 'number'
+    && (!normalLaneIds || normalLaneIds.has((item as Record<string, unknown>).laneId as string))
+    && (!tasks || Boolean(tasks[(item as Record<string, unknown>).taskId as string]))
   ));
   const usedItemIds = new Set<string>();
   const itemIds = validItems.map((item) => {
@@ -166,7 +175,7 @@ const normalizeTodoItems = (value: unknown): TodoItem[] => {
     legacyItemIdByLaneAndTask.set(`${item.laneId}:${item.taskId}`, itemIds[index]);
   });
 
-  return validItems.map((item, index) => {
+  const normalizedItems = validItems.map((item, index) => {
     const legacyParentTaskId = typeof item.parentTaskId === 'string' ? item.parentTaskId : null;
     const requestedParentItemId = typeof item.parentItemId === 'string'
       ? item.parentItemId
@@ -177,8 +186,66 @@ const normalizeTodoItems = (value: unknown): TodoItem[] => {
       laneId: item.laneId as string,
       parentItemId: requestedParentItemId && usedItemIds.has(requestedParentItemId) ? requestedParentItemId : null,
       order: item.order as number,
+      isDone: typeof item.isDone === 'boolean'
+        ? item.isDone
+        : Boolean(tasks?.[item.taskId as string]?.isDone),
     };
   });
+  const itemById = new Map(normalizedItems.map((item) => [item.id, item]));
+  return normalizedItems.map((item) => {
+    let parentItemId = item.parentItemId;
+    if (parentItemId && itemById.get(parentItemId)?.laneId !== item.laneId) parentItemId = null;
+    const visited = new Set([item.id]);
+    let ancestorId = parentItemId;
+    while (ancestorId) {
+      if (visited.has(ancestorId)) {
+        parentItemId = null;
+        break;
+      }
+      visited.add(ancestorId);
+      ancestorId = itemById.get(ancestorId)?.parentItemId || null;
+    }
+    return parentItemId === item.parentItemId ? item : { ...item, parentItemId };
+  });
+};
+
+const normalizeTodoLanes = (value: unknown, categories: AppCategory[]): TodoLane[] => {
+  const loadedLanes: TodoLane[] = Array.isArray(value)
+    ? value.flatMap((lane: unknown): TodoLane[] => {
+        if (!lane || typeof lane !== 'object') return [];
+        const candidate = lane as Partial<TodoLane>;
+        if (typeof candidate.id !== 'string' || typeof candidate.name !== 'string') return [];
+        const type = candidate.id === 'todo-main'
+          ? 'main'
+          : candidate.type === 'category-sync' ? 'category-sync' : 'custom';
+        return [{ id: candidate.id, name: candidate.name, type, categoryId: candidate.categoryId, directoryId: candidate.directoryId || null }];
+      })
+    : [];
+  const main = loadedLanes.find((lane) => lane.id === 'todo-main');
+  const syncByCategoryId = new Map<string, TodoLane>();
+  loadedLanes.forEach((lane) => {
+    if (lane.type === 'category-sync' && lane.categoryId && !syncByCategoryId.has(lane.categoryId)) {
+      syncByCategoryId.set(lane.categoryId, lane);
+    }
+  });
+  const reservedIds = new Set(['todo-main', ...categories.map((category) => `todo-category-${category.id}`)]);
+  const usedCustomIds = new Set<string>();
+  const customLanes = loadedLanes.filter((lane) => {
+    if (lane.type !== 'custom' || reservedIds.has(lane.id) || usedCustomIds.has(lane.id)) return false;
+    usedCustomIds.add(lane.id);
+    return true;
+  });
+  const syncLanes = categories.map((category): TodoLane => {
+    const loaded = syncByCategoryId.get(category.id);
+    return {
+      id: `todo-category-${category.id}`,
+      name: category.label,
+      type: 'category-sync',
+      categoryId: category.id,
+      directoryId: loaded?.directoryId || null,
+    };
+  });
+  return [{ ...(main || DEFAULT_TODO_LANES[0]), id: 'todo-main', name: '主线', type: 'main' }, ...syncLanes, ...customLanes];
 };
 
 const removeTodoTaskInstances = (items: TodoItem[], taskId: string): TodoItem[] => {
@@ -289,7 +356,7 @@ const buildTodoItemsForTasks = (
     if (visited.has(taskId)) return;
     visited.add(taskId);
     const itemId = itemIdByTaskId.get(taskId)!;
-    items.push({ id: itemId, taskId, laneId, parentItemId, order });
+    items.push({ id: itemId, taskId, laneId, parentItemId, order, isDone: state.tasks[taskId].isDone });
     (childrenByTaskId.get(taskId) || []).forEach((childTaskId, childOrder) => {
       appendTask(childTaskId, itemId, childOrder);
     });
@@ -412,6 +479,7 @@ const loadSavedState = () => {
         const cleanedBOMTree = filterBOMTree(parsed.bomTree || []);
         const finalBOMTree = cleanedBOMTree.length > 0 ? cleanedBOMTree : EMPTY_BOM_TREE;
 
+        const normalizedTodoLanes = normalizeTodoLanes(parsed.todoLanes, safeCategories);
         return {
           tasks: validatedTasks,
           goals: validatedGoals,
@@ -461,15 +529,8 @@ const loadSavedState = () => {
                 isCollapsed: Boolean(directory.isCollapsed),
               }))
             : [],
-          todoLanes: Array.isArray(parsed.todoLanes) && parsed.todoLanes.length > 0
-            ? parsed.todoLanes.filter((lane: unknown): lane is TodoLane => (
-                Boolean(lane)
-                && typeof lane === 'object'
-                && typeof (lane as TodoLane).id === 'string'
-                && typeof (lane as TodoLane).name === 'string'
-              ))
-            : DEFAULT_TODO_LANES,
-          todoItems: normalizeTodoItems(parsed.todoItems),
+          todoLanes: normalizedTodoLanes,
+          todoItems: normalizeTodoItems(parsed.todoItems, validatedTasks, normalizedTodoLanes),
           timeTemplates: Array.isArray(parsed.timeTemplates)
             ? parsed.timeTemplates.filter((template: unknown): template is TimeTemplate => (
                 Boolean(template)
@@ -567,7 +628,7 @@ const initialActiveMergedGoalIds = savedState ? savedState.activeMergedGoalIds :
 const initialWorkspaceComponentFilter = savedState ? savedState.workspaceComponentFilter : null;
 const initialWorkspaceComponents = savedState ? savedState.workspaceComponents : [];
 const initialWorkspaceDirectories = savedState ? savedState.workspaceDirectories : [];
-const initialTodoLanes = savedState ? savedState.todoLanes : DEFAULT_TODO_LANES;
+const initialTodoLanes = normalizeTodoLanes(savedState?.todoLanes, initialCategories);
 const initialTodoItems = savedState ? savedState.todoItems : [];
 const initialTimeTemplates = savedState ? savedState.timeTemplates : DEFAULT_TIME_TEMPLATES;
 const initialActiveTimeTemplateIds = savedState ? savedState.activeTimeTemplateIds : { daily: null, weekly: null };
@@ -772,8 +833,10 @@ export const useAppStore = create<AppState>((set, get) => {
 
     addCategory: (label, parentId) => persistSet((state: AppState) => {
       const newId = 'cat-' + genId();
+      const categories = [...state.categories, { id: newId, label, parentId: parentId || undefined }];
       return {
-        categories: [...state.categories, { id: newId, label, parentId: parentId || undefined }]
+        categories,
+        todoLanes: normalizeTodoLanes(state.todoLanes, categories),
       };
     }),
 
@@ -787,7 +850,8 @@ export const useAppStore = create<AppState>((set, get) => {
           };
         }
         return c;
-      })
+      }),
+      todoLanes: state.todoLanes.map((lane) => lane.type === 'category-sync' && lane.categoryId === id ? { ...lane, name: newLabel } : lane),
     })),
 
     deleteCategory: (id) => persistSet((state: AppState) => {
@@ -807,8 +871,13 @@ export const useAppStore = create<AppState>((set, get) => {
       const nextSelectedGoalId = state.selectedGoalId && state.goals[state.selectedGoalId]?.category === id
         ? null
         : state.selectedGoalId;
+      const removedLaneIds = new Set(state.todoLanes
+        .filter((lane) => lane.type === 'category-sync' && lane.categoryId === id)
+        .map((lane) => lane.id));
       return {
         categories: nextCategories,
+        todoLanes: normalizeTodoLanes(state.todoLanes, nextCategories),
+        todoItems: state.todoItems.filter((item) => !removedLaneIds.has(item.laneId)),
         selectedCategoryId: nextSelectedCategoryId,
         goals: nextGoals,
         tasks: Object.fromEntries(Object.entries(state.tasks).map(([taskId, task]) => [
@@ -982,34 +1051,39 @@ export const useAppStore = create<AppState>((set, get) => {
       set(next);
       persistState({ ...get(), ...next });
     },
-    restoreFromBackup: (data) => persistSet((state: AppState) => ({
-      tasks: data.tasks && typeof data.tasks === 'object' && !Array.isArray(data.tasks) ? data.tasks as Record<string, Task> : state.tasks,
-      taskStatuses: Array.isArray(data.taskStatuses) ? data.taskStatuses as TaskStatus[] : state.taskStatuses,
-      goals: data.goals && typeof data.goals === 'object' && !Array.isArray(data.goals) ? data.goals as Record<string, Goal> : state.goals,
-      bomTree: Array.isArray(data.bomTree) ? data.bomTree as BOMTreeItem[] : state.bomTree,
-      categories: Array.isArray(data.categories) ? data.categories as AppCategory[] : state.categories,
-      workspaceComponents: Array.isArray(data.workspaceComponents) ? data.workspaceComponents as WorkspaceComponent[] : state.workspaceComponents,
-      workspaceDirectories: Array.isArray(data.workspaceDirectories) ? data.workspaceDirectories as WorkspaceDirectory[] : state.workspaceDirectories,
-      todoLanes: Array.isArray(data.todoLanes) ? data.todoLanes as TodoLane[] : DEFAULT_TODO_LANES,
-      todoItems: normalizeTodoItems(data.todoItems),
-      timeTemplates: Array.isArray(data.timeTemplates) ? data.timeTemplates as TimeTemplate[] : [],
-      activeTimeTemplateIds: data.activeTimeTemplateIds && typeof data.activeTimeTemplateIds === 'object'
-        ? data.activeTimeTemplateIds as AppState['activeTimeTemplateIds']
-        : { daily: null, weekly: null },
-      favoriteColors: Array.isArray(data.favoriteColors) ? data.favoriteColors as string[] : [],
-      drafts: Array.isArray(data.drafts) ? (data.drafts as DraftBoard[]).map((draft) => ({
-        ...draft,
-        strokes: state.drafts.find((currentDraft) => currentDraft.id === draft.id)?.strokes || [],
-      })) : [],
-      crossGoalEdges: Array.isArray(data.crossGoalEdges) ? data.crossGoalEdges as GoalEdge[] : [],
-      timelineTaskOrder: Array.isArray(data.timelineTaskOrder) ? data.timelineTaskOrder as string[] : [],
-      mergedNodePositions: data.mergedNodePositions && typeof data.mergedNodePositions === 'object'
-        ? data.mergedNodePositions as AppState['mergedNodePositions']
-        : {},
-      workspaceNodes: Array.isArray(data.workspaceNodes) ? data.workspaceNodes as GoalNode[] : [],
-      mergedEdges: Array.isArray(data.mergedEdges) ? data.mergedEdges as GoalEdge[] : [],
-      mergedNodeIds: Array.isArray(data.mergedNodeIds) ? data.mergedNodeIds as string[] : [],
-    })),
+    restoreFromBackup: (data) => persistSet((state: AppState) => {
+      const nextTasks = data.tasks && typeof data.tasks === 'object' && !Array.isArray(data.tasks) ? data.tasks as Record<string, Task> : state.tasks;
+      const nextCategories = Array.isArray(data.categories) ? data.categories as AppCategory[] : state.categories;
+      const nextTodoLanes = normalizeTodoLanes(data.todoLanes, nextCategories);
+      return {
+        tasks: nextTasks,
+        taskStatuses: Array.isArray(data.taskStatuses) ? data.taskStatuses as TaskStatus[] : state.taskStatuses,
+        goals: data.goals && typeof data.goals === 'object' && !Array.isArray(data.goals) ? data.goals as Record<string, Goal> : state.goals,
+        bomTree: Array.isArray(data.bomTree) ? data.bomTree as BOMTreeItem[] : state.bomTree,
+        categories: nextCategories,
+        workspaceComponents: Array.isArray(data.workspaceComponents) ? data.workspaceComponents as WorkspaceComponent[] : state.workspaceComponents,
+        workspaceDirectories: Array.isArray(data.workspaceDirectories) ? data.workspaceDirectories as WorkspaceDirectory[] : state.workspaceDirectories,
+        todoLanes: nextTodoLanes,
+        todoItems: normalizeTodoItems(data.todoItems, nextTasks, nextTodoLanes),
+        timeTemplates: Array.isArray(data.timeTemplates) ? data.timeTemplates as TimeTemplate[] : [],
+        activeTimeTemplateIds: data.activeTimeTemplateIds && typeof data.activeTimeTemplateIds === 'object'
+          ? data.activeTimeTemplateIds as AppState['activeTimeTemplateIds']
+          : { daily: null, weekly: null },
+        favoriteColors: Array.isArray(data.favoriteColors) ? data.favoriteColors as string[] : [],
+        drafts: Array.isArray(data.drafts) ? (data.drafts as DraftBoard[]).map((draft) => ({
+          ...draft,
+          strokes: state.drafts.find((currentDraft) => currentDraft.id === draft.id)?.strokes || [],
+        })) : [],
+        crossGoalEdges: Array.isArray(data.crossGoalEdges) ? data.crossGoalEdges as GoalEdge[] : [],
+        timelineTaskOrder: Array.isArray(data.timelineTaskOrder) ? data.timelineTaskOrder as string[] : [],
+        mergedNodePositions: data.mergedNodePositions && typeof data.mergedNodePositions === 'object'
+          ? data.mergedNodePositions as AppState['mergedNodePositions']
+          : {},
+        workspaceNodes: Array.isArray(data.workspaceNodes) ? data.workspaceNodes as GoalNode[] : [],
+        mergedEdges: Array.isArray(data.mergedEdges) ? data.mergedEdges as GoalEdge[] : [],
+        mergedNodeIds: Array.isArray(data.mergedNodeIds) ? data.mergedNodeIds as string[] : [],
+      };
+    }),
 
     addTaskToTodo: (taskId) => {
       const state = get();
@@ -1044,7 +1118,7 @@ export const useAppStore = create<AppState>((set, get) => {
       if (nextItems.length === 0) return null;
       const laneName = component.name.trim() || `未命名联通块 ${componentIndex + 1}`;
       persistSet((current: AppState) => ({
-        todoLanes: [...current.todoLanes, { id: laneId, name: laneName }],
+        todoLanes: [...current.todoLanes, { id: laneId, name: laneName, type: 'custom' }],
         todoItems: [...current.todoItems, ...nextItems],
       }));
       return laneId;
@@ -1059,18 +1133,19 @@ export const useAppStore = create<AppState>((set, get) => {
       });
       const taskIds = getDirectoryDescendantTaskIds(directoryId, state.workspaceDirectories, graph);
       const laneId = `todo-lane-${genId()}`;
-      const stateWithTemporaryLane = { ...state, todoLanes: [...state.todoLanes, { id: laneId, name: directory.name }] };
+      const stateWithTemporaryLane = { ...state, todoLanes: [...state.todoLanes, { id: laneId, name: directory.name, type: 'custom' as const }] };
       const nextItems = buildTodoItemsForTasks(stateWithTemporaryLane, taskIds, laneId);
       if (nextItems.length === 0) return null;
       persistSet((current: AppState) => ({
-        todoLanes: [...current.todoLanes, { id: laneId, name: directory.name.trim() || '未命名目录' }],
+        todoLanes: [...current.todoLanes, { id: laneId, name: directory.name.trim() || '未命名目录', type: 'custom' }],
         todoItems: [...current.todoItems, ...nextItems],
       }));
       return laneId;
     },
     createTodoTask: (laneId) => {
       const state = get();
-      if (!state.todoLanes.some((lane) => lane.id === laneId)) return null;
+      const lane = state.todoLanes.find((candidate) => candidate.id === laneId);
+      if (!lane || lane.type === 'category-sync') return null;
       const taskId = `t-todo-${genId()}`;
       const itemId = `todo-item-${genId()}`;
       const nextOrder = state.todoItems
@@ -1089,7 +1164,7 @@ export const useAppStore = create<AppState>((set, get) => {
       };
       persistSet((current: AppState) => ({
         tasks: { ...current.tasks, [taskId]: task },
-        todoItems: [...current.todoItems, { id: itemId, taskId, laneId, parentItemId: null, order: nextOrder }],
+        todoItems: [...current.todoItems, { id: itemId, taskId, laneId, parentItemId: null, order: nextOrder, isDone: false }],
       }));
       return taskId;
     },
@@ -1123,24 +1198,33 @@ export const useAppStore = create<AppState>((set, get) => {
     addTodoLane: (name) => {
       const id = `todo-lane-${genId()}`;
       persistSet((state: AppState) => ({
-        todoLanes: [...state.todoLanes, { id, name: name?.trim() || `分线-${state.todoLanes.length}` }],
+        todoLanes: [...state.todoLanes, { id, name: name?.trim() || `分线-${state.todoLanes.filter((lane) => lane.type === 'custom').length + 1}`, type: 'custom' }],
       }));
       return id;
     },
     moveTodoLane: (laneId, beforeLaneId) => persistSet((state: AppState) => {
       const fromIndex = state.todoLanes.findIndex((lane) => lane.id === laneId);
       if (fromIndex < 0 || laneId === beforeLaneId) return {};
+      const movedLane = state.todoLanes[fromIndex];
+      const targetLane = beforeLaneId ? state.todoLanes.find((lane) => lane.id === beforeLaneId) : undefined;
+      if (movedLane.type !== 'custom' || (targetLane && targetLane.type !== 'custom')) return {};
       const nextLanes = [...state.todoLanes];
-      const [movedLane] = nextLanes.splice(fromIndex, 1);
+      nextLanes.splice(fromIndex, 1);
       const targetIndex = beforeLaneId ? nextLanes.findIndex((lane) => lane.id === beforeLaneId) : -1;
       nextLanes.splice(targetIndex >= 0 ? targetIndex : nextLanes.length, 0, movedLane);
       return { todoLanes: nextLanes };
     }),
+    setTodoLaneDirectory: (laneId, directoryId) => persistSet((state: AppState) => ({
+      todoLanes: state.todoLanes.map((lane) => lane.id === laneId && lane.type === 'category-sync'
+        ? { ...lane, directoryId: directoryId && state.workspaceDirectories.some((directory) => directory.id === directoryId) ? directoryId : null }
+        : lane),
+    })),
     renameTodoLane: (laneId, name) => persistSet((state: AppState) => ({
-      todoLanes: state.todoLanes.map((lane) => lane.id === laneId ? { ...lane, name } : lane),
+      todoLanes: state.todoLanes.map((lane) => lane.id === laneId && lane.type === 'custom' ? { ...lane, name } : lane),
     })),
     deleteTodoLane: (laneId) => persistSet((state: AppState) => {
-      if (laneId === 'todo-main') return {};
+      const lane = state.todoLanes.find((candidate) => candidate.id === laneId);
+      if (!lane || lane.type !== 'custom') return {};
       const mainLaneId = state.todoLanes.find((lane) => lane.id === 'todo-main')?.id || state.todoLanes[0]?.id || 'todo-main';
       const deletedLaneItemIds = new Set(state.todoItems.filter((item) => item.laneId === laneId).map((item) => item.id));
       const mainTail = state.todoItems
@@ -1158,7 +1242,8 @@ export const useAppStore = create<AppState>((set, get) => {
     }),
     moveTodoItem: (itemId, laneId, parentItemId, beforeItemId) => persistSet((state: AppState) => {
       const movedItem = state.todoItems.find((item) => item.id === itemId);
-      if (!movedItem || itemId === parentItemId) return {};
+      const targetLane = state.todoLanes.find((candidate) => candidate.id === laneId);
+      if (!movedItem || !targetLane || targetLane.type === 'category-sync' || itemId === parentItemId) return {};
       const byParent = new Map(state.todoItems.map((item) => [item.id, item.parentItemId]));
       let ancestorId = parentItemId;
       while (ancestorId) {
@@ -1202,18 +1287,33 @@ export const useAppStore = create<AppState>((set, get) => {
     duplicateTodoItem: (itemId, laneId) => {
       const state = get();
       const source = state.todoItems.find((item) => item.id === itemId);
-      if (!source || !state.todoLanes.some((lane) => lane.id === laneId)) return false;
-      const nextOrder = state.todoItems
-        .filter((item) => item.laneId === laneId && item.parentItemId === null)
-        .reduce((max, item) => Math.max(max, item.order), -1) + 1;
+      if (!source) return false;
+      return get().copyTaskToTodoLane(source.taskId, laneId, null, undefined, source.isDone);
+    },
+    copyTaskToTodoLane: (taskId, laneId, parentItemId = null, beforeItemId, isDone) => {
+      const state = get();
+      const targetLane = state.todoLanes.find((lane) => lane.id === laneId);
+      if (!state.tasks[taskId] || !targetLane || targetLane.type === 'category-sync') return false;
+      const siblings = state.todoItems
+        .filter((item) => item.laneId === laneId && item.parentItemId === parentItemId)
+        .sort((left, right) => left.order - right.order);
+      const beforeIndex = beforeItemId ? siblings.findIndex((item) => item.id === beforeItemId) : -1;
+      const insertIndex = beforeIndex >= 0 ? beforeIndex : siblings.length;
+      const newItemId = `todo-item-${genId()}`;
+      const orderedItemIds = siblings.map((item) => item.id);
+      orderedItemIds.splice(insertIndex, 0, newItemId);
+      const orderByItemId = new Map(orderedItemIds.map((id, index) => [id, index]));
       persistSet((current: AppState) => ({
         todoItems: [
-          ...current.todoItems,
-          { id: `todo-item-${genId()}`, taskId: source.taskId, laneId, parentItemId: null, order: nextOrder },
+          ...current.todoItems.map((item) => orderByItemId.has(item.id) ? { ...item, order: orderByItemId.get(item.id)! } : item),
+          { id: newItemId, taskId, laneId, parentItemId, order: insertIndex, isDone: isDone ?? state.tasks[taskId].isDone },
         ],
       }));
       return true;
     },
+    toggleTodoItemDone: (itemId) => persistSet((state: AppState) => ({
+      todoItems: state.todoItems.map((item) => item.id === itemId ? { ...item, isDone: !item.isDone } : item),
+    })),
     removeTodoItem: (itemId) => persistSet((state: AppState) => {
       const removedItem = state.todoItems.find((item) => item.id === itemId);
       if (!removedItem) return {};
@@ -1844,6 +1944,7 @@ export const useAppStore = create<AppState>((set, get) => {
 
     deleteWorkspaceDirectory: (directoryId) => persistSet((state: AppState) => ({
       workspaceDirectories: state.workspaceDirectories.filter((directory) => directory.id !== directoryId),
+      todoLanes: state.todoLanes.map((lane) => lane.directoryId === directoryId ? { ...lane, directoryId: null } : lane),
       mergedEdges: state.mergedEdges.filter((edge) => edge.source !== directoryId && edge.target !== directoryId),
     })),
 
@@ -1877,7 +1978,7 @@ export const useAppStore = create<AppState>((set, get) => {
 
     clearMergedNodeIds: () => persistSet({ mergedNodeIds: [] }),
 
-    clearWorkspace: () => persistSet({
+    clearWorkspace: () => persistSet((state: AppState) => ({
       tasks: EMPTY_TASKS,
       goals: {},
       selectedGoalId: null,
@@ -1889,7 +1990,7 @@ export const useAppStore = create<AppState>((set, get) => {
       workspaceComponents: [],
       workspaceDirectories: [],
       drafts: [],
-      todoLanes: DEFAULT_TODO_LANES,
+      todoLanes: normalizeTodoLanes([], state.categories),
       todoItems: [],
       crossGoalEdges: [],
       bomTree: EMPTY_BOM_TREE,
@@ -1899,6 +2000,6 @@ export const useAppStore = create<AppState>((set, get) => {
       workspaceNodes: [],
       mergedEdges: [],
       mergedNodeIds: []
-    })
+    }))
   };
 });
