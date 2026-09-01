@@ -4,13 +4,14 @@ import { CollisionDetection, DndContext, DragEndEvent, DragOverlay, DragStartEve
 import type { Modifier } from '@dnd-kit/core';
 import { Check, CopyPlus, GripVertical, Network, PanelRightOpen, Plus, Trash2, X } from 'lucide-react';
 import { useAppStore } from '../store';
-import type { Task, TodoItem, TodoLane, WorkspaceComponent } from '../types';
-import { getComponentLabel } from '../workspaceComponents';
+import type { Goal, GoalEdge, GoalNode, Task, TodoItem, TodoLane, WorkspaceComponent, WorkspaceDirectory } from '../types';
+import { getComponentLabel, getDirectoryDescendantTaskIds, getWorkspaceGraph } from '../workspaceComponents';
 
 const ITEM_WIDTH = 108;
 const ITEM_GAP = 28;
 const ROW_HEIGHT = 84;
 const DOT_CENTER_Y = 16;
+const SYNC_ITEM_PREFIX = 'todo-sync-';
 
 const todoCollisionDetection: CollisionDetection = (args) => {
   const collisions = pointerWithin(args);
@@ -63,9 +64,9 @@ const getDropData = (event: DragEndEvent) => event.over?.data.current as {
   parentItemId?: string | null;
 } | undefined;
 
-const TodoDot: React.FC<{ task: Task; active?: boolean }> = ({ task, active = false }) => (
-  <div className={`flex h-8 w-8 items-center justify-center rounded-full border-2 shadow-sm transition-all ${task.isDone ? 'border-emerald-400 bg-emerald-400 text-white shadow-emerald-200' : 'border-neutral-300 bg-white text-neutral-300'} ${active ? 'scale-110 shadow-lg' : ''}`}>
-    {task.isDone ? <Check className="h-3.5 w-3.5 stroke-[3]" /> : null}
+const TodoDot: React.FC<{ task: Task; isDone?: boolean; active?: boolean }> = ({ task, isDone = task.isDone, active = false }) => (
+  <div className={`flex h-8 w-8 items-center justify-center rounded-full border-2 shadow-sm transition-all ${isDone ? 'border-emerald-400 bg-emerald-400 text-white shadow-emerald-200' : 'border-neutral-300 bg-white text-neutral-300'} ${active ? 'scale-110 shadow-lg' : ''}`}>
+    {isDone ? <Check className="h-3.5 w-3.5 stroke-[3]" /> : null}
   </div>
 );
 
@@ -76,20 +77,23 @@ const DraggableTodoNode: React.FC<{
   y: number;
   lanes: TodoLane[];
   components: WorkspaceComponent[];
+  isSynced: boolean;
+  acceptsChildren: boolean;
   onOpenDetails: () => void;
   onToggleAssignment: (componentId: string) => void;
   onDuplicate: (laneId: string) => void;
   onDuplicateToNewLane: () => void;
   onRemove: () => void;
   onToggle: () => void;
-}> = ({ item, task, x, y, lanes, components, onOpenDetails, onToggleAssignment, onDuplicate, onDuplicateToNewLane, onRemove, onToggle }) => {
+}> = ({ item, task, x, y, lanes, components, isSynced, acceptsChildren, onOpenDetails, onToggleAssignment, onDuplicate, onDuplicateToNewLane, onRemove, onToggle }) => {
   const [isDuplicateMenuOpen, setIsDuplicateMenuOpen] = useState(false);
   const [isAssignmentMenuOpen, setIsAssignmentMenuOpen] = useState(false);
   const actionBarRef = useRef<HTMLDivElement>(null);
   const portalMenuRef = useRef<HTMLDivElement>(null);
   const [menuPosition, setMenuPosition] = useState({ left: 0, top: 0 });
-  const draggable = useDraggable({ id: `todo-drag-${item.id}`, data: { itemId: item.id, taskId: item.taskId } });
-  const childDrop = useDroppable({ id: `todo-child-${item.id}`, data: { kind: 'child', laneId: item.laneId, itemId: item.id } });
+  const effectiveIsDone = isSynced ? task.isDone : item.isDone;
+  const draggable = useDraggable({ id: `todo-drag-${item.id}`, data: { itemId: item.id, taskId: item.taskId, isSynced, isDone: effectiveIsDone } });
+  const childDrop = useDroppable({ id: `todo-child-${item.id}`, data: { kind: 'child', laneId: item.laneId, itemId: item.id }, disabled: !acceptsChildren });
   const style: React.CSSProperties = {
     left: x,
     top: y,
@@ -163,7 +167,7 @@ const DraggableTodoNode: React.FC<{
           className={`cursor-grab rounded-full outline-none active:cursor-grabbing ${childDrop.isOver ? 'ring-4 ring-purple-200' : ''}`}
           title="拖动调整顺序；将其他任务拖到这里可设为子任务"
         >
-          <TodoDot task={task} />
+          <TodoDot task={task} isDone={effectiveIsDone} />
         </button>
         <div
           ref={actionBarRef}
@@ -173,13 +177,13 @@ const DraggableTodoNode: React.FC<{
           <button type="button" onClick={onOpenDetails} className="flex h-6 w-6 items-center justify-center rounded text-neutral-400 hover:bg-purple-50 hover:text-purple-600" title="打开任务详情" aria-label="打开任务详情"><PanelRightOpen className="h-3.5 w-3.5" /></button>
           <button type="button" onClick={() => { setIsAssignmentMenuOpen((open) => !open); setIsDuplicateMenuOpen(false); }} className="flex h-6 w-6 items-center justify-center rounded text-neutral-400 hover:bg-purple-50 hover:text-purple-600" title="设置工作区归属" aria-label="设置工作区归属" aria-expanded={isAssignmentMenuOpen}><Network className="h-3.5 w-3.5" /></button>
           <button type="button" onClick={() => { setIsDuplicateMenuOpen((open) => !open); setIsAssignmentMenuOpen(false); }} className="flex h-6 w-6 items-center justify-center rounded text-neutral-400 hover:bg-sky-50 hover:text-sky-600" title="创建分身" aria-label="创建分身" aria-expanded={isDuplicateMenuOpen}><CopyPlus className="h-3.5 w-3.5" /></button>
-          <button type="button" onClick={onRemove} className="flex h-6 w-6 items-center justify-center rounded text-neutral-400 hover:bg-rose-50 hover:text-rose-500" title="从当前分线移除" aria-label="从当前分线移除"><X className="h-3.5 w-3.5" /></button>
+          {!isSynced ? <button type="button" onClick={onRemove} className="flex h-6 w-6 items-center justify-center rounded text-neutral-400 hover:bg-rose-50 hover:text-rose-500" title="从当前分线移除" aria-label="从当前分线移除"><X className="h-3.5 w-3.5" /></button> : null}
         </div>
       </div>
       {portalMenu}
       <div className="mt-1.5 flex max-w-full items-center gap-0.5 text-center text-[10px] font-semibold leading-3.5 text-neutral-700">
         <GripVertical className="h-2.5 w-2.5 shrink-0 text-neutral-300" />
-        <span className={`line-clamp-2 ${task.isDone ? 'text-emerald-600' : ''}`}>{task.title || '未命名任务'}</span>
+        <span className={`line-clamp-2 ${effectiveIsDone ? 'text-emerald-600' : ''}`}>{task.title || '未命名任务'}</span>
       </div>
     </div>
   );
@@ -236,11 +240,84 @@ const buildLaneLayout = (items: TodoItem[]) => {
   return { nodes, edges, width: Math.max(600, nextColumn * (ITEM_WIDTH + ITEM_GAP) + 60), height: Math.max(110, (Math.max(0, ...nodes.map((node) => node.y)) + ROW_HEIGHT)) };
 };
 
+const buildSyncedTodoItems = (
+  lane: TodoLane,
+  tasks: Record<string, Task>,
+  directories: WorkspaceDirectory[],
+  goals: Record<string, Goal>,
+  workspaceNodes: GoalNode[],
+  mergedEdges: GoalEdge[],
+  mergedNodePositions: Record<string, { x: number; y: number }>,
+): TodoItem[] => {
+  if (lane.type !== 'category-sync' || !lane.directoryId) return [];
+  const directory = directories.find((item) => item.id === lane.directoryId);
+  if (!directory) return [];
+  const graph = getWorkspaceGraph(goals, workspaceNodes, mergedEdges, {
+    ...mergedNodePositions,
+    ...Object.fromEntries(directories.map((item) => [item.id, mergedNodePositions[item.id] || item.position])),
+  });
+  const taskIds = getDirectoryDescendantTaskIds(directory.id, directories, graph);
+  const nodeIdByTaskId = new Map<string, string>();
+  graph.nodeTaskIds.forEach((taskId, nodeId) => { if (taskIds.has(taskId) && !nodeIdByTaskId.has(taskId)) nodeIdByTaskId.set(taskId, nodeId); });
+  const positions = new Map<string, { x: number; y: number }>();
+  nodeIdByTaskId.forEach((nodeId, taskId) => { const position = graph.nodePositions.get(nodeId); if (position) positions.set(taskId, position); });
+  const parentByTaskId = new Map<string, string>();
+  graph.edges.forEach((edge) => {
+    const sourceTaskId = graph.nodeTaskIds.get(edge.source);
+    const targetTaskId = graph.nodeTaskIds.get(edge.target);
+    const sourcePosition = graph.nodePositions.get(edge.source);
+    const targetPosition = graph.nodePositions.get(edge.target);
+    if (!sourceTaskId || !targetTaskId || !sourcePosition || !targetPosition || !taskIds.has(sourceTaskId) || !taskIds.has(targetTaskId)) return;
+    const parentId = sourcePosition.x <= targetPosition.x ? sourceTaskId : targetTaskId;
+    const childId = parentId === sourceTaskId ? targetTaskId : sourceTaskId;
+    if (!parentByTaskId.has(childId)) parentByTaskId.set(childId, parentId);
+  });
+  taskIds.forEach((taskId) => {
+    const visited = new Set([taskId]);
+    let ancestorId = parentByTaskId.get(taskId);
+    while (ancestorId) {
+      if (visited.has(ancestorId)) {
+        parentByTaskId.delete(taskId);
+        break;
+      }
+      visited.add(ancestorId);
+      ancestorId = parentByTaskId.get(ancestorId);
+    }
+  });
+  const itemIdByTaskId = new Map(Array.from(taskIds).map((taskId) => [taskId, `${SYNC_ITEM_PREFIX}${lane.id}-${taskId}`]));
+  const siblingOrder = new Map<string | null, string[]>();
+  taskIds.forEach((taskId) => {
+    const parentId = parentByTaskId.get(taskId) || null;
+    const siblings = siblingOrder.get(parentId) || [];
+    siblings.push(taskId);
+    siblingOrder.set(parentId, siblings);
+  });
+  siblingOrder.forEach((siblings) => siblings.sort((left, right) => {
+    const leftPosition = positions.get(left) || { x: 0, y: 0 };
+    const rightPosition = positions.get(right) || { x: 0, y: 0 };
+    return leftPosition.y - rightPosition.y || leftPosition.x - rightPosition.x;
+  }));
+  return Array.from(taskIds).flatMap((taskId) => tasks[taskId] ? [{
+    id: itemIdByTaskId.get(taskId)!,
+    taskId,
+    laneId: lane.id,
+    parentItemId: parentByTaskId.has(taskId) ? itemIdByTaskId.get(parentByTaskId.get(taskId)!) || null : null,
+    order: (siblingOrder.get(parentByTaskId.get(taskId) || null) || []).indexOf(taskId),
+    isDone: tasks[taskId].isDone,
+  }] : []);
+};
+
 const TodoLaneGraph: React.FC<{ lane: TodoLane; isMain: boolean; isDragging: boolean; isDragOver: boolean; onLaneDragStart: (event: React.DragEvent<HTMLElement>) => void; onLaneDragOver: (event: React.DragEvent<HTMLElement>) => void; onLaneDrop: (event: React.DragEvent<HTMLElement>) => void; onLaneDragEnd: () => void }> = ({ lane, isMain, isDragging, isDragOver, onLaneDragStart, onLaneDragOver, onLaneDrop, onLaneDragEnd }) => {
   const tasks = useAppStore((state) => state.tasks);
   const allItems = useAppStore((state) => state.todoItems);
   const lanes = useAppStore((state) => state.todoLanes);
   const components = useAppStore((state) => state.workspaceComponents);
+  const directories = useAppStore((state) => state.workspaceDirectories);
+  const goals = useAppStore((state) => state.goals);
+  const workspaceNodes = useAppStore((state) => state.workspaceNodes);
+  const mergedEdges = useAppStore((state) => state.mergedEdges);
+  const mergedNodePositions = useAppStore((state) => state.mergedNodePositions);
+  const setLaneDirectory = useAppStore((state) => state.setTodoLaneDirectory);
   const renameLane = useAppStore((state) => state.renameTodoLane);
   const deleteLane = useAppStore((state) => state.deleteTodoLane);
   const addLane = useAppStore((state) => state.addTodoLane);
@@ -248,34 +325,41 @@ const TodoLaneGraph: React.FC<{ lane: TodoLane; isMain: boolean; isDragging: boo
   const toggleTodoTaskComponent = useAppStore((state) => state.toggleTodoTaskComponent);
   const duplicateItem = useAppStore((state) => state.duplicateTodoItem);
   const removeItem = useAppStore((state) => state.removeTodoItem);
+  const copyTaskToLane = useAppStore((state) => state.copyTaskToTodoLane);
+  const toggleItemDone = useAppStore((state) => state.toggleTodoItemDone);
   const selectTask = useAppStore((state) => state.selectTask);
   const updateTask = useAppStore((state) => state.updateTask);
   const beginHistoryGroup = useAppStore((state) => state.beginHistoryGroup);
   const endHistoryGroup = useAppStore((state) => state.endHistoryGroup);
-  const items = useMemo(() => allItems.filter((item) => item.laneId === lane.id && tasks[item.taskId]), [allItems, lane.id, tasks]);
+  const isSynced = lane.type === 'category-sync';
+  const items = useMemo(() => isSynced
+    ? buildSyncedTodoItems(lane, tasks, directories, goals, workspaceNodes, mergedEdges, mergedNodePositions)
+    : allItems.filter((item) => item.laneId === lane.id && tasks[item.taskId]),
+  [allItems, directories, goals, isSynced, lane, mergedEdges, mergedNodePositions, tasks, workspaceNodes]);
   const layout = useMemo(() => buildLaneLayout(items), [items]);
-  const laneDrop = useDroppable({ id: `todo-lane-${lane.id}`, data: { kind: 'lane', laneId: lane.id } });
+  const laneDrop = useDroppable({ id: `todo-lane-${lane.id}`, data: { kind: 'lane', laneId: lane.id }, disabled: isSynced });
 
   const handleCanvasDoubleClick = (event: React.MouseEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement;
-    if (target.closest('[data-todo-node="true"], button, input')) return;
+    if (target.closest('[data-todo-node="true"], button, input, select')) return;
+    if (isSynced) return;
     const taskId = createTodoTask(lane.id);
     if (taskId) selectTask(taskId);
   };
 
   return (
     <section onDragOver={onLaneDragOver} onDrop={onLaneDrop} className={`rounded-2xl border bg-white/85 shadow-sm transition-all ${isDragOver ? 'border-purple-400 ring-2 ring-purple-100' : 'border-neutral-200'} ${isDragging ? 'opacity-45' : ''}`}>
-      <header draggable onDragStart={onLaneDragStart} onDragEnd={onLaneDragEnd} className="flex h-14 cursor-grab items-center justify-between border-b border-neutral-200 px-5 active:cursor-grabbing">
-        <div className="flex min-w-0 items-center gap-3"><GripVertical className="h-4 w-4 shrink-0 text-neutral-300" /><span className={`h-2.5 w-2.5 rounded-full ${isMain ? 'bg-purple-500' : 'bg-sky-400'}`} /><input value={lane.name} draggable={false} onClick={(event) => event.stopPropagation()} onFocus={beginHistoryGroup} onChange={(event) => renameLane(lane.id, event.target.value)} onBlur={endHistoryGroup} className="min-w-0 bg-transparent text-sm font-bold text-neutral-800 outline-none" aria-label="Todo 分类名称" /></div>
-        {!isMain ? <button type="button" onClick={() => deleteLane(lane.id)} className="flex h-8 items-center gap-1 rounded-md px-2 text-xs text-neutral-400 hover:bg-rose-50 hover:text-rose-500" title="删除分线并移回主线"><Trash2 className="h-3.5 w-3.5" />删除分线</button> : null}
+      <header draggable={lane.type === 'custom'} onDragStart={onLaneDragStart} onDragEnd={onLaneDragEnd} className={`flex min-h-14 items-center justify-between gap-3 border-b border-neutral-200 px-5 py-2 ${lane.type === 'custom' ? 'cursor-grab active:cursor-grabbing' : ''}`}>
+        <div className="flex min-w-0 items-center gap-3"><GripVertical className={`h-4 w-4 shrink-0 ${lane.type === 'custom' ? 'text-neutral-300' : 'text-neutral-200'}`} /><span className={`h-2.5 w-2.5 rounded-full ${isMain ? 'bg-purple-500' : isSynced ? 'bg-emerald-400' : 'bg-sky-400'}`} />{lane.type === 'custom' ? <input value={lane.name} draggable={false} onClick={(event) => event.stopPropagation()} onFocus={beginHistoryGroup} onChange={(event) => renameLane(lane.id, event.target.value)} onBlur={endHistoryGroup} className="min-w-0 bg-transparent text-sm font-bold text-neutral-800 outline-none" aria-label="Todo 分类名称" /> : <span className="truncate text-sm font-bold text-neutral-800">{lane.name}</span>}</div>
+        <div className="flex shrink-0 items-center gap-2">{isSynced ? <label draggable={false} className="flex items-center gap-2 text-[11px] font-medium text-neutral-500"><span>查看目录</span><select value={lane.directoryId || ''} onChange={(event) => setLaneDirectory(lane.id, event.target.value || null)} onPointerDown={(event) => event.stopPropagation()} className="h-8 max-w-52 rounded-lg border border-neutral-200 bg-white px-2 text-[11px] outline-none focus:border-purple-300"><option value="">请选择目录</option>{directories.map((directory) => <option key={directory.id} value={directory.id}>{directory.name || '未命名目录'}</option>)}</select></label> : null}{lane.type === 'custom' ? <button type="button" onClick={() => deleteLane(lane.id)} className="flex h-8 items-center gap-1 rounded-md px-2 text-xs text-neutral-400 hover:bg-rose-50 hover:text-rose-500" title="删除分线并移回主线"><Trash2 className="h-3.5 w-3.5" />删除分线</button> : null}</div>
       </header>
       <div ref={laneDrop.setNodeRef} onDoubleClick={handleCanvasDoubleClick} className={`min-h-[158px] overflow-x-auto p-6 custom-scrollbar ${laneDrop.isOver ? 'bg-purple-50/40 ring-2 ring-inset ring-purple-200' : ''}`} title="双击空白处创建任务">
         <div className="relative" style={{ width: layout.width, height: layout.height }}>
-          {items.length === 0 ? <div className="absolute inset-0 flex items-center justify-center text-xs text-neutral-400">暂无任务</div> : null}
+          {items.length === 0 ? <div className="absolute inset-0 flex items-center justify-center text-xs text-neutral-400">{isSynced && !lane.directoryId ? '请选择要同步查看的目录' : '暂无任务'}</div> : null}
           <svg className="pointer-events-none absolute inset-0 h-full w-full overflow-visible">
             {layout.edges.map((edge, index) => <path key={`${edge.fromX}-${edge.toX}-${index}`} d={`M ${edge.fromX} ${edge.fromY} C ${edge.fromX} ${(edge.fromY + edge.toY) / 2}, ${edge.toX} ${(edge.fromY + edge.toY) / 2}, ${edge.toX} ${edge.toY}`} fill="none" stroke="#aeb6c5" strokeWidth="2.5" strokeLinecap="round" />)}
           </svg>
-          {layout.nodes.map((node) => <React.Fragment key={node.item.id}><BeforeDrop laneId={lane.id} parentItemId={node.item.parentItemId} itemId={node.item.id} x={node.x - 8} y={node.y - 11} /><DraggableTodoNode item={node.item} task={tasks[node.item.taskId]} x={node.x} y={node.y} lanes={lanes} components={components} onOpenDetails={() => selectTask(node.item.taskId)} onToggleAssignment={(componentId) => toggleTodoTaskComponent(node.item.taskId, componentId)} onDuplicate={(targetLaneId) => duplicateItem(node.item.id, targetLaneId)} onDuplicateToNewLane={() => { const targetLaneId = addLane(`${tasks[node.item.taskId].title || '任务'}分线`); duplicateItem(node.item.id, targetLaneId); }} onRemove={() => removeItem(node.item.id)} onToggle={() => updateTask(node.item.taskId, { isDone: !tasks[node.item.taskId].isDone })} /></React.Fragment>)}
+          {layout.nodes.map((node) => <React.Fragment key={node.item.id}>{!isSynced ? <BeforeDrop laneId={lane.id} parentItemId={node.item.parentItemId} itemId={node.item.id} x={node.x - 8} y={node.y - 11} /> : null}<DraggableTodoNode item={node.item} task={tasks[node.item.taskId]} x={node.x} y={node.y} lanes={lanes.filter((targetLane) => targetLane.type !== 'category-sync')} components={components} isSynced={isSynced} acceptsChildren={!isSynced} onOpenDetails={() => selectTask(node.item.taskId)} onToggleAssignment={(componentId) => toggleTodoTaskComponent(node.item.taskId, componentId)} onDuplicate={(targetLaneId) => isSynced ? copyTaskToLane(node.item.taskId, targetLaneId) : duplicateItem(node.item.id, targetLaneId)} onDuplicateToNewLane={() => { const targetLaneId = addLane(`${tasks[node.item.taskId].title || '任务'}分线`); if (isSynced) copyTaskToLane(node.item.taskId, targetLaneId); else duplicateItem(node.item.id, targetLaneId); }} onRemove={() => removeItem(node.item.id)} onToggle={() => isSynced ? updateTask(node.item.taskId, { isDone: !tasks[node.item.taskId].isDone }) : toggleItemDone(node.item.id)} /></React.Fragment>)}
         </div>
       </div>
     </section>
@@ -288,31 +372,44 @@ export const TodoPage: React.FC = () => {
   const addLane = useAppStore((state) => state.addTodoLane);
   const moveLane = useAppStore((state) => state.moveTodoLane);
   const moveItem = useAppStore((state) => state.moveTodoItem);
-  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+  const copyTaskToLane = useAppStore((state) => state.copyTaskToTodoLane);
+  const [activeItem, setActiveItem] = useState<{ taskId: string; isDone: boolean } | null>(null);
   const [draggedLaneId, setDraggedLaneId] = useState<string | null>(null);
   const [dragOverLaneId, setDragOverLaneId] = useState<string | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
-  const handleDragStart = (event: DragStartEvent) => setActiveTaskId((event.active.data.current as { taskId?: string } | undefined)?.taskId || null);
+  const handleDragStart = (event: DragStartEvent) => {
+    const source = event.active.data.current as { taskId?: string; isDone?: boolean } | undefined;
+    setActiveItem(source?.taskId ? { taskId: source.taskId, isDone: Boolean(source.isDone) } : null);
+  };
   const handleDragEnd = (event: DragEndEvent) => {
-    const itemId = (event.active.data.current as { itemId?: string } | undefined)?.itemId;
+    const source = event.active.data.current as { itemId?: string; taskId?: string; isSynced?: boolean } | undefined;
+    const itemId = source?.itemId;
     const target = getDropData(event);
-    setActiveTaskId(null);
+    setActiveItem(null);
     if (!itemId || !target?.laneId) return;
+    const targetLane = lanes.find((lane) => lane.id === target.laneId);
+    if (!targetLane || targetLane.type === 'category-sync') return;
+    if (source?.isSynced && source.taskId) {
+      if (target.kind === 'child' && target.itemId) copyTaskToLane(source.taskId, target.laneId, target.itemId);
+      else if (target.kind === 'before') copyTaskToLane(source.taskId, target.laneId, target.parentItemId || null, target.itemId);
+      else copyTaskToLane(source.taskId, target.laneId);
+      return;
+    }
     if (target.kind === 'child' && target.itemId) moveItem(itemId, target.laneId, target.itemId);
     else if (target.kind === 'before') moveItem(itemId, target.laneId, target.parentItemId || null, target.itemId);
     else if (target.kind === 'lane') moveItem(itemId, target.laneId, null);
   };
 
   return (
-    <DndContext sensors={sensors} collisionDetection={todoCollisionDetection} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setActiveTaskId(null)}>
+    <DndContext sensors={sensors} collisionDetection={todoCollisionDetection} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setActiveItem(null)}>
       <div className="min-h-0 flex-1 overflow-y-auto bg-neutral-50 p-6 custom-scrollbar">
         <div className="mx-auto max-w-[1500px] space-y-5">
-          <div className="flex items-center justify-between"><h2 className="text-lg font-bold text-neutral-800">Todo List</h2><button type="button" onClick={() => addLane()} className="flex h-9 items-center gap-1.5 rounded-lg border border-purple-200 bg-purple-50 px-3 text-xs font-semibold text-purple-600"><Plus className="h-4 w-4" />新增分线</button></div>
-          {lanes.map((lane) => <TodoLaneGraph key={lane.id} lane={lane} isMain={lane.id === 'todo-main'} isDragging={draggedLaneId === lane.id} isDragOver={dragOverLaneId === lane.id && draggedLaneId !== lane.id} onLaneDragStart={(event) => { setDraggedLaneId(lane.id); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', lane.id); }} onLaneDragOver={(event) => { if (!draggedLaneId || draggedLaneId === lane.id) return; event.preventDefault(); setDragOverLaneId(lane.id); }} onLaneDrop={(event) => { event.preventDefault(); if (draggedLaneId && draggedLaneId !== lane.id) moveLane(draggedLaneId, lane.id); setDraggedLaneId(null); setDragOverLaneId(null); }} onLaneDragEnd={() => { setDraggedLaneId(null); setDragOverLaneId(null); }} />)}
+          <div className="flex items-center justify-between"><h2 className="text-lg font-bold text-neutral-800">Todo</h2><button type="button" onClick={() => addLane()} className="flex h-9 items-center gap-1.5 rounded-lg border border-purple-200 bg-purple-50 px-3 text-xs font-semibold text-purple-600"><Plus className="h-4 w-4" />新增分线</button></div>
+          {lanes.map((lane) => <TodoLaneGraph key={lane.id} lane={lane} isMain={lane.id === 'todo-main'} isDragging={draggedLaneId === lane.id} isDragOver={dragOverLaneId === lane.id && draggedLaneId !== lane.id} onLaneDragStart={(event) => { if (lane.type !== 'custom') { event.preventDefault(); return; } setDraggedLaneId(lane.id); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', lane.id); }} onLaneDragOver={(event) => { if (!draggedLaneId || draggedLaneId === lane.id || lane.type !== 'custom') return; event.preventDefault(); setDragOverLaneId(lane.id); }} onLaneDrop={(event) => { event.preventDefault(); if (draggedLaneId && draggedLaneId !== lane.id && lane.type === 'custom') moveLane(draggedLaneId, lane.id); setDraggedLaneId(null); setDragOverLaneId(null); }} onLaneDragEnd={() => { setDraggedLaneId(null); setDragOverLaneId(null); }} />)}
         </div>
       </div>
-      <DragOverlay modifiers={[snapOverlayCenterToCursor]}>{activeTaskId && tasks[activeTaskId] ? <TodoDot task={tasks[activeTaskId]} active /> : null}</DragOverlay>
+      <DragOverlay modifiers={[snapOverlayCenterToCursor]}>{activeItem && tasks[activeItem.taskId] ? <TodoDot task={tasks[activeItem.taskId]} isDone={activeItem.isDone} active /> : null}</DragOverlay>
     </DndContext>
   );
 };
