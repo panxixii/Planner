@@ -18,6 +18,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import { useAppStore } from '../store';
 import { TaskNode } from './TaskNode';
+import { DirectoryNode } from './DirectoryNode';
 import { ComponentHandleNode } from './ComponentHandleNode';
 import { CanvasSelectionToolbar } from './CanvasSelectionToolbar';
 import { 
@@ -27,9 +28,11 @@ import {
   Scan,
   ZoomIn, 
   ZoomOut, 
-  Maximize
+  Maximize,
+  FolderPlus,
+  ListTodo,
 } from 'lucide-react';
-import { Task, GoalNode } from '../types';
+import { Task, GoalNode, WorkspaceDirectory } from '../types';
 import { getComponentLabel, getTaskComponentIds } from '../workspaceComponents';
 
 const DAGInnerWorkspace: React.FC = () => {
@@ -45,6 +48,10 @@ const DAGInnerWorkspace: React.FC = () => {
   const addNodeToGoal = useAppStore((state) => state.addNodeToGoal);
   const workspaceComponentFilter = useAppStore((state) => state.workspaceComponentFilter);
   const workspaceComponents = useAppStore((state) => state.workspaceComponents);
+  const workspaceDirectories = useAppStore((state) => state.workspaceDirectories);
+  const addWorkspaceDirectory = useAppStore((state) => state.addWorkspaceDirectory);
+  const updateWorkspaceDirectory = useAppStore((state) => state.updateWorkspaceDirectory);
+  const deleteWorkspaceDirectory = useAppStore((state) => state.deleteWorkspaceDirectory);
 
   // Independent Merged View state
   const mergedNodePositions = useAppStore((state) => state.mergedNodePositions);
@@ -66,6 +73,7 @@ const DAGInnerWorkspace: React.FC = () => {
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [canvasTool, setCanvasTool] = useState<'pan' | 'select'>('pan');
+  const [creationMenu, setCreationMenu] = useState<{ screenX: number; screenY: number; flowX: number; flowY: number } | null>(null);
   const isConnectingRef = useRef(false);
   const suppressPaneClickUntilRef = useRef(0);
 
@@ -79,6 +87,7 @@ const DAGInnerWorkspace: React.FC = () => {
   // Register Custom Task Node
   const nodeTypes = useMemo(() => ({
     taskNode: TaskNode,
+    directoryNode: DirectoryNode,
     componentHandle: ComponentHandleNode
   }), []);
 
@@ -164,6 +173,40 @@ const DAGInnerWorkspace: React.FC = () => {
           },
         });
       });
+
+      workspaceDirectories.forEach((directory) => {
+        if (workspaceComponentFilter !== null && !directory.componentIds.some((id) => selectedComponentIds.has(id))) return;
+        computedNodes.push({
+          id: directory.id,
+          type: 'directoryNode',
+          position: mergedNodePositions[directory.id] || directory.position,
+          data: { directoryId: directory.id },
+        });
+      });
+
+      const positionByNodeId = new Map(computedNodes.map((node) => [node.id, node.position]));
+      const childrenByNodeId = new Map<string, Set<string>>();
+      mergedEdges.forEach((edge) => {
+        const sourcePosition = positionByNodeId.get(edge.source);
+        const targetPosition = positionByNodeId.get(edge.target);
+        if (!sourcePosition || !targetPosition) return;
+        const parentId = sourcePosition.x <= targetPosition.x ? edge.source : edge.target;
+        const childId = parentId === edge.source ? edge.target : edge.source;
+        const children = childrenByNodeId.get(parentId) || new Set<string>();
+        children.add(childId);
+        childrenByNodeId.set(parentId, children);
+      });
+      const hiddenNodeIds = new Set<string>();
+      workspaceDirectories.filter((directory) => directory.isCollapsed).forEach((directory) => {
+        const queue = [...(childrenByNodeId.get(directory.id) || [])];
+        while (queue.length > 0) {
+          const nodeId = queue.shift();
+          if (!nodeId || hiddenNodeIds.has(nodeId)) continue;
+          hiddenNodeIds.add(nodeId);
+          childrenByNodeId.get(nodeId)?.forEach((childId) => queue.push(childId));
+        }
+      });
+      computedNodes = computedNodes.filter((node) => !hiddenNodeIds.has(node.id));
 
       // 2. Populate edges
       // Predefined standard inner-goal edges if BOTH endpoints have been pulled
@@ -330,7 +373,7 @@ const DAGInnerWorkspace: React.FC = () => {
 
     setLocalNodes(computedNodes);
     setLocalEdges(computedEdges);
-  }, [isMergedView, selectedGoalId, goals, mergedNodePositions, workspaceNodes, mergedEdges, tasks, workspaceComponentFilter, workspaceComponents, beginHistoryGroup, handleResizeEnd]);
+  }, [isMergedView, selectedGoalId, goals, mergedNodePositions, workspaceNodes, workspaceDirectories, mergedEdges, tasks, workspaceComponentFilter, workspaceComponents, beginHistoryGroup, handleResizeEnd]);
 
   // Standard React Flow selection and state synchronization handlers
   const onNodesChange = useCallback((changes: NodeChange[]) => {
@@ -388,11 +431,14 @@ const DAGInnerWorkspace: React.FC = () => {
       const nextPositions: Record<string, { x: number; y: number }> = {};
       localNodes.forEach((ln) => {
         // Only persist actual task node positions, ignore helper handles
-        if (ln.type === 'taskNode') {
+        if (ln.type === 'taskNode' || ln.type === 'directoryNode') {
           nextPositions[ln.id] = ln.position;
         }
       });
       updateMergedNodePositions(nextPositions);
+      if (node.type === 'directoryNode') {
+        updateWorkspaceDirectory(node.id, { position: node.position });
+      }
       if (node.type === 'componentHandle') {
         const componentId = (node.data as { componentId?: string }).componentId;
         if (componentId) updateWorkspaceComponent(componentId, { handlePosition: node.position });
@@ -411,9 +457,10 @@ const DAGInnerWorkspace: React.FC = () => {
       });
       updateGoalNodes(selectedGoalId, updatedGoalNodes);
     }
-  }, [isMergedView, selectedGoalId, goals, localNodes, updateGoalNodes, updateMergedNodePositions, updateWorkspaceComponent]);
+  }, [isMergedView, selectedGoalId, goals, localNodes, updateGoalNodes, updateMergedNodePositions, updateWorkspaceComponent, updateWorkspaceDirectory]);
 
   const selectedTaskNodes = useMemo(() => localNodes.filter((node) => node.type === 'taskNode' && node.selected), [localNodes]);
+  const selectedDirectoryNodes = useMemo(() => localNodes.filter((node) => node.type === 'directoryNode' && node.selected), [localNodes]);
   const selectedTaskIds = selectedTaskNodes.flatMap((node) => {
     const taskId = (node.data as { taskId?: string }).taskId;
     return taskId ? [taskId] : [];
@@ -426,14 +473,15 @@ const DAGInnerWorkspace: React.FC = () => {
       if (isMergedView) removeTaskFromWorkspace(taskId, workspaceComponentFilter);
       else if (selectedGoalId) deleteNodeFromGoal(selectedGoalId, node.id);
     });
-  }, [deleteNodeFromGoal, isMergedView, removeTaskFromWorkspace, selectedGoalId, selectedTaskNodes, workspaceComponentFilter]);
+    selectedDirectoryNodes.forEach((node) => deleteWorkspaceDirectory(node.id));
+  }, [deleteNodeFromGoal, deleteWorkspaceDirectory, isMergedView, removeTaskFromWorkspace, selectedDirectoryNodes, selectedGoalId, selectedTaskNodes, workspaceComponentFilter]);
 
   // Handle workspace keyboard shortcuts.
   const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
     const target = event.target as HTMLElement;
     if (target.closest('input, textarea, select, [contenteditable="true"]')) return;
 
-    if ((event.key === 'Delete' || event.key === 'Backspace') && selectedTaskNodes.length > 0) {
+    if ((event.key === 'Delete' || event.key === 'Backspace') && (selectedTaskNodes.length > 0 || selectedDirectoryNodes.length > 0)) {
       event.preventDefault();
       event.stopPropagation();
       removeSelectedNodes();
@@ -514,7 +562,7 @@ const DAGInnerWorkspace: React.FC = () => {
 
       showToast('已创建思维子节点');
     }
-  }, [localNodes, isMergedView, selectedGoalId, goals, tasks, workspaceComponentFilter, addTask, addNodeToGoal, addWorkspaceNode, addEdgeToGoal, addMergedEdge, beginHistoryGroup, endHistoryGroup, showToast, selectedTaskNodes.length, removeSelectedNodes, setActiveNodeActionsId]);
+  }, [localNodes, isMergedView, selectedGoalId, goals, tasks, workspaceComponentFilter, addTask, addNodeToGoal, addWorkspaceNode, addEdgeToGoal, addMergedEdge, beginHistoryGroup, endHistoryGroup, showToast, selectedTaskNodes.length, selectedDirectoryNodes.length, removeSelectedNodes, setActiveNodeActionsId]);
 
   // Handle new dependency connections
   const onConnect = useCallback((connection: Connection) => {
@@ -547,8 +595,35 @@ const DAGInnerWorkspace: React.FC = () => {
 
         const parentNode = sourceNode.position.x <= targetNode.position.x ? sourceNode : targetNode;
         const childNode = parentNode.id === sourceNode.id ? targetNode : sourceNode;
+        const parentDirectory = parentNode.type === 'directoryNode'
+          ? workspaceDirectories.find((directory) => directory.id === parentNode.id)
+          : undefined;
+        const childDirectory = childNode.type === 'directoryNode'
+          ? workspaceDirectories.find((directory) => directory.id === childNode.id)
+          : undefined;
         const parentTaskId = (parentNode.data as { taskId?: string }).taskId;
         const childTaskId = (childNode.data as { taskId?: string }).taskId;
+        if (parentDirectory && childTaskId && tasks[childTaskId]) {
+          updateWorkspaceDirectory(parentDirectory.id, {
+            componentIds: Array.from(new Set([...parentDirectory.componentIds, ...(tasks[childTaskId].componentIds || [])])),
+          });
+          setTaskComponentIds(childTaskId, Array.from(new Set([
+            ...(tasks[childTaskId].componentIds || []),
+            ...parentDirectory.componentIds,
+          ])));
+        }
+        if (parentTaskId && tasks[parentTaskId] && childDirectory) {
+          updateWorkspaceDirectory(childDirectory.id, {
+            componentIds: Array.from(new Set([...childDirectory.componentIds, ...(tasks[parentTaskId].componentIds || [])])),
+          });
+        }
+        if (parentDirectory && childDirectory) {
+          const sharedComponentIds = Array.from(new Set([...parentDirectory.componentIds, ...childDirectory.componentIds]));
+          updateWorkspaceDirectory(parentDirectory.id, { componentIds: sharedComponentIds });
+          updateWorkspaceDirectory(childDirectory.id, {
+            componentIds: sharedComponentIds,
+          });
+        }
         if (parentTaskId && childTaskId && tasks[parentTaskId] && tasks[childTaskId]) {
           setTaskComponentIds(childTaskId, Array.from(new Set([
             ...(tasks[childTaskId].componentIds || []),
@@ -562,7 +637,7 @@ const DAGInnerWorkspace: React.FC = () => {
       addEdgeToGoal(selectedGoalId, newEdge);
       showToast('已添加连线');
     }
-  }, [isMergedView, selectedGoalId, localNodes, tasks, addMergedEdge, addEdgeToGoal, setTaskComponentIds, beginHistoryGroup, endHistoryGroup, showToast]);
+  }, [isMergedView, selectedGoalId, localNodes, tasks, workspaceDirectories, addMergedEdge, addEdgeToGoal, setTaskComponentIds, updateWorkspaceDirectory, beginHistoryGroup, endHistoryGroup, showToast]);
 
   const onConnectStart = useCallback(() => {
     isConnectingRef.current = true;
@@ -588,14 +663,45 @@ const DAGInnerWorkspace: React.FC = () => {
   const onNodesDelete = useCallback((nodesDeleted: Node[]) => {
     nodesDeleted.forEach((node) => {
       if (isMergedView) {
-        deleteMergedNodeId(node.id);
+        if (node.type === 'directoryNode') deleteWorkspaceDirectory(node.id);
+        else deleteMergedNodeId(node.id);
       } else if (selectedGoalId) {
         deleteNodeFromGoal(selectedGoalId, node.id);
       }
     });
-  }, [isMergedView, selectedGoalId, deleteMergedNodeId, deleteNodeFromGoal]);
+  }, [isMergedView, selectedGoalId, deleteMergedNodeId, deleteNodeFromGoal, deleteWorkspaceDirectory]);
 
-  // Create a blank task exactly where the user clicks the empty canvas.
+  const createTaskAtPosition = useCallback((flowX: number, flowY: number) => {
+    const newTaskId = `t-quick-${Math.random().toString(36).substring(2, 9)}`;
+    const targetGoal = !isMergedView && selectedGoalId ? goals[selectedGoalId] : undefined;
+    const newTaskObj: Task = { id: newTaskId, title: '', description: '', duration: 0, isDone: false, componentIds: targetGoal ? [] : [...(workspaceComponentFilter || [])], startTime: '', endTime: '', color: 'indigo' };
+    beginHistoryGroup();
+    addTask(newTaskObj);
+    const newGoalNode: GoalNode = { id: `node-qk-${Math.random().toString(36).substring(2, 9)}`, taskId: newTaskId, position: { x: flowX - 56, y: flowY - 20 } };
+    if (targetGoal && selectedGoalId) addNodeToGoal(selectedGoalId, newGoalNode);
+    else addWorkspaceNode(newGoalNode);
+    endHistoryGroup();
+    setCreationMenu(null);
+  }, [addNodeToGoal, addTask, addWorkspaceNode, beginHistoryGroup, endHistoryGroup, goals, isMergedView, selectedGoalId, workspaceComponentFilter]);
+
+  const createDirectoryAtPosition = useCallback((flowX: number, flowY: number) => {
+    if (!isMergedView) {
+      showToast('目录节点请在全部工作区中创建');
+      return;
+    }
+    const directory: WorkspaceDirectory = {
+      id: `directory-${Math.random().toString(36).substring(2, 9)}`,
+      name: '新目录',
+      position: { x: flowX - 89, y: flowY - 29 },
+      color: '#9387d1',
+      componentIds: [...(workspaceComponentFilter || [])],
+      isCollapsed: false,
+    };
+    addWorkspaceDirectory(directory);
+    setCreationMenu(null);
+  }, [addWorkspaceDirectory, isMergedView, showToast, workspaceComponentFilter]);
+
+  // Open the task/directory chooser exactly where the user double-clicks.
   const handlePaneClick = useCallback((event: React.MouseEvent) => {
     if (event.detail !== 2) return;
     if (isConnectingRef.current || Date.now() < suppressPaneClickUntilRef.current) {
@@ -607,43 +713,12 @@ const DAGInnerWorkspace: React.FC = () => {
       return;
     }
 
-    const newTaskId = `t-quick-${Math.random().toString(36).substring(2, 9)}`;
-    const targetGoal = !isMergedView && selectedGoalId ? goals[selectedGoalId] : undefined;
-    const newTaskObj: Task = {
-      id: newTaskId,
-      title: '',
-      description: '',
-      duration: 0,
-      isDone: false,
-      componentIds: targetGoal ? [] : [...(workspaceComponentFilter || [])],
-      startTime: '',
-      endTime: '',
-      color: 'indigo'
-    };
-    beginHistoryGroup();
-    addTask(newTaskObj);
-
-    const newNodeId = `node-qk-${Math.random().toString(36).substring(2, 9)}`;
     const clickedPosition = screenToFlowPosition({
       x: event.clientX,
       y: event.clientY,
     });
-    const newGoalNode: GoalNode = {
-      id: newNodeId,
-      taskId: newTaskId,
-      position: {
-        x: clickedPosition.x - 56,
-        y: clickedPosition.y - 20,
-      },
-    };
-
-    if (targetGoal && selectedGoalId) {
-      addNodeToGoal(selectedGoalId, newGoalNode);
-    } else {
-      addWorkspaceNode(newGoalNode);
-    }
-    endHistoryGroup();
-  }, [workspaceComponentFilter, isMergedView, selectedGoalId, goals, addTask, addNodeToGoal, addWorkspaceNode, screenToFlowPosition, beginHistoryGroup, endHistoryGroup, showToast]);
+    setCreationMenu({ screenX: event.clientX, screenY: event.clientY, flowX: clickedPosition.x, flowY: clickedPosition.y });
+  }, [screenToFlowPosition, showToast, workspaceComponentFilter]);
 
   const activeTitle = isMergedView 
     ? '合并画布' 
@@ -652,6 +727,12 @@ const DAGInnerWorkspace: React.FC = () => {
   const activeDescription = selectedGoalId ? goals[selectedGoalId]?.description : '';
   return (
     <div className="flex-1 flex flex-col min-h-0 relative select-none">
+      {creationMenu ? (
+        <div className="fixed z-[10020] flex w-40 flex-col gap-1 rounded-xl border border-neutral-200 bg-white p-2 shadow-xl" style={{ left: creationMenu.screenX, top: creationMenu.screenY }}>
+          <button type="button" onClick={() => createTaskAtPosition(creationMenu.flowX, creationMenu.flowY)} className="flex h-9 items-center gap-2 rounded-lg px-2 text-left text-xs font-semibold text-neutral-700 hover:bg-purple-50 hover:text-purple-700"><ListTodo className="h-4 w-4" />任务节点</button>
+          <button type="button" disabled={!isMergedView} onClick={() => createDirectoryAtPosition(creationMenu.flowX, creationMenu.flowY)} className="flex h-9 items-center gap-2 rounded-lg px-2 text-left text-xs font-semibold text-neutral-700 hover:bg-purple-50 hover:text-purple-700 disabled:cursor-not-allowed disabled:opacity-40"><FolderPlus className="h-4 w-4" />分类目录</button>
+        </div>
+      ) : null}
       {selectedTaskIds.length > 1 ? <CanvasSelectionToolbar taskIds={selectedTaskIds} onRemove={removeSelectedNodes} /> : null}
       <div className="absolute left-1/2 bottom-6 z-30 flex -translate-x-1/2 items-center gap-1 rounded-xl border border-neutral-200 bg-white/95 p-1 shadow-lg">
         <button type="button" onClick={() => setCanvasTool('pan')} className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-semibold ${canvasTool === 'pan' ? 'bg-purple-100 text-purple-600' : 'text-neutral-500 hover:bg-neutral-50'}`}><MousePointer2 className="h-3.5 w-3.5" />移动</button>

@@ -52,6 +52,7 @@ const getCurrentPersistedData = (): Record<string, unknown> => {
     activeMergedGoalIds: state.activeMergedGoalIds,
     workspaceComponentFilter: state.workspaceComponentFilter,
     workspaceComponents: state.workspaceComponents,
+    workspaceDirectories: state.workspaceDirectories,
     todoLanes: state.todoLanes,
     todoItems: state.todoItems,
     timeTemplates: state.timeTemplates,

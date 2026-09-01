@@ -1,6 +1,6 @@
 import { create } from 'zustand';
-import { AppState, Task, Goal, BOMTreeItem, CategoryType, DraftBoard, DraftStroke, GoalNode, GoalEdge, AppCategory, TaskStatus, TimeTemplate, TimeTemplateBlock, TodoItem, TodoLane, WorkspaceComponent } from './types';
-import { getDescendantTaskIds, getWorkspaceGraph } from './workspaceComponents';
+import { AppState, Task, Goal, BOMTreeItem, CategoryType, DraftBoard, DraftStroke, GoalNode, GoalEdge, AppCategory, TaskStatus, TimeTemplate, TimeTemplateBlock, TodoItem, TodoLane, WorkspaceComponent, WorkspaceDirectory } from './types';
+import { getDescendantTaskIds, getDirectoryDescendantTaskIds, getWorkspaceGraph } from './workspaceComponents';
 import { getTaskTimeBlocks, normalizeTaskTimeBlocks } from './taskTimeBlocks';
 
 // Helper to generate IDs
@@ -447,6 +447,20 @@ const loadSavedState = () => {
                 handlePosition: component.handlePosition || { x: 80, y: 40 },
               }))
             : [],
+          workspaceDirectories: Array.isArray(parsed.workspaceDirectories)
+            ? parsed.workspaceDirectories.filter((directory: unknown): directory is WorkspaceDirectory => (
+                Boolean(directory)
+                && typeof directory === 'object'
+                && typeof (directory as WorkspaceDirectory).id === 'string'
+                && typeof (directory as WorkspaceDirectory).name === 'string'
+                && Boolean((directory as WorkspaceDirectory).position)
+              )).map((directory) => ({
+                ...directory,
+                color: typeof directory.color === 'string' ? directory.color : '#9387d1',
+                componentIds: Array.isArray(directory.componentIds) ? directory.componentIds : [],
+                isCollapsed: Boolean(directory.isCollapsed),
+              }))
+            : [],
           todoLanes: Array.isArray(parsed.todoLanes) && parsed.todoLanes.length > 0
             ? parsed.todoLanes.filter((lane: unknown): lane is TodoLane => (
                 Boolean(lane)
@@ -552,6 +566,7 @@ const initialIsMergedView = savedState ? savedState.isMergedView : false;
 const initialActiveMergedGoalIds = savedState ? savedState.activeMergedGoalIds : [];
 const initialWorkspaceComponentFilter = savedState ? savedState.workspaceComponentFilter : null;
 const initialWorkspaceComponents = savedState ? savedState.workspaceComponents : [];
+const initialWorkspaceDirectories = savedState ? savedState.workspaceDirectories : [];
 const initialTodoLanes = savedState ? savedState.todoLanes : DEFAULT_TODO_LANES;
 const initialTodoItems = savedState ? savedState.todoItems : [];
 const initialTimeTemplates = savedState ? savedState.timeTemplates : DEFAULT_TIME_TEMPLATES;
@@ -590,6 +605,7 @@ type HistorySnapshot = Pick<AppState,
   | 'bomTree'
   | 'categories'
   | 'workspaceComponents'
+  | 'workspaceDirectories'
   | 'todoLanes'
   | 'todoItems'
   | 'timeTemplates'
@@ -606,7 +622,7 @@ type HistorySnapshot = Pick<AppState,
 
 const HISTORY_LIMIT = 100;
 const HISTORY_KEYS = new Set<keyof HistorySnapshot>([
-  'tasks', 'taskStatuses', 'goals', 'bomTree', 'categories', 'workspaceComponents',
+  'tasks', 'taskStatuses', 'goals', 'bomTree', 'categories', 'workspaceComponents', 'workspaceDirectories',
   'todoLanes', 'todoItems', 'timeTemplates', 'activeTimeTemplateIds', 'favoriteColors',
   'drafts', 'crossGoalEdges', 'timelineTaskOrder', 'mergedNodePositions', 'workspaceNodes',
   'mergedEdges', 'mergedNodeIds',
@@ -621,6 +637,7 @@ const captureHistorySnapshot = (state: AppState): HistorySnapshot => cloneHistor
   bomTree: state.bomTree,
   categories: state.categories,
   workspaceComponents: state.workspaceComponents,
+  workspaceDirectories: state.workspaceDirectories,
   todoLanes: state.todoLanes,
   todoItems: state.todoItems,
   timeTemplates: state.timeTemplates,
@@ -657,6 +674,7 @@ export const useAppStore = create<AppState>((set, get) => {
         activeMergedGoalIds: state.activeMergedGoalIds,
         workspaceComponentFilter: state.workspaceComponentFilter,
         workspaceComponents: state.workspaceComponents,
+        workspaceDirectories: state.workspaceDirectories,
         todoLanes: state.todoLanes,
         todoItems: state.todoItems,
         timeTemplates: state.timeTemplates,
@@ -726,6 +744,7 @@ export const useAppStore = create<AppState>((set, get) => {
     activeMergedGoalIds: initialActiveMergedGoalIds,
     workspaceComponentFilter: initialWorkspaceComponentFilter,
     workspaceComponents: initialWorkspaceComponents,
+    workspaceDirectories: initialWorkspaceDirectories,
     activeComponentDetailsId: null,
     todoLanes: initialTodoLanes,
     todoItems: initialTodoItems,
@@ -905,6 +924,10 @@ export const useAppStore = create<AppState>((set, get) => {
     })),
     deleteWorkspaceComponent: (id) => persistSet((state: AppState) => ({
       workspaceComponents: state.workspaceComponents.filter((component) => component.id !== id),
+      workspaceDirectories: state.workspaceDirectories.map((directory) => ({
+        ...directory,
+        componentIds: directory.componentIds.filter((componentId) => componentId !== id),
+      })),
       tasks: Object.fromEntries(Object.entries(state.tasks).map(([taskId, task]) => [
         taskId,
         {
@@ -966,6 +989,7 @@ export const useAppStore = create<AppState>((set, get) => {
       bomTree: Array.isArray(data.bomTree) ? data.bomTree as BOMTreeItem[] : state.bomTree,
       categories: Array.isArray(data.categories) ? data.categories as AppCategory[] : state.categories,
       workspaceComponents: Array.isArray(data.workspaceComponents) ? data.workspaceComponents as WorkspaceComponent[] : state.workspaceComponents,
+      workspaceDirectories: Array.isArray(data.workspaceDirectories) ? data.workspaceDirectories as WorkspaceDirectory[] : state.workspaceDirectories,
       todoLanes: Array.isArray(data.todoLanes) ? data.todoLanes as TodoLane[] : DEFAULT_TODO_LANES,
       todoItems: normalizeTodoItems(data.todoItems),
       timeTemplates: Array.isArray(data.timeTemplates) ? data.timeTemplates as TimeTemplate[] : [],
@@ -990,7 +1014,7 @@ export const useAppStore = create<AppState>((set, get) => {
     addTaskToTodo: (taskId) => {
       const state = get();
       if (!state.tasks[taskId]) return false;
-      const mainLaneId = state.todoLanes[0]?.id || 'todo-main';
+      const mainLaneId = state.todoLanes.find((lane) => lane.id === 'todo-main')?.id || state.todoLanes[0]?.id || 'todo-main';
       const nextOrder = state.todoItems
         .filter((item) => item.laneId === mainLaneId && item.parentItemId === null)
         .reduce((max, item) => Math.max(max, item.order), -1) + 1;
@@ -1021,6 +1045,25 @@ export const useAppStore = create<AppState>((set, get) => {
       const laneName = component.name.trim() || `未命名联通块 ${componentIndex + 1}`;
       persistSet((current: AppState) => ({
         todoLanes: [...current.todoLanes, { id: laneId, name: laneName }],
+        todoItems: [...current.todoItems, ...nextItems],
+      }));
+      return laneId;
+    },
+    addDirectoryToTodo: (directoryId) => {
+      const state = get();
+      const directory = state.workspaceDirectories.find((candidate) => candidate.id === directoryId);
+      if (!directory) return null;
+      const graph = getWorkspaceGraph(state.goals, state.workspaceNodes, state.mergedEdges, {
+        ...state.mergedNodePositions,
+        ...Object.fromEntries(state.workspaceDirectories.map((item) => [item.id, state.mergedNodePositions[item.id] || item.position])),
+      });
+      const taskIds = getDirectoryDescendantTaskIds(directoryId, state.workspaceDirectories, graph);
+      const laneId = `todo-lane-${genId()}`;
+      const stateWithTemporaryLane = { ...state, todoLanes: [...state.todoLanes, { id: laneId, name: directory.name }] };
+      const nextItems = buildTodoItemsForTasks(stateWithTemporaryLane, taskIds, laneId);
+      if (nextItems.length === 0) return null;
+      persistSet((current: AppState) => ({
+        todoLanes: [...current.todoLanes, { id: laneId, name: directory.name.trim() || '未命名目录' }],
         todoItems: [...current.todoItems, ...nextItems],
       }));
       return laneId;
@@ -1084,12 +1127,21 @@ export const useAppStore = create<AppState>((set, get) => {
       }));
       return id;
     },
+    moveTodoLane: (laneId, beforeLaneId) => persistSet((state: AppState) => {
+      const fromIndex = state.todoLanes.findIndex((lane) => lane.id === laneId);
+      if (fromIndex < 0 || laneId === beforeLaneId) return {};
+      const nextLanes = [...state.todoLanes];
+      const [movedLane] = nextLanes.splice(fromIndex, 1);
+      const targetIndex = beforeLaneId ? nextLanes.findIndex((lane) => lane.id === beforeLaneId) : -1;
+      nextLanes.splice(targetIndex >= 0 ? targetIndex : nextLanes.length, 0, movedLane);
+      return { todoLanes: nextLanes };
+    }),
     renameTodoLane: (laneId, name) => persistSet((state: AppState) => ({
       todoLanes: state.todoLanes.map((lane) => lane.id === laneId ? { ...lane, name } : lane),
     })),
     deleteTodoLane: (laneId) => persistSet((state: AppState) => {
-      if (laneId === state.todoLanes[0]?.id) return {};
-      const mainLaneId = state.todoLanes[0]?.id || 'todo-main';
+      if (laneId === 'todo-main') return {};
+      const mainLaneId = state.todoLanes.find((lane) => lane.id === 'todo-main')?.id || state.todoLanes[0]?.id || 'todo-main';
       const deletedLaneItemIds = new Set(state.todoItems.filter((item) => item.laneId === laneId).map((item) => item.id));
       const mainTail = state.todoItems
         .filter((item) => item.laneId === mainLaneId && item.parentItemId === null)
@@ -1779,6 +1831,22 @@ export const useAppStore = create<AppState>((set, get) => {
       return { workspaceNodes: [...state.workspaceNodes, node] };
     }),
 
+    addWorkspaceDirectory: (directory) => persistSet((state: AppState) => {
+      if (state.workspaceDirectories.some((existing) => existing.id === directory.id)) return {};
+      return { workspaceDirectories: [...state.workspaceDirectories, directory] };
+    }),
+
+    updateWorkspaceDirectory: (directoryId, updates) => persistSet((state: AppState) => ({
+      workspaceDirectories: state.workspaceDirectories.map((directory) => (
+        directory.id === directoryId ? { ...directory, ...updates } : directory
+      )),
+    })),
+
+    deleteWorkspaceDirectory: (directoryId) => persistSet((state: AppState) => ({
+      workspaceDirectories: state.workspaceDirectories.filter((directory) => directory.id !== directoryId),
+      mergedEdges: state.mergedEdges.filter((edge) => edge.source !== directoryId && edge.target !== directoryId),
+    })),
+
     addMergedEdge: (edge) => persistSet((state: AppState) => ({
       mergedEdges: [...state.mergedEdges, edge]
     })),
@@ -1819,6 +1887,7 @@ export const useAppStore = create<AppState>((set, get) => {
       activeMergedGoalIds: [],
       workspaceComponentFilter: null,
       workspaceComponents: [],
+      workspaceDirectories: [],
       drafts: [],
       todoLanes: DEFAULT_TODO_LANES,
       todoItems: [],

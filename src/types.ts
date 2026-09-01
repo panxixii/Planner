@@ -80,6 +80,17 @@ export interface WorkspaceComponent {
   handlePosition: { x: number; y: number };
 }
 
+export interface WorkspaceDirectory {
+  id: string;
+  name: string;
+  position: { x: number; y: number };
+  color: string;
+  componentIds: string[];
+  isCollapsed: boolean;
+  startTime?: string;
+  endTime?: string;
+}
+
 export interface TodoLane {
   id: string;
   name: string;
@@ -142,6 +153,7 @@ export interface AppState {
   activeMergedGoalIds: string[]; // Goals pulled into the consolidated merged workspace (initially empty)
   workspaceComponentFilter: string[] | null; // null means the complete workspace
   workspaceComponents: WorkspaceComponent[];
+  workspaceDirectories: WorkspaceDirectory[];
   activeComponentDetailsId: string | null;
   todoLanes: TodoLane[];
   todoItems: TodoItem[];
@@ -178,9 +190,11 @@ export interface AppState {
   // Todo execution graph
   addTaskToTodo: (taskId: string) => boolean;
   addComponentToTodo: (componentId: string) => string | null;
+  addDirectoryToTodo: (directoryId: string) => string | null;
   createTodoTask: (laneId: string) => string | null;
   toggleTodoTaskComponent: (taskId: string, componentId: string) => void;
   addTodoLane: (name?: string) => string;
+  moveTodoLane: (laneId: string, beforeLaneId?: string) => void;
   renameTodoLane: (laneId: string, name: string) => void;
   deleteTodoLane: (laneId: string) => void;
   moveTodoItem: (itemId: string, laneId: string, parentItemId: string | null, beforeItemId?: string) => void;
@@ -263,6 +277,9 @@ export interface AppState {
   // Independent Merged View state
   mergedNodePositions: Record<string, { x: number; y: number }>;
   workspaceNodes: GoalNode[];
+  addWorkspaceDirectory: (directory: WorkspaceDirectory) => void;
+  updateWorkspaceDirectory: (directoryId: string, updates: Partial<Omit<WorkspaceDirectory, 'id'>>) => void;
+  deleteWorkspaceDirectory: (directoryId: string) => void;
   mergedEdges: GoalEdge[];
   mergedNodeIds: string[];
   updateMergedNodePositions: (positions: Record<string, { x: number; y: number }>) => void;

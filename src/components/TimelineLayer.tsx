@@ -5,6 +5,8 @@ import {
   ChevronRight,
   ChevronUp,
   Clock,
+  AlertTriangle,
+  Folder,
   GripVertical,
   LocateFixed,
   Plus,
@@ -13,16 +15,30 @@ import {
 import { useAppStore } from '../store';
 import { formatLocalDateTime, getTaskBlockTimestamps, getTaskTimeBlocks } from '../taskTimeBlocks';
 import { getTaskComponentIds, getWorkspaceGraph } from '../workspaceComponents';
-import type { Task, TaskTimeBlock } from '../types';
+import type { Task, TaskTimeBlock, WorkspaceDirectory } from '../types';
 
 type ZoomScaleType = 'minutes' | 'hours' | 'days';
 type ScaleDefinition = { unitMs: number; columnWidth: number };
-type TimelineTaskRow = { task: Task; depth: number; hasChildren: boolean };
+type DirectoryConstraint = { directoryId: string; start: number; end: number };
+type TimelineRow =
+  | { kind: 'task'; task: Task; depth: number; hasChildren: boolean; constraint?: DirectoryConstraint }
+  | { kind: 'directory'; directory: WorkspaceDirectory; depth: number; hasChildren: boolean; descendantTaskIds: string[] };
 type SelectedTimeBlock = { taskId: string; blockId: string };
 type TaskResizeState = {
   pointerId: number;
   taskId: string;
   blockId: string;
+  edge: 'start' | 'end' | 'move';
+  startX: number;
+  originalStart: number;
+  originalEnd: number;
+  previewStart: number;
+  previewEnd: number;
+  didMove: boolean;
+};
+type DirectoryResizeState = {
+  pointerId: number;
+  directoryId: string;
   edge: 'start' | 'end' | 'move';
   startX: number;
   originalStart: number;
@@ -137,6 +153,8 @@ export const TimelineLayer: React.FC = () => {
   const activeTimeTemplateIds = useAppStore((state) => state.activeTimeTemplateIds);
   const goals = useAppStore((state) => state.goals);
   const workspaceNodes = useAppStore((state) => state.workspaceNodes);
+  const workspaceDirectories = useAppStore((state) => state.workspaceDirectories);
+  const updateWorkspaceDirectory = useAppStore((state) => state.updateWorkspaceDirectory);
   const mergedEdges = useAppStore((state) => state.mergedEdges);
   const mergedNodePositions = useAppStore((state) => state.mergedNodePositions);
 
@@ -149,6 +167,7 @@ export const TimelineLayer: React.FC = () => {
   const pendingScrollAdjustmentRef = useRef<number | null>(null);
   const pendingFocusTimestampRef = useRef<number | null>(initialNowRef.current);
   const taskResizeRef = useRef<TaskResizeState | null>(null);
+  const directoryResizeRef = useRef<DirectoryResizeState | null>(null);
   const suppressTaskClickRef = useRef<{ key: string; until: number } | null>(null);
 
   const [zoomScale, setZoomScale] = useState<ZoomScaleType>('hours');
@@ -158,6 +177,7 @@ export const TimelineLayer: React.FC = () => {
   const [dragOverTaskId, setDragOverTaskId] = useState<string | null>(null);
   const [taskColumnWidth, setTaskColumnWidth] = useState(DEFAULT_TASK_COLUMN_WIDTH);
   const [taskResizePreview, setTaskResizePreview] = useState<TaskResizeState | null>(null);
+  const [directoryResizePreview, setDirectoryResizePreview] = useState<DirectoryResizeState | null>(null);
   const [selectedTimeBlock, setSelectedTimeBlock] = useState<SelectedTimeBlock | null>(null);
   const [collapsedTaskIds, setCollapsedTaskIds] = useState<Set<string>>(() => new Set());
   const [showCompletedTasks, setShowCompletedTasks] = useState(false);
@@ -216,72 +236,98 @@ export const TimelineLayer: React.FC = () => {
     });
   }, [timelineTaskOrder, visibleTasks]);
 
-  const timelineRows = useMemo<TimelineTaskRow[]>(() => {
+  const timelineRows = useMemo<TimelineRow[]>(() => {
     const visibleTaskIds = new Set(orderedVisibleTasks.map((task) => task.id));
-    const taskOrder = new Map<string, number>(orderedVisibleTasks.map((task, index) => [task.id, index]));
     const graph = getWorkspaceGraph(goals, workspaceNodes, mergedEdges, mergedNodePositions);
+    const selectedComponentIds = new Set(workspaceComponentFilter || []);
+    const visibleDirectories = workspaceDirectories.filter((directory) => (
+      workspaceComponentFilter === null || directory.componentIds.some((id) => selectedComponentIds.has(id))
+    ));
+    const directoryById = new Map(visibleDirectories.map((directory) => [directory.id, directory]));
+    const nodeEntityId = new Map<string, string>();
+    graph.nodeTaskIds.forEach((taskId, nodeId) => {
+      if (visibleTaskIds.has(taskId)) nodeEntityId.set(nodeId, taskId);
+    });
+    visibleDirectories.forEach((directory) => nodeEntityId.set(directory.id, directory.id));
+    const nodePositions = new Map(graph.nodePositions);
+    visibleDirectories.forEach((directory) => nodePositions.set(directory.id, mergedNodePositions[directory.id] || directory.position));
+    const orderByEntityId = new Map<string, number>();
+    orderedVisibleTasks.forEach((task, index) => orderByEntityId.set(task.id, index));
+    visibleDirectories.forEach((directory, index) => orderByEntityId.set(directory.id, orderedVisibleTasks.length + index));
     const parentCandidates = new Map<string, Map<string, number>>();
     graph.edges.forEach((edge) => {
-      const sourcePosition = graph.nodePositions.get(edge.source);
-      const targetPosition = graph.nodePositions.get(edge.target);
-      const sourceTaskId = graph.nodeTaskIds.get(edge.source);
-      const targetTaskId = graph.nodeTaskIds.get(edge.target);
-      if (!sourcePosition || !targetPosition || !sourceTaskId || !targetTaskId || sourceTaskId === targetTaskId) return;
+      const sourcePosition = nodePositions.get(edge.source);
+      const targetPosition = nodePositions.get(edge.target);
+      const sourceEntityId = nodeEntityId.get(edge.source);
+      const targetEntityId = nodeEntityId.get(edge.target);
+      if (!sourcePosition || !targetPosition || !sourceEntityId || !targetEntityId || sourceEntityId === targetEntityId) return;
       const sourceIsParent = sourcePosition.x <= targetPosition.x;
-      const parentTaskId = sourceIsParent ? sourceTaskId : targetTaskId;
-      const childTaskId = sourceIsParent ? targetTaskId : sourceTaskId;
-      if (!visibleTaskIds.has(parentTaskId) || !visibleTaskIds.has(childTaskId)) return;
+      const parentEntityId = sourceIsParent ? sourceEntityId : targetEntityId;
+      const childEntityId = sourceIsParent ? targetEntityId : sourceEntityId;
       const distance = Math.abs(targetPosition.x - sourcePosition.x);
-      const candidates = parentCandidates.get(childTaskId) || new Map<string, number>();
-      const currentDistance = candidates.get(parentTaskId);
-      if (currentDistance === undefined || distance < currentDistance) candidates.set(parentTaskId, distance);
-      parentCandidates.set(childTaskId, candidates);
+      const candidates = parentCandidates.get(childEntityId) || new Map<string, number>();
+      const currentDistance = candidates.get(parentEntityId);
+      if (currentDistance === undefined || distance < currentDistance) candidates.set(parentEntityId, distance);
+      parentCandidates.set(childEntityId, candidates);
     });
-    const parentByTaskId = new Map<string, string>();
-    parentCandidates.forEach((candidates, childTaskId) => {
+    const parentByEntityId = new Map<string, string>();
+    parentCandidates.forEach((candidates, childEntityId) => {
       let closestParentId: string | null = null;
       let closestDistance = Number.POSITIVE_INFINITY;
-      candidates.forEach((distance, parentTaskId) => {
-        if (distance < closestDistance || (distance === closestDistance && (taskOrder.get(parentTaskId) ?? Number.MAX_SAFE_INTEGER) < (taskOrder.get(closestParentId || '') ?? Number.MAX_SAFE_INTEGER))) {
-          closestParentId = parentTaskId;
+      candidates.forEach((distance, parentEntityId) => {
+        if (distance < closestDistance || (distance === closestDistance && (orderByEntityId.get(parentEntityId) ?? Number.MAX_SAFE_INTEGER) < (orderByEntityId.get(closestParentId || '') ?? Number.MAX_SAFE_INTEGER))) {
+          closestParentId = parentEntityId;
           closestDistance = distance;
         }
       });
-      if (closestParentId) parentByTaskId.set(childTaskId, closestParentId);
+      if (closestParentId) parentByEntityId.set(childEntityId, closestParentId);
     });
-    const childrenByTaskId = new Map<string, string[]>();
-    parentByTaskId.forEach((parentTaskId, childTaskId) => {
-      const children = childrenByTaskId.get(parentTaskId) || [];
-      children.push(childTaskId);
-      childrenByTaskId.set(parentTaskId, children);
+    const childrenByEntityId = new Map<string, string[]>();
+    parentByEntityId.forEach((parentId, childId) => {
+      const children = childrenByEntityId.get(parentId) || [];
+      children.push(childId);
+      childrenByEntityId.set(parentId, children);
     });
-    childrenByTaskId.forEach((children) => children.sort((left, right) => (taskOrder.get(left) ?? Number.MAX_SAFE_INTEGER) - (taskOrder.get(right) ?? Number.MAX_SAFE_INTEGER)));
+    childrenByEntityId.forEach((children) => children.sort((left, right) => (orderByEntityId.get(left) ?? Number.MAX_SAFE_INTEGER) - (orderByEntityId.get(right) ?? Number.MAX_SAFE_INTEGER)));
     const taskById = new Map<string, Task>(orderedVisibleTasks.map((task) => [task.id, task]));
-    const rows: TimelineTaskRow[] = [];
+    const rows: TimelineRow[] = [];
     const visited = new Set<string>();
-    const appendTask = (taskId: string, depth: number) => {
-      if (visited.has(taskId)) return;
-      const task = taskById.get(taskId);
-      if (!task) return;
-      visited.add(taskId);
-      const children = childrenByTaskId.get(taskId) || [];
-      rows.push({ task, depth, hasChildren: children.length > 0 });
-      if (!collapsedTaskIds.has(taskId)) children.forEach((childId) => appendTask(childId, depth + 1));
-    };
-    orderedVisibleTasks.forEach((task) => { if (!parentByTaskId.has(task.id)) appendTask(task.id, 0); });
-    orderedVisibleTasks.forEach((task) => {
-      if (visited.has(task.id)) return;
-      const ancestorIds = new Set<string>();
-      let ancestorId = parentByTaskId.get(task.id);
-      while (ancestorId && !ancestorIds.has(ancestorId)) {
-        if (visited.has(ancestorId)) return;
-        ancestorIds.add(ancestorId);
-        ancestorId = parentByTaskId.get(ancestorId);
+    const getDescendantTaskIds = (entityId: string) => {
+      const taskIds: string[] = [];
+      const queue = [...(childrenByEntityId.get(entityId) || [])];
+      const seen = new Set<string>();
+      while (queue.length > 0) {
+        const childId = queue.shift();
+        if (!childId || seen.has(childId)) continue;
+        seen.add(childId);
+        if (taskById.has(childId)) taskIds.push(childId);
+        childrenByEntityId.get(childId)?.forEach((nestedId) => queue.push(nestedId));
       }
-      appendTask(task.id, 0);
-    });
+      return taskIds;
+    };
+    const appendEntity = (entityId: string, depth: number, constraint?: DirectoryConstraint) => {
+      if (visited.has(entityId)) return;
+      visited.add(entityId);
+      const children = childrenByEntityId.get(entityId) || [];
+      const directory = directoryById.get(entityId);
+      if (directory) {
+        const start = directory.startTime ? new Date(directory.startTime).getTime() : Number.NaN;
+        const end = directory.endTime ? new Date(directory.endTime).getTime() : Number.NaN;
+        const nextConstraint = Number.isFinite(start) && Number.isFinite(end) ? { directoryId: directory.id, start, end } : constraint;
+        rows.push({ kind: 'directory', directory, depth, hasChildren: children.length > 0, descendantTaskIds: getDescendantTaskIds(entityId) });
+        if (!directory.isCollapsed) children.forEach((childId) => appendEntity(childId, depth + 1, nextConstraint));
+        return;
+      }
+      const task = taskById.get(entityId);
+      if (!task) return;
+      rows.push({ kind: 'task', task, depth, hasChildren: children.length > 0, constraint });
+      if (!collapsedTaskIds.has(task.id)) children.forEach((childId) => appendEntity(childId, depth + 1, constraint));
+    };
+    const allEntityIds = [...visibleDirectories.map((directory) => directory.id), ...orderedVisibleTasks.map((task) => task.id)];
+    allEntityIds.forEach((entityId) => { if (!parentByEntityId.has(entityId)) appendEntity(entityId, 0); });
+    allEntityIds.forEach((entityId) => appendEntity(entityId, 0));
     return rows;
-  }, [collapsedTaskIds, goals, mergedEdges, mergedNodePositions, orderedVisibleTasks, workspaceNodes]);
+  }, [collapsedTaskIds, goals, mergedEdges, mergedNodePositions, orderedVisibleTasks, workspaceComponentFilter, workspaceDirectories, workspaceNodes]);
 
   const toggleTaskCollapse = useCallback((taskId: string) => {
     setCollapsedTaskIds((current) => {
@@ -502,6 +548,45 @@ export const TimelineLayer: React.FC = () => {
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   };
 
+  const handleDirectoryResizeStart = (event: React.PointerEvent<HTMLDivElement>, directory: WorkspaceDirectory, edge: DirectoryResizeState['edge']) => {
+    if (!directory.startTime || !directory.endTime) return;
+    const start = new Date(directory.startTime).getTime();
+    const end = new Date(directory.endTime).getTime();
+    if (!Number.isFinite(start) || !Number.isFinite(end)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const next: DirectoryResizeState = { pointerId: event.pointerId, directoryId: directory.id, edge, startX: event.clientX, originalStart: start, originalEnd: end, previewStart: start, previewEnd: end, didMove: false };
+    directoryResizeRef.current = next;
+    setDirectoryResizePreview(next);
+  };
+
+  const handleDirectoryResizeMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const resize = directoryResizeRef.current;
+    if (!resize || resize.pointerId !== event.pointerId) return;
+    const pointerDelta = event.clientX - resize.startX;
+    if (resize.edge === 'move' && !resize.didMove && Math.abs(pointerDelta) < 3) return;
+    const rawDelta = (pointerDelta / scaleDefinition.columnWidth) * scaleDefinition.unitMs;
+    const snapMs = zoomScale === 'days' ? 60 * 60_000 : 60_000;
+    const delta = Math.round(rawDelta / snapMs) * snapMs;
+    const next = resize.edge === 'move'
+      ? { ...resize, previewStart: resize.originalStart + delta, previewEnd: resize.originalEnd + delta, didMove: delta !== 0 }
+      : resize.edge === 'start'
+        ? { ...resize, previewStart: Math.min(resize.originalEnd - snapMs, resize.originalStart + delta), didMove: delta !== 0 }
+        : { ...resize, previewEnd: Math.max(resize.originalStart + snapMs, resize.originalEnd + delta), didMove: delta !== 0 };
+    directoryResizeRef.current = next;
+    setDirectoryResizePreview(next);
+  };
+
+  const handleDirectoryResizeEnd = (event: React.PointerEvent<HTMLDivElement>) => {
+    const resize = directoryResizeRef.current;
+    if (!resize || resize.pointerId !== event.pointerId) return;
+    if (resize.didMove) updateWorkspaceDirectory(resize.directoryId, { startTime: formatLocalDateTime(resize.previewStart), endTime: formatLocalDateTime(resize.previewEnd) });
+    directoryResizeRef.current = null;
+    setDirectoryResizePreview(null);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+  };
+
   const getDragBorderClass = (taskId: string) => {
     if (taskId !== dragOverTaskId || !draggedTaskId) return '';
     const taskIds = orderedVisibleTasks.map((task) => task.id);
@@ -553,7 +638,41 @@ export const TimelineLayer: React.FC = () => {
 
             {templateBands.length > 0 ? <div className="pointer-events-none absolute top-11 z-0 overflow-hidden" style={{ left: 'var(--task-column-width)', width: timelineWidth, height: (timelineRows.length + 1) * 52 }}>{templateBands.map((band) => <div key={band.key} className="absolute inset-y-0" style={{ left: band.left, width: band.width, backgroundColor: withAlpha(band.color, '20') }} />)}</div> : null}
 
-            {timelineRows.map(({ task, depth, hasChildren }) => {
+            {timelineRows.map((row) => {
+              if (row.kind === 'directory') {
+                const { directory, depth, hasChildren, descendantTaskIds } = row;
+                const directoryPreview = directoryResizePreview?.directoryId === directory.id ? directoryResizePreview : null;
+                const directoryStart = directoryPreview?.previewStart ?? (directory.startTime ? new Date(directory.startTime).getTime() : Number.NaN);
+                const directoryEnd = directoryPreview?.previewEnd ?? (directory.endTime ? new Date(directory.endTime).getTime() : Number.NaN);
+                const hasTimeRange = Number.isFinite(directoryStart) && Number.isFinite(directoryEnd) && directoryEnd > directoryStart;
+                const visibleStart = hasTimeRange ? Math.max(directoryStart, rangeStart) : 0;
+                const visibleEnd = hasTimeRange ? Math.min(directoryEnd, rangeEnd) : 0;
+                const windowVisible = hasTimeRange && visibleEnd > visibleStart;
+                const windowLeft = windowVisible ? ((visibleStart - rangeStart) / scaleDefinition.unitMs) * scaleDefinition.columnWidth : 0;
+                const windowWidth = windowVisible ? Math.max(4, ((visibleEnd - visibleStart) / scaleDefinition.unitMs) * scaleDefinition.columnWidth) : 0;
+                let outOfRangeCount = 0;
+                if (hasTimeRange) descendantTaskIds.forEach((taskId) => {
+                  const childTask = tasks[taskId];
+                  if (!childTask) return;
+                  if (getTaskTimeBlocks(childTask).some((block) => { const range = getTaskBlockTimestamps(block, childTask.duration); return range.start < directoryStart || range.end > directoryEnd; })) outOfRangeCount += 1;
+                });
+                return (
+                  <div key={directory.id} className="flex h-[52px] border-b border-purple-100 bg-purple-50/30">
+                    <div style={{ width: 'var(--task-column-width)' }} className="sticky left-0 z-30 flex shrink-0 items-center border-r border-purple-100 bg-[#faf9ff] px-4 pr-5">
+                      <div className="flex min-w-0 flex-1 items-center gap-1.5" style={{ paddingLeft: depth * 18 }}>
+                        {hasChildren ? <button type="button" onClick={() => updateWorkspaceDirectory(directory.id, { isCollapsed: !directory.isCollapsed })} className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-purple-500 hover:bg-purple-100" title={directory.isCollapsed ? '展开目录' : '折叠目录'}>{directory.isCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}</button> : <span className="h-5 w-5" />}
+                        <Folder className="h-3.5 w-3.5 shrink-0" style={{ color: directory.color }} />
+                        <div className="min-w-0 flex-1"><div className="truncate text-xs font-bold text-neutral-700">{directory.name || '未命名目录'}</div><div className="mt-0.5 flex items-center gap-1.5 text-[9px] text-neutral-400"><span>{descendantTaskIds.length} 个任务</span>{outOfRangeCount > 0 ? <span className="flex items-center gap-0.5 font-semibold text-rose-500"><AlertTriangle className="h-2.5 w-2.5" />{outOfRangeCount} 个越界</span> : null}</div></div>
+                      </div>
+                    </div>
+                    <div className="relative z-0 flex shrink-0 items-center" style={{ width: timelineWidth, backgroundImage: trackBackground }}>
+                      {isNowInRange ? <div className="pointer-events-none absolute inset-y-0 z-20 w-px bg-rose-400" style={{ left: nowLinePosition }} /> : null}
+                      {windowVisible ? <div onPointerDown={(event) => handleDirectoryResizeStart(event, directory, 'move')} onPointerMove={handleDirectoryResizeMove} onPointerUp={handleDirectoryResizeEnd} onPointerCancel={handleDirectoryResizeEnd} className="absolute z-10 flex h-7 touch-none cursor-grab items-center rounded-md border-2 border-dashed bg-white/45 px-2 text-[10px] font-semibold active:cursor-grabbing" style={{ left: windowLeft, width: windowWidth, borderColor: directory.color, color: directory.color }} title="拖动移动目录时间窗；拖动两端调整范围"><div onPointerDown={(event) => handleDirectoryResizeStart(event, directory, 'start')} onPointerMove={handleDirectoryResizeMove} onPointerUp={handleDirectoryResizeEnd} onPointerCancel={handleDirectoryResizeEnd} className="absolute inset-y-0 left-0 w-2 cursor-ew-resize bg-white/60" /><span className="pointer-events-none truncate">{directory.name || '未命名目录'} · 约束时间</span><div onPointerDown={(event) => handleDirectoryResizeStart(event, directory, 'end')} onPointerMove={handleDirectoryResizeMove} onPointerUp={handleDirectoryResizeEnd} onPointerCancel={handleDirectoryResizeEnd} className="absolute inset-y-0 right-0 w-2 cursor-ew-resize bg-white/60" /></div> : <span className="ml-4 text-[10px] text-neutral-300">未设置目录截止时间</span>}
+                    </div>
+                  </div>
+                );
+              }
+              const { task, depth, hasChildren, constraint } = row;
               const blocks = getTaskTimeBlocks(task);
               const ranges = blocks.map((block) => ({ block, ...getTaskBlockTimestamps(block, task.duration) }));
               const latestEnd = ranges.reduce((latest, range) => Math.max(latest, range.end), Number.NEGATIVE_INFINITY);
@@ -582,7 +701,8 @@ export const TimelineLayer: React.FC = () => {
                       const barHex = /^#[0-9a-f]{6}$/i.test(task.color || '') ? task.color! : namedTimelineColors[task.color || 'indigo'];
                       const blockKey = `${task.id}:${block.id}`;
                       const isSelected = selectedTimeBlock?.taskId === task.id && selectedTimeBlock.blockId === block.id;
-                      return <div key={block.id} data-time-block="true" role="button" aria-pressed={isSelected} tabIndex={0} onFocus={() => setSelectedTimeBlock({ taskId: task.id, blockId: block.id })} onPointerDown={(event) => handleTaskMoveStart(event, task, block)} onPointerMove={handleTaskResizeMove} onPointerUp={handleTaskResizeEnd} onPointerCancel={handleTaskResizeEnd} onClick={(event) => { const suppressed = suppressTaskClickRef.current; if (suppressed?.key === blockKey && Date.now() < suppressed.until) { event.preventDefault(); event.stopPropagation(); return; } setSelectedTimeBlock({ taskId: task.id, blockId: block.id }); }} onKeyDown={(event) => { if (event.target === event.currentTarget && event.key === 'Enter') { event.preventDefault(); selectTask(task.id); } }} onDoubleClick={(event) => { event.stopPropagation(); selectTask(task.id); }} style={{ left: barLeft, width: barWidth, ...(!task.isDone && !barColor ? { background: `linear-gradient(to right, ${barHex}, ${barHex}C2)`, borderColor: `${barHex}99`, color: '#fff' } : {}) }} className={`group/time-block absolute z-10 flex h-7 touch-none cursor-grab items-center justify-between gap-1 rounded-md border bg-gradient-to-r px-2.5 text-left shadow-xs outline-none transition-shadow hover:z-30 hover:shadow-md active:cursor-grabbing focus-within:z-30 ${isSelected ? 'z-30 ring-2 ring-purple-500 ring-offset-1' : 'focus-visible:ring-2 focus-visible:ring-purple-200'} ${task.isDone ? 'border-neutral-300 from-neutral-100 to-neutral-200 text-neutral-400 opacity-70 line-through' : (barColor || '')}`} title="单击选中，拖动移动；双击打开任务详情；Delete 删除">
+                      const isOutsideConstraint = Boolean(constraint && (blockStart < constraint.start || blockEnd > constraint.end));
+                      return <div key={block.id} data-time-block="true" role="button" aria-pressed={isSelected} tabIndex={0} onFocus={() => setSelectedTimeBlock({ taskId: task.id, blockId: block.id })} onPointerDown={(event) => handleTaskMoveStart(event, task, block)} onPointerMove={handleTaskResizeMove} onPointerUp={handleTaskResizeEnd} onPointerCancel={handleTaskResizeEnd} onClick={(event) => { const suppressed = suppressTaskClickRef.current; if (suppressed?.key === blockKey && Date.now() < suppressed.until) { event.preventDefault(); event.stopPropagation(); return; } setSelectedTimeBlock({ taskId: task.id, blockId: block.id }); }} onKeyDown={(event) => { if (event.target === event.currentTarget && event.key === 'Enter') { event.preventDefault(); selectTask(task.id); } }} onDoubleClick={(event) => { event.stopPropagation(); selectTask(task.id); }} style={{ left: barLeft, width: barWidth, ...(!task.isDone && !barColor ? { background: `linear-gradient(to right, ${barHex}, ${barHex}C2)`, borderColor: `${barHex}99`, color: '#fff' } : {}) }} className={`group/time-block absolute z-10 flex h-7 touch-none cursor-grab items-center justify-between gap-1 rounded-md border bg-gradient-to-r px-2.5 text-left shadow-xs outline-none transition-shadow hover:z-30 hover:shadow-md active:cursor-grabbing focus-within:z-30 ${isSelected ? 'z-30 ring-2 ring-purple-500 ring-offset-1' : 'focus-visible:ring-2 focus-visible:ring-purple-200'} ${isOutsideConstraint ? 'ring-2 ring-rose-500 ring-offset-1' : ''} ${task.isDone ? 'border-neutral-300 from-neutral-100 to-neutral-200 text-neutral-400 opacity-70 line-through' : (barColor || '')}`} title={isOutsideConstraint ? '此时间块超出所属目录的约束时间' : '单击选中，拖动移动；双击打开任务详情；Delete 删除'}>
                         <div onPointerDown={(event) => handleTaskResizeStart(event, task, block, 'start')} onPointerMove={handleTaskResizeMove} onPointerUp={handleTaskResizeEnd} onPointerCancel={handleTaskResizeEnd} className="absolute inset-y-0 left-0 z-20 w-2 touch-none cursor-ew-resize bg-white/25 opacity-0 hover:opacity-100" title="拖动修改开始时间" />
                         <span className="pointer-events-none min-w-0 flex-1 truncate text-left text-[10px] font-medium">{task.title || '未命名任务'}</span>
                         {barWidth >= 78 ? <span className="flex shrink-0 items-center gap-0.5 text-[9px] opacity-85"><Clock className="h-2.5 w-2.5" />{formatDuration(blockStart, blockEnd)}</span> : null}

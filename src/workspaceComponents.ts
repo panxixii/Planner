@@ -1,4 +1,4 @@
-import type { Goal, GoalEdge, GoalNode, Task, WorkspaceComponent } from './types';
+import type { Goal, GoalEdge, GoalNode, Task, WorkspaceComponent, WorkspaceDirectory } from './types';
 
 export interface WorkspaceGraph {
   nodeTaskIds: Map<string, string>;
@@ -59,6 +59,45 @@ export const getDescendantTaskIds = (graph: WorkspaceGraph, rootTaskId: string):
   }
 
   return new Set(Array.from(visited).map((nodeId) => graph.nodeTaskIds.get(nodeId)).filter(Boolean) as string[]);
+};
+
+export const getDirectoryDescendantTaskIds = (
+  directoryId: string,
+  directories: WorkspaceDirectory[],
+  graph: WorkspaceGraph,
+): Set<string> => {
+  const directoryPositions = new Map(directories.map((directory) => [
+    directory.id,
+    graph.nodePositions.get(directory.id) || directory.position,
+  ]));
+  const nodePositions = new Map([...graph.nodePositions, ...directoryPositions]);
+  const childrenByNodeId = new Map<string, Set<string>>();
+  graph.edges.forEach((edge) => {
+    const sourcePosition = nodePositions.get(edge.source);
+    const targetPosition = nodePositions.get(edge.target);
+    if (!sourcePosition || !targetPosition) return;
+    const parentId = sourcePosition.x <= targetPosition.x ? edge.source : edge.target;
+    const childId = parentId === edge.source ? edge.target : edge.source;
+    const children = childrenByNodeId.get(parentId) || new Set<string>();
+    children.add(childId);
+    childrenByNodeId.set(parentId, children);
+  });
+
+  const taskIds = new Set<string>();
+  const visited = new Set([directoryId]);
+  const queue = [directoryId];
+  while (queue.length > 0) {
+    const nodeId = queue.shift();
+    if (!nodeId) continue;
+    childrenByNodeId.get(nodeId)?.forEach((childId) => {
+      if (visited.has(childId)) return;
+      visited.add(childId);
+      const taskId = graph.nodeTaskIds.get(childId);
+      if (taskId) taskIds.add(taskId);
+      queue.push(childId);
+    });
+  }
+  return taskIds;
 };
 
 export const getTaskComponentIds = (task: Task): string[] => task.componentIds || [];
