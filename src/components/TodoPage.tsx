@@ -24,6 +24,7 @@ import type { TodoItem, TodoLane, TodoLaneSection } from '../types';
 import { TodoBoard } from './TodoBoard';
 import { TodoGantt } from './TodoGantt';
 import { TodoItemToolbarHost } from './TodoItemToolbar';
+import { useTapClick } from './useTapClick';
 import { createPortal } from 'react-dom';
 
 const visibleLane = (lane: TodoLane) => lane.id === 'todo-main' || lane.type === 'custom';
@@ -233,11 +234,6 @@ const SectionTab: React.FC<{
   useEffect(() => clearTap, []);
   useEffect(() => { if (!editing) setDraft(section.name); }, [section.name, editing]);
   useEffect(() => { if (!toolbarOpen) setConfirmDelete(false); }, [toolbarOpen]);
-  useEffect(() => {
-    if (!confirmDelete) return undefined;
-    const timer = window.setTimeout(() => setConfirmDelete(false), 2500);
-    return () => window.clearTimeout(timer);
-  }, [confirmDelete]);
   const closeToolbar = () => { setToolbarOpen(false); setConfirmDelete(false); };
   const openToolbar = () => {
     const rect = anchorRef.current?.getBoundingClientRect();
@@ -290,14 +286,16 @@ const SectionTab: React.FC<{
             </button>
             <button
               type="button"
-              onClick={() => setConfirmDelete(true)}
-              onDoubleClick={() => { closeToolbar(); onDelete(); }}
-              className={`flex h-8 w-[76px] items-center justify-center gap-1.5 rounded-md border text-[11px] font-semibold transition-colors ${confirmDelete ? 'border-rose-500 bg-rose-600 text-white hover:bg-rose-700' : 'border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100'}`}
-              aria-label={confirmDelete ? '双击删除分段' : '删除分段'}
-              title={confirmDelete ? '双击确认删除' : '双击删除分段'}
+              onClick={() => {
+                if (confirmDelete) { closeToolbar(); onDelete(); return; }
+                setConfirmDelete(true);
+              }}
+              className={`flex h-8 w-[68px] items-center justify-center gap-1.5 rounded-md border text-[11px] font-semibold transition-colors ${confirmDelete ? 'border-rose-500 bg-rose-600 text-white hover:bg-rose-700' : 'border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100'}`}
+              aria-label={confirmDelete ? '确认删除分段' : '删除分段'}
+              title={confirmDelete ? '再次点击确认删除' : '删除分段'}
             >
-              <Trash2 className="h-3.5 w-3.5" />
-              <span>{confirmDelete ? '双击删除' : '删除'}</span>
+              {confirmDelete ? <Check className="h-3.5 w-3.5" /> : <Trash2 className="h-3.5 w-3.5" />}
+              <span>{confirmDelete ? '确认' : '删除'}</span>
             </button>
           </div>
         </>,
@@ -416,12 +414,13 @@ const TodoRow: React.FC<{ item: TodoItem }> = ({ item }) => {
   const rowRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => { if (editing) { inputRef.current?.focus(); inputRef.current?.select(); } }, [editing]);
-  const beginEdit = () => { setToolbarOpen(false); setEditing(true); };
+  const { handleClick, cancel } = useTapClick(() => { if (!editing) setToolbarOpen((open) => !open); });
+  const beginEdit = () => { cancel(); setToolbarOpen(false); setEditing(true); };
   const commitEdit = () => { if (!item.text.trim()) update(item.id, { text: '未命名待办' }); setEditing(false); };
   return (
     <div
       ref={rowRef}
-      onClick={(event) => { if (editing) return; if ((event.target as HTMLElement).closest('button, [role="toolbar"]')) return; setToolbarOpen((open) => !open); }}
+      onClick={(event) => { if (editing) return; if ((event.target as HTMLElement).closest('button, [role="toolbar"]')) return; handleClick(event); }}
       onDoubleClick={(event) => { if ((event.target as HTMLElement).closest('button')) return; beginEdit(); }}
       className={`group relative flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-neutral-50 ${editing ? 'bg-neutral-50' : 'cursor-default'}`}
       title={editing ? undefined : '单击显示操作，双击编辑'}
@@ -444,7 +443,7 @@ const TodoRow: React.FC<{ item: TodoItem }> = ({ item }) => {
   return <section className="relative rounded-xl border border-neutral-200 bg-white/80 p-4 shadow-xs">
     <div className="mb-3 flex items-center justify-between gap-3">
       <div className="flex min-w-0 items-center gap-2"><span className={`h-2 w-2 shrink-0 rounded-full ${lane.type === 'main' ? 'bg-purple-500' : 'bg-sky-400'}`} />{lane.type === 'custom' ? <input value={lane.name} onChange={(event) => renameLane(lane.id, event.target.value)} onBlur={(event) => { if (!event.currentTarget.value.trim()) renameLane(lane.id, '未命名分线'); }} className="min-w-0 flex-1 bg-transparent text-sm font-bold text-neutral-700 outline-none" aria-label="分线名称" /> : <h3 className="text-sm font-bold text-neutral-700">{lane.name}</h3>}</div>
-      <div className="flex items-center gap-2"><span className="text-[11px] text-neutral-400">{items.filter((item) => item.isDone).length}/{items.length}</span><div className="flex rounded-lg border border-neutral-200 bg-neutral-50 p-0.5"><button type="button" onClick={() => onOpenView('board')} className="flex h-7 w-7 items-center justify-center rounded-md text-purple-600 hover:bg-white hover:shadow-sm" title="画板"><GitBranch className="h-3.5 w-3.5" /></button><button type="button" onClick={() => onOpenView('kanban')} className="flex h-7 w-7 items-center justify-center rounded-md text-amber-600 hover:bg-white hover:shadow-sm" title="看板"><Columns3 className="h-3.5 w-3.5" /></button><button type="button" onClick={() => onOpenView('gantt')} className="flex h-7 w-7 items-center justify-center rounded-md text-sky-600 hover:bg-white hover:shadow-sm" title="甘特图"><CalendarDays className="h-3.5 w-3.5" /></button></div>{lane.type === 'custom' ? <button type="button" onDoubleClick={() => deleteLane(lane.id)} className="flex h-7 w-7 items-center justify-center rounded text-neutral-300 hover:bg-rose-50 hover:text-rose-500" title="双击删除分线，待办移回主线"><Trash2 className="h-3.5 w-3.5" /></button> : null}</div>
+      <div className="flex items-center gap-2"><span className="text-[11px] text-neutral-400">{items.filter((item) => item.isDone).length}/{items.length}</span><div className="flex rounded-lg border border-neutral-200 bg-neutral-50 p-0.5"><button type="button" onClick={() => onOpenView('board')} className="flex h-7 w-7 items-center justify-center rounded-md text-purple-600 hover:bg-white hover:shadow-sm" title="画板"><GitBranch className="h-3.5 w-3.5" /></button><button type="button" onClick={() => onOpenView('kanban')} className="flex h-7 w-7 items-center justify-center rounded-md text-amber-600 hover:bg-white hover:shadow-sm" title="看板"><Columns3 className="h-3.5 w-3.5" /></button><button type="button" onClick={() => onOpenView('gantt')} className="flex h-7 w-7 items-center justify-center rounded-md text-sky-600 hover:bg-white hover:shadow-sm" title="甘特图"><CalendarDays className="h-3.5 w-3.5" /></button></div>{lane.type === 'custom' ? <DeleteLaneButton onDelete={() => deleteLane(lane.id)} /> : null}</div>
     </div>
     <div ref={listRef} data-lane-list={lane.id} className="relative space-y-1.5">
       {items.map((item) => <TodoRow key={item.id} item={item} />)}
@@ -471,6 +470,21 @@ const TodoRow: React.FC<{ item: TodoItem }> = ({ item }) => {
   </section>;
 };
 
+const DeleteLaneButton: React.FC<{ onDelete: () => void }> = ({ onDelete }) => {
+  const [confirming, setConfirming] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={() => { if (confirming) { setConfirming(false); onDelete(); return; } setConfirming(true); }}
+      onMouseLeave={() => setConfirming(false)}
+      className={`flex h-7 items-center justify-center gap-1 rounded text-[11px] font-semibold transition-all ${confirming ? 'w-[52px] bg-rose-600 px-1.5 text-white' : 'w-7 text-neutral-300 hover:bg-rose-50 hover:text-rose-500'}`}
+      title={confirming ? '再次点击确认删除' : '删除分线，待办移回主线'}
+    >
+      {confirming ? <Check className="h-3.5 w-3.5" /> : <Trash2 className="h-3.5 w-3.5" />}{confirming ? '确认' : ''}
+    </button>
+  );
+};
+
 const SectionTabWrapper: React.FC<{
   laneId: string;
   section: TodoLaneSection;
@@ -495,13 +509,14 @@ const BoardNode = React.memo(({ id, data, selected }: NodeProps<Node<BoardNodeDa
   const nodeRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => { if (editing) { inputRef.current?.focus(); inputRef.current?.select(); } }, [editing]);
+  const { handleClick, cancel } = useTapClick(() => setToolbarOpen((open) => !open));
   const color = boardColors[data.color || ''] || data.color || '#9387d1';
   return <div
     ref={nodeRef}
     className={`group relative flex h-full min-h-10 w-full min-w-32 items-center rounded-[999px] border px-4 py-2 shadow-md transition-colors ${data.done ? 'border-neutral-300 bg-neutral-100/90' : 'bg-white'} ${editing ? 'nodrag' : ''}`}
     style={data.done ? undefined : { borderColor: color }}
-    onClick={(event) => { if (editing) return; if ((event.target as HTMLElement).closest('button, [role="toolbar"]')) return; setToolbarOpen((open) => !open); }}
-    onDoubleClick={(event) => { if ((event.target as HTMLElement).closest('button')) return; setToolbarOpen(false); setEditing(true); }}
+    onClick={(event) => { if (editing) return; if ((event.target as HTMLElement).closest('button, [role="toolbar"]')) return; handleClick(event); }}
+    onDoubleClick={(event) => { if ((event.target as HTMLElement).closest('button')) return; cancel(); setToolbarOpen(false); setEditing(true); }}
     title={editing ? undefined : '单击显示操作，双击编辑'}>
     <NodeResizer isVisible={selected} minWidth={128} minHeight={40} maxWidth={420} maxHeight={180} color={color} handleStyle={{ width: 8, height: 8, borderRadius: 3 }} onResizeEnd={(_event, params) => update(data.itemId, { width: params.width, height: params.height })} />
     <Handle type="target" position={Position.Left} className="!h-2.5 !w-2.5 !border-2 !border-white !bg-purple-400" />
@@ -524,6 +539,25 @@ const BoardNode = React.memo(({ id, data, selected }: NodeProps<Node<BoardNodeDa
 });
 BoardNode.displayName = 'BoardNode';
 const nodeTypes = { todoNode: BoardNode };
+
+const DeleteSelectionBar: React.FC<{ count: number; onDelete: () => void }> = ({ count, onDelete }) => {
+  const [confirming, setConfirming] = useState(false);
+  return (
+    <div className="absolute left-1/2 top-5 z-30 flex -translate-x-1/2 items-center gap-2 rounded-xl border border-neutral-200 bg-white/95 p-2 shadow-xl">
+      <span className="px-2 text-[11px] font-bold text-neutral-500">已选 {count} 项</span>
+      <button
+        type="button"
+        onClick={() => { if (confirming) { setConfirming(false); onDelete(); return; } setConfirming(true); }}
+        onMouseLeave={() => setConfirming(false)}
+        className={`flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[11px] font-semibold transition-colors ${confirming ? 'border-rose-500 bg-rose-600 text-white hover:bg-rose-700' : 'border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100'}`}
+        title={confirming ? '再次点击确认删除' : '删除选中节点'}
+      >
+        {confirming ? <Check className="h-3.5 w-3.5" /> : <Trash2 className="h-3.5 w-3.5" />}
+        {confirming ? '确认' : '删除'}
+      </button>
+    </div>
+  );
+};
 
 const BoardCanvas: React.FC<{ lane: TodoLane }> = ({ lane }) => {
   const allItems = useAppStore((state) => state.todoItems);
@@ -563,7 +597,7 @@ const BoardCanvas: React.FC<{ lane: TodoLane }> = ({ lane }) => {
     }
   }, [addEdge, create, lane.id, removeSelected, selectedNodes, update]);
   return <div onKeyDown={handleKeyDown} tabIndex={0} className="relative min-h-0 flex-1 overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-xs outline-none">
-    {selectedNodes.length > 1 ? <div className="absolute left-1/2 top-5 z-30 flex -translate-x-1/2 items-center gap-2 rounded-xl border border-neutral-200 bg-white/95 p-2 shadow-xl"><span className="px-2 text-[11px] font-bold text-neutral-500">已选 {selectedNodes.length} 项</span><button type="button" onDoubleClick={removeSelected} className="flex h-8 items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-2.5 text-[11px] font-semibold text-rose-600" title="双击删除选中节点"><Trash2 className="h-3.5 w-3.5" />删除</button></div> : null}
+    {selectedNodes.length > 1 ? <DeleteSelectionBar count={selectedNodes.length} onDelete={removeSelected} /> : null}
     <div className="absolute bottom-6 left-1/2 z-30 flex -translate-x-1/2 items-center gap-1 rounded-xl border border-neutral-200 bg-white/95 p-1 shadow-lg"><button type="button" onClick={() => setCanvasTool('pan')} className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-semibold ${canvasTool === 'pan' ? 'bg-purple-100 text-purple-600' : 'text-neutral-500 hover:bg-neutral-50'}`}><MousePointer2 className="h-3.5 w-3.5" />移动</button><button type="button" onClick={() => setCanvasTool('select')} className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-semibold ${canvasTool === 'select' ? 'bg-purple-100 text-purple-600' : 'text-neutral-500 hover:bg-neutral-50'}`}><Scan className="h-3.5 w-3.5" />框选</button></div>
     <div className="absolute bottom-6 right-6 z-30 flex items-center gap-1 rounded-xl border border-purple-200 bg-white/95 p-1.5 shadow-lg"><button type="button" onClick={() => zoomIn()} className="flex h-8 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-neutral-600 hover:bg-purple-50"><ZoomIn className="h-3.5 w-3.5" />放大</button><button type="button" onClick={() => zoomOut()} className="flex h-8 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-neutral-600 hover:bg-purple-50"><ZoomOut className="h-3.5 w-3.5" />缩小</button><button type="button" onClick={() => fitView({ padding: 0.25, duration: 400 })} className="flex h-8 items-center gap-1 rounded-lg bg-purple-50 px-2 text-[11px] font-semibold text-purple-600 hover:bg-purple-100"><Maximize className="h-3.5 w-3.5" />适应</button></div>
     <ReactFlow nodes={localNodes} edges={edges} nodeTypes={nodeTypes} onNodesChange={onNodesChange} onNodeDragStop={() => { localNodes.forEach((node) => { if (node.selected) update(node.id, { position: node.position }); }); }} onConnect={connect} onConnectStart={() => { suppressCreateRef.current = true; }} onConnectEnd={() => { window.setTimeout(() => { suppressCreateRef.current = false; }, 200); }} onEdgeDoubleClick={(_event, edge) => removeEdge(edge.id)} onPaneClick={(event) => { if (event.detail !== 2 || suppressCreateRef.current) return; const position = screenToFlowPosition({ x: event.clientX, y: event.clientY }); const itemId = create(lane.id, '新待办'); if (itemId) update(itemId, { position: { x: position.x - 80, y: position.y - 24 } }); }} zoomOnDoubleClick={false} selectionOnDrag={canvasTool === 'select'} selectionMode={SelectionMode.Partial} panOnDrag={canvasTool === 'pan' ? [0, 1, 2] : [1, 2]} nodesDeletable={false} deleteKeyCode={null} fitView minZoom={0.15} maxZoom={1.5} connectionRadius={28} connectionLineType={ConnectionLineType.Bezier} connectionLineStyle={{ stroke: '#9b8ae4', strokeWidth: 2 }}>

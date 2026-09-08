@@ -4,6 +4,10 @@ import { useAppStore } from '../store';
 import { formatLocalDateTime, parseTaskTime } from '../taskTimeBlocks';
 import type { TaskTimeBlock, TodoLane } from '../types';
 import { TodoItemToolbarHost } from './TodoItemToolbar';
+import { useTapClick } from './useTapClick';
+import type { TodoItem } from '../types';
+
+type TodoGanttItem = TodoItem;
 
 type Scale = 'minutes' | 'hours' | 'days';
 type DragState = {
@@ -36,6 +40,71 @@ const labelFor = (timestamp: number, scale: Scale) => {
 const durationLabel = (start: number, end: number) => {
   const hours = Math.max(1 / 60, (end - start) / 3_600_000);
   return hours < 24 ? `${Number.isInteger(hours) ? hours : hours.toFixed(1)}h` : `${(hours / 24).toFixed(hours % 24 === 0 ? 0 : 1)}d`;
+};
+
+const GanttTaskLabel: React.FC<{
+  item: TodoGanttItem;
+  onToggle: () => void;
+  onOpenToolbar: (el: HTMLElement) => void;
+}> = ({ item, onToggle, onOpenToolbar }) => {
+  const { handleClick } = useTapClick((element) => onOpenToolbar(element));
+  return (
+    <div
+      className="sticky left-0 z-20 flex shrink-0 cursor-default items-center gap-2 border-r border-neutral-200 bg-white px-4"
+      style={{ width: LEFT_WIDTH }}
+      onClick={(event) => { if ((event.target as HTMLElement).closest('button')) return; handleClick(event); }}
+      title="单击显示操作"
+    >
+      <button type="button" onClick={onToggle} className={`flex h-[18px] w-[18px] items-center justify-center rounded-[5px] border ${item.isDone ? 'border-neutral-500 bg-neutral-500 text-white' : 'border-neutral-300 text-transparent'}`}><Check className="h-3 w-3" /></button>
+      <span className={`min-w-0 flex-1 truncate text-xs font-semibold ${item.isDone ? 'text-neutral-400 line-through' : 'text-neutral-700'}`}>{item.text || '未命名待办'}</span>
+    </div>
+  );
+};
+
+const GanttTimeBlock: React.FC<{
+  item: TodoGanttItem;
+  left: number;
+  width: number;
+  color: string;
+  previewStart: number;
+  previewEnd: number;
+  isDone: boolean;
+  onBeginDrag: (event: React.PointerEvent<HTMLDivElement>, edge: DragState['edge']) => void;
+  onMoveDrag: (event: React.PointerEvent<HTMLDivElement>) => void;
+  onEndDrag: (event: React.PointerEvent<HTMLDivElement>) => void;
+  onOpenToolbar: (el: HTMLElement) => void;
+  onRemove: () => void;
+}> = ({ item, left, width, color, previewStart, previewEnd, isDone, onBeginDrag, onMoveDrag, onEndDrag, onOpenToolbar, onRemove }) => {
+  const { handleClick } = useTapClick((element) => onOpenToolbar(element));
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  return (
+    <div
+      onPointerDown={(event) => onBeginDrag(event, 'move')}
+      onPointerMove={onMoveDrag}
+      onPointerUp={onEndDrag}
+      onPointerCancel={onEndDrag}
+      onClick={(event) => { if (confirmRemove) return; handleClick(event); }}
+      className={`group absolute z-10 flex h-7 touch-none cursor-grab items-center rounded-md border px-2 text-[10px] font-semibold text-white shadow-sm active:cursor-grabbing ${isDone ? 'opacity-50 line-through grayscale' : ''}`}
+      style={{ left, width, backgroundColor: color, borderColor: color }}
+      title="单击显示操作；拖动移动；拖动两端调整"
+    >
+      <div onPointerDown={(event) => onBeginDrag(event, 'start')} onPointerMove={onMoveDrag} onPointerUp={onEndDrag} onPointerCancel={onEndDrag} className="absolute inset-y-0 left-0 z-20 w-2 cursor-ew-resize rounded-l-md bg-white/25 opacity-0 group-hover:opacity-100" />
+      <span className="pointer-events-none min-w-0 flex-1 truncate">{item.text}</span>
+      {width > 80 ? <span className="pointer-events-none ml-1 flex items-center gap-0.5 opacity-80"><Clock3 className="h-2.5 w-2.5" />{durationLabel(previewStart, previewEnd)}</span> : null}
+      <button
+        type="button"
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => {
+          event.stopPropagation();
+          if (confirmRemove) { onRemove(); return; }
+          setConfirmRemove(true);
+        }}
+        className={`absolute -right-2 -top-2 flex h-5 items-center justify-center rounded-full border px-1.5 text-[9px] font-bold shadow-sm transition-all ${confirmRemove ? 'border-rose-500 bg-rose-600 text-white opacity-100' : 'w-5 border-rose-200 bg-white text-rose-500 opacity-0 group-hover:opacity-100'}`}
+        title={confirmRemove ? '再次点击确认删除' : '删除时间块'}
+      >{confirmRemove ? '确认' : <Trash2 className="h-3 w-3" />}</button>
+      <div onPointerDown={(event) => onBeginDrag(event, 'end')} onPointerMove={onMoveDrag} onPointerUp={onEndDrag} onPointerCancel={onEndDrag} className="absolute inset-y-0 right-0 z-20 w-2 cursor-ew-resize rounded-r-md bg-white/25 opacity-0 group-hover:opacity-100" />
+    </div>
+  );
 };
 
 export const TodoGantt: React.FC<{ lane: TodoLane }> = ({ lane }) => {
@@ -142,7 +211,7 @@ export const TodoGantt: React.FC<{ lane: TodoLane }> = ({ lane }) => {
           <div className="flex shrink-0" style={{ width: timelineWidth }}>{headers.map((header) => <div key={header.timestamp} className="flex shrink-0 flex-col items-center justify-center border-r border-neutral-100 text-[10px] text-neutral-500" style={{ width: definition.width }}><span className="font-semibold">{header.main}</span><span className="text-[9px] text-neutral-300">{header.sub}</span></div>)}</div>
         </div>
         {items.map((item) => <div key={item.id} className="flex h-[52px] border-b border-neutral-100 hover:bg-neutral-50/50">
-          <div className="sticky left-0 z-20 flex shrink-0 cursor-default items-center gap-2 border-r border-neutral-200 bg-white px-4" style={{ width: LEFT_WIDTH }} onClick={(event) => { if ((event.target as HTMLElement).closest('button')) return; setToolbar((current) => current?.id === item.id ? null : { id: item.id, el: event.currentTarget }); }} title="单击显示操作"><button type="button" onClick={() => toggleItem(item.id)} className={`flex h-[18px] w-[18px] items-center justify-center rounded-[5px] border ${item.isDone ? 'border-neutral-500 bg-neutral-500 text-white' : 'border-neutral-300 text-transparent'}`}><Check className="h-3 w-3" /></button><span className={`min-w-0 flex-1 truncate text-xs font-semibold ${item.isDone ? 'text-neutral-400 line-through' : 'text-neutral-700'}`}>{item.text || '未命名待办'}</span></div>
+          <GanttTaskLabel item={item} onToggle={() => toggleItem(item.id)} onOpenToolbar={(el) => setToolbar((current) => current?.id === item.id ? null : { id: item.id, el })} />
           <div onDoubleClick={(event) => addAt(item.id, timestampAtEvent(event))} className="relative flex shrink-0 items-center" style={{ width: timelineWidth, backgroundImage: background }} title="双击添加时间块">
             {now >= rangeStart && now < rangeEnd ? <div className="pointer-events-none absolute inset-y-0 z-20 w-px bg-rose-400" style={{ left: ((now - rangeStart) / definition.unitMs) * definition.width }} /> : null}
             {(item.timeBlocks || []).map((block) => {
@@ -153,7 +222,7 @@ export const TodoGantt: React.FC<{ lane: TodoLane }> = ({ lane }) => {
               const left = ((Math.max(start, rangeStart) - rangeStart) / definition.unitMs) * definition.width;
               const width = Math.max(5, ((Math.min(end, rangeEnd) - Math.max(start, rangeStart)) / definition.unitMs) * definition.width);
               const color = colors[item.color || ''] || item.color || colors.indigo;
-              return <div key={block.id} onPointerDown={(event) => beginDrag(event, item.id, block, 'move')} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag} onClick={(event) => { if (dragRef.current) return; setToolbar((current) => current?.id === item.id ? null : { id: item.id, el: event.currentTarget }); }} className={`group absolute z-10 flex h-7 touch-none cursor-grab items-center rounded-md border px-2 text-[10px] font-semibold text-white shadow-sm active:cursor-grabbing ${item.isDone ? 'opacity-50 line-through grayscale' : ''}`} style={{ left, width, backgroundColor: color, borderColor: color }} title="单击显示操作；拖动移动；拖动两端调整"><div onPointerDown={(event) => beginDrag(event, item.id, block, 'start')} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag} className="absolute inset-y-0 left-0 z-20 w-2 cursor-ew-resize rounded-l-md bg-white/25 opacity-0 group-hover:opacity-100" /><span className="pointer-events-none min-w-0 flex-1 truncate">{item.text}</span>{width > 80 ? <span className="pointer-events-none ml-1 flex items-center gap-0.5 opacity-80"><Clock3 className="h-2.5 w-2.5" />{durationLabel(start, end)}</span> : null}<button type="button" onPointerDown={(event) => event.stopPropagation()} onDoubleClick={(event) => { event.stopPropagation(); removeBlock(item.id, block.id); }} className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full border border-rose-200 bg-white text-rose-500 opacity-0 shadow-sm group-hover:opacity-100" title="双击删除时间块"><Trash2 className="h-3 w-3" /></button><div onPointerDown={(event) => beginDrag(event, item.id, block, 'end')} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag} className="absolute inset-y-0 right-0 z-20 w-2 cursor-ew-resize rounded-r-md bg-white/25 opacity-0 group-hover:opacity-100" /></div>;
+              return <GanttTimeBlock key={block.id} item={item} left={left} width={width} color={color} previewStart={start} previewEnd={end} isDone={item.isDone} onBeginDrag={(event, edge) => beginDrag(event, item.id, block, edge)} onMoveDrag={moveDrag} onEndDrag={endDrag} onOpenToolbar={(el) => setToolbar((current) => current?.id === item.id ? null : { id: item.id, el })} onRemove={() => removeBlock(item.id, block.id)} />;
             })}
           </div>
         </div>)}

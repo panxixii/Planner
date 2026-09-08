@@ -3,6 +3,7 @@ import { Circle, CircleDashed, CircleCheck, Plus } from 'lucide-react';
 import { useAppStore } from '../store';
 import type { TodoItem, TodoLane } from '../types';
 import { TodoItemToolbarHost } from './TodoItemToolbar';
+import { useTapClick } from './useTapClick';
 
 const STATUS_COLUMNS: { id: string; label: string; accent: string; icon: React.FC<{ className?: string }> }[] = [
   { id: 'status-not-started', label: '未开始', accent: '#94a3b8', icon: CircleDashed },
@@ -29,6 +30,7 @@ const TodoCard: React.FC<{
   const [editing, setEditing] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => { if (editing) { inputRef.current?.focus(); inputRef.current?.select(); } }, [editing]);
+  const { handleClick, cancel } = useTapClick((element) => onOpenToolbar(element));
   return (
     <article
       draggable
@@ -37,9 +39,9 @@ const TodoCard: React.FC<{
       onClick={(event) => {
         if (editing) return;
         if ((event.target as HTMLElement).closest('button')) return;
-        onOpenToolbar(event.currentTarget);
+        handleClick(event);
       }}
-      onDoubleClick={(event) => { if ((event.target as HTMLElement).closest('button')) return; setEditing(true); }}
+      onDoubleClick={(event) => { if ((event.target as HTMLElement).closest('button')) return; cancel(); setEditing(true); }}
       className={`group rounded-lg border bg-white px-2.5 py-2 shadow-sm transition-shadow hover:shadow-md ${editing ? 'cursor-text border-purple-200' : 'cursor-grab active:cursor-grabbing'} ${isCurrent ? 'border-neutral-200' : 'border-dashed border-neutral-300'}`}
       style={dragging ? { opacity: 0.4 } : undefined}
       title={editing ? undefined : '单击显示操作，双击编辑'}

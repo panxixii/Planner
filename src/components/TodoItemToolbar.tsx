@@ -30,11 +30,6 @@ export const TodoItemToolbarHost: React.FC<{
 
   useEffect(() => { if (!open) { setConfirmDelete(false); setStatusOpen(false); } }, [open]);
   useEffect(() => {
-    if (!confirmDelete) return undefined;
-    const timer = window.setTimeout(() => setConfirmDelete(false), 2500);
-    return () => window.clearTimeout(timer);
-  }, [confirmDelete]);
-  useEffect(() => {
     if (!open || !anchor) { setPos(null); return; }
     const rect = anchor.getBoundingClientRect();
     setPos({ top: Math.max(8, rect.top - 48), left: Math.max(110, Math.min(rect.left + rect.width / 2, window.innerWidth - 110)) });
@@ -77,14 +72,17 @@ export const TodoItemToolbarHost: React.FC<{
         </div>
         <button
           type="button"
-          onClick={() => { setStatusOpen(false); setConfirmDelete(true); }}
-          onDoubleClick={() => { onClose(); remove(item.id); }}
-          className={`flex h-8 w-[76px] items-center justify-center gap-1.5 rounded-md border text-[11px] font-semibold transition-colors ${confirmDelete ? 'border-rose-500 bg-rose-600 text-white hover:bg-rose-700' : 'border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100'}`}
-          aria-label={confirmDelete ? '双击删除待办' : '删除待办'}
-          title={confirmDelete ? '双击确认删除' : '双击删除待办'}
+          onClick={() => {
+            if (confirmDelete) { onClose(); remove(item.id); return; }
+            setStatusOpen(false);
+            setConfirmDelete(true);
+          }}
+          className={`flex h-8 w-[68px] items-center justify-center gap-1.5 rounded-md border text-[11px] font-semibold transition-colors ${confirmDelete ? 'border-rose-500 bg-rose-600 text-white hover:bg-rose-700' : 'border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100'}`}
+          aria-label={confirmDelete ? '确认删除待办' : '删除待办'}
+          title={confirmDelete ? '再次点击确认删除' : '删除待办'}
         >
-          <Trash2 className="h-3.5 w-3.5" />
-          <span>{confirmDelete ? '双击删除' : '删除'}</span>
+          {confirmDelete ? <Check className="h-3.5 w-3.5" /> : <Trash2 className="h-3.5 w-3.5" />}
+          <span>{confirmDelete ? '确认' : '删除'}</span>
         </button>
       </div>
     </>,
