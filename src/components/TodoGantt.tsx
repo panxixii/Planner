@@ -73,10 +73,8 @@ const GanttTimeBlock: React.FC<{
   onBeginDrag: (event: React.PointerEvent<HTMLDivElement>, edge: DragState['edge']) => void;
   onMoveDrag: (event: React.PointerEvent<HTMLDivElement>) => void;
   onEndDrag: (event: React.PointerEvent<HTMLDivElement>) => void;
-  onOpenToolbar: (el: HTMLElement) => void;
   onRemove: () => void;
-}> = ({ item, left, width, color, previewStart, previewEnd, isDone, onBeginDrag, onMoveDrag, onEndDrag, onOpenToolbar, onRemove }) => {
-  const { handleClick } = useTapClick((element) => onOpenToolbar(element));
+}> = ({ item, left, width, color, previewStart, previewEnd, isDone, onBeginDrag, onMoveDrag, onEndDrag, onRemove }) => {
   const [confirmRemove, setConfirmRemove] = useState(false);
   return (
     <div
@@ -84,10 +82,9 @@ const GanttTimeBlock: React.FC<{
       onPointerMove={onMoveDrag}
       onPointerUp={onEndDrag}
       onPointerCancel={onEndDrag}
-      onClick={(event) => { if (confirmRemove) return; handleClick(event); }}
       className={`group absolute z-10 flex h-7 touch-none cursor-grab items-center rounded-md border px-2 text-[10px] font-semibold text-white shadow-sm active:cursor-grabbing ${isDone ? 'opacity-50 line-through grayscale' : ''}`}
       style={{ left, width, backgroundColor: color, borderColor: color }}
-      title="单击显示操作；拖动移动；拖动两端调整"
+      title="拖动移动；拖动两端调整"
     >
       <div onPointerDown={(event) => onBeginDrag(event, 'start')} onPointerMove={onMoveDrag} onPointerUp={onEndDrag} onPointerCancel={onEndDrag} className="absolute inset-y-0 left-0 z-20 w-2 cursor-ew-resize rounded-l-md bg-white/25 opacity-0 group-hover:opacity-100" />
       <span className="pointer-events-none min-w-0 flex-1 truncate">{item.text}</span>
@@ -223,7 +220,7 @@ export const TodoGantt: React.FC<{ lane: TodoLane }> = ({ lane }) => {
               const left = ((Math.max(start, rangeStart) - rangeStart) / definition.unitMs) * definition.width;
               const width = Math.max(5, ((Math.min(end, rangeEnd) - Math.max(start, rangeStart)) / definition.unitMs) * definition.width);
               const color = colors[item.color || ''] || item.color || colors.indigo;
-              return <GanttTimeBlock key={block.id} item={item} left={left} width={width} color={color} previewStart={start} previewEnd={end} isDone={item.isDone} onBeginDrag={(event, edge) => beginDrag(event, item.id, block, edge)} onMoveDrag={moveDrag} onEndDrag={endDrag} onOpenToolbar={(el) => setToolbar((current) => current?.id === item.id ? null : { id: item.id, el })} onRemove={() => removeBlock(item.id, block.id)} />;
+              return <GanttTimeBlock key={block.id} item={item} left={left} width={width} color={color} previewStart={start} previewEnd={end} isDone={item.isDone} onBeginDrag={(event, edge) => beginDrag(event, item.id, block, edge)} onMoveDrag={moveDrag} onEndDrag={endDrag} onRemove={() => removeBlock(item.id, block.id)} />;
             })}
           </div>
         </div>)}
