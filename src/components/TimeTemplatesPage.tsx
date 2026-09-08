@@ -82,6 +82,7 @@ export const TimeTemplatesPage: React.FC = () => {
   const endHistoryGroup = useAppStore((state) => state.endHistoryGroup);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(templates[0]?.id || null);
   const [detailsBlockId, setDetailsBlockId] = useState<string | null>(null);
+  const [confirmDeleteBlockId, setConfirmDeleteBlockId] = useState<string | null>(null);
   const pointerActionRef = useRef<PointerAction | null>(null);
 
   const selectedTemplate = templates.find((template) => template.id === selectedTemplateId) || null;
@@ -238,10 +239,23 @@ export const TimeTemplatesPage: React.FC = () => {
                     ), 0);
                     const rangeLabel = `${formatCyclePosition(block.startMinute, selectedTemplate.type)}–${formatCyclePosition(block.endMinute, selectedTemplate.type)}`;
                     return segments.map((segment, index) => (
-                      <div key={`${block.id}-${index}`} onDoubleClick={(event) => { event.stopPropagation(); setDetailsBlockId(block.id); }} onPointerDown={(event) => handlePointerStart(event, block, 'move')} onPointerMove={handlePointerMove} onPointerUp={handlePointerEnd} onPointerCancel={handlePointerEnd} style={{ left: segment.startMinute / cycleMinutes * timelineWidth, width: Math.max(4, segment.duration / cycleMinutes * timelineWidth), backgroundColor: block.color }} className="absolute top-9 flex h-11 touch-none cursor-grab items-center justify-center overflow-hidden rounded-md border border-white/50 px-3 text-[10px] font-semibold text-white shadow-md active:cursor-grabbing" title={`${block.label} · ${rangeLabel}`}>
+                      <div key={`${block.id}-${index}`} onDoubleClick={(event) => { event.stopPropagation(); setDetailsBlockId(block.id); }} onPointerDown={(event) => handlePointerStart(event, block, 'move')} onPointerMove={handlePointerMove} onPointerUp={handlePointerEnd} onPointerCancel={handlePointerEnd} style={{ left: segment.startMinute / cycleMinutes * timelineWidth, width: Math.max(4, segment.duration / cycleMinutes * timelineWidth), backgroundColor: block.color }} className="group absolute top-9 flex h-11 touch-none cursor-grab items-center justify-center overflow-visible rounded-md border border-white/50 px-3 text-[10px] font-semibold text-white shadow-md active:cursor-grabbing" title={`${block.label} · ${rangeLabel}`}>
                         {segment.hasStartHandle ? <div onPointerDown={(event) => handlePointerStart(event, block, 'start')} onPointerMove={handlePointerMove} onPointerUp={handlePointerEnd} onPointerCancel={handlePointerEnd} className="absolute inset-y-1 left-0 w-2 cursor-ew-resize rounded-r bg-white/50" /> : null}
                         {index === labelSegmentIndex ? <span className="truncate">{block.label}</span> : null}
                         {segment.hasEndHandle ? <div onPointerDown={(event) => handlePointerStart(event, block, 'end')} onPointerMove={handlePointerMove} onPointerUp={handlePointerEnd} onPointerCancel={handlePointerEnd} className="absolute inset-y-1 right-0 w-2 cursor-ew-resize rounded-l bg-white/50" /> : null}
+                        <button
+                          type="button"
+                          onPointerDown={(event) => event.stopPropagation()}
+                          onDoubleClick={(event) => event.stopPropagation()}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            if (confirmDeleteBlockId === block.id) { deleteBlock(selectedTemplate.id, block.id); setConfirmDeleteBlockId(null); setDetailsBlockId(null); return; }
+                            setConfirmDeleteBlockId(block.id);
+                          }}
+                          onMouseLeave={() => setConfirmDeleteBlockId((current) => (current === block.id ? null : current))}
+                          className={`absolute -right-2 -top-2 z-30 flex h-5 items-center justify-center rounded-full border px-1.5 text-[9px] font-bold shadow-sm transition-all ${confirmDeleteBlockId === block.id ? 'w-auto border-rose-500 bg-rose-600 text-white opacity-100' : 'w-5 border-rose-200 bg-white text-rose-500 opacity-0 group-hover:opacity-100'}`}
+                          title={confirmDeleteBlockId === block.id ? '再次点击确认删除' : '删除时间块'}
+                        >{confirmDeleteBlockId === block.id ? '确认' : <Trash2 className="h-3 w-3" />}</button>
                       </div>
                     ));
                   })}
@@ -268,7 +282,6 @@ export const TimeTemplatesPage: React.FC = () => {
               </fieldset>
               <ColorPicker label="时间块颜色" value={detailsBlock.color} onChange={(color) => updateBlock(selectedTemplate.id, detailsBlock.id, { color })} />
               <div className="rounded-lg bg-neutral-50 px-3 py-2 text-xs text-neutral-500">{formatCyclePosition(detailsBlock.startMinute, selectedTemplate.type)} — {formatCyclePosition(detailsBlock.endMinute, selectedTemplate.type)}</div>
-              <button type="button" onClick={() => { deleteBlock(selectedTemplate.id, detailsBlock.id); setDetailsBlockId(null); }} className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-rose-200 bg-rose-50 text-xs font-semibold text-rose-600 hover:bg-rose-100"><Trash2 className="h-4 w-4" />删除时间块</button>
             </div>
           </section>
         </div>

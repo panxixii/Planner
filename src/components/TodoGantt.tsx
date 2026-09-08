@@ -1,12 +1,13 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { CalendarDays, Check, Clock3, Folder, LocateFixed, Plus, Trash2 } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { CalendarDays, Check, Clock3, Folder, LocateFixed, Plus, Trash2, X } from 'lucide-react';
 import { useAppStore } from '../store';
 import { formatLocalDateTime, parseTaskTime } from '../taskTimeBlocks';
-import type { TaskTimeBlock, TodoLane } from '../types';
+import type { TaskTimeBlock, TodoItem, TodoLane } from '../types';
+import { DateTimePicker } from './DateTimePicker';
 import { TodoItemToolbarHost } from './TodoItemToolbar';
 import { TodoStatusBadge } from './TodoStatusBadge';
 import { useTapClick } from './useTapClick';
-import type { TodoItem } from '../types';
 
 type TodoGanttItem = TodoItem;
 
@@ -66,6 +67,7 @@ const GanttTaskLabel: React.FC<{
 
 const GanttTimeBlock: React.FC<{
   item: TodoGanttItem;
+  block: TaskTimeBlock;
   left: number;
   width: number;
   color: string;
@@ -75,35 +77,63 @@ const GanttTimeBlock: React.FC<{
   onBeginDrag: (event: React.PointerEvent<HTMLDivElement>, edge: DragState['edge']) => void;
   onMoveDrag: (event: React.PointerEvent<HTMLDivElement>) => void;
   onEndDrag: (event: React.PointerEvent<HTMLDivElement>) => void;
+  onUpdate: (updates: Partial<Pick<TaskTimeBlock, 'startTime' | 'endTime'>>) => void;
   onRemove: () => void;
-}> = ({ item, left, width, color, previewStart, previewEnd, isDone, onBeginDrag, onMoveDrag, onEndDrag, onRemove }) => {
+}> = ({ item, block, left, width, color, previewStart, previewEnd, isDone, onBeginDrag, onMoveDrag, onEndDrag, onUpdate, onRemove }) => {
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const pressRef = useRef<{ x: number; y: number } | null>(null);
+  const movedRef = useRef(false);
+  useEffect(() => { if (!detailsOpen) setConfirmRemove(false); }, [detailsOpen]);
   return (
-    <div
-      onPointerDown={(event) => onBeginDrag(event, 'move')}
-      onPointerMove={onMoveDrag}
-      onPointerUp={onEndDrag}
-      onPointerCancel={onEndDrag}
-      className={`group absolute z-10 flex h-7 touch-none cursor-grab items-center rounded-md border px-2 text-[10px] font-semibold text-white shadow-sm active:cursor-grabbing ${isDone ? 'opacity-50 line-through grayscale' : ''}`}
-      style={{ left, width, backgroundColor: color, borderColor: color }}
-      title="拖动移动；拖动两端调整"
-    >
-      <div onPointerDown={(event) => onBeginDrag(event, 'start')} onPointerMove={onMoveDrag} onPointerUp={onEndDrag} onPointerCancel={onEndDrag} className="absolute inset-y-0 left-0 z-20 w-2 cursor-ew-resize rounded-l-md bg-white/25 opacity-0 group-hover:opacity-100" />
-      <span className="pointer-events-none min-w-0 flex-1 truncate">{item.text}</span>
-      {width > 80 ? <span className="pointer-events-none ml-1 flex items-center gap-0.5 opacity-80"><Clock3 className="h-2.5 w-2.5" />{durationLabel(previewStart, previewEnd)}</span> : null}
-      <button
-        type="button"
-        onPointerDown={(event) => event.stopPropagation()}
-        onClick={(event) => {
-          event.stopPropagation();
-          if (confirmRemove) { onRemove(); return; }
-          setConfirmRemove(true);
+    <>
+      <div
+        onPointerDown={(event) => { movedRef.current = false; pressRef.current = { x: event.clientX, y: event.clientY }; onBeginDrag(event, 'move'); }}
+        onPointerMove={(event) => {
+          const press = pressRef.current;
+          if (press && Math.hypot(event.clientX - press.x, event.clientY - press.y) >= 4) movedRef.current = true;
+          onMoveDrag(event);
         }}
-        className={`absolute -right-2 -top-2 flex h-5 items-center justify-center rounded-full border px-1.5 text-[9px] font-bold shadow-sm transition-all ${confirmRemove ? 'border-rose-500 bg-rose-600 text-white opacity-100' : 'w-5 border-rose-200 bg-white text-rose-500 opacity-0 group-hover:opacity-100'}`}
-        title={confirmRemove ? '再次点击确认删除' : '删除时间块'}
-      >{confirmRemove ? '确认' : <Trash2 className="h-3 w-3" />}</button>
-      <div onPointerDown={(event) => onBeginDrag(event, 'end')} onPointerMove={onMoveDrag} onPointerUp={onEndDrag} onPointerCancel={onEndDrag} className="absolute inset-y-0 right-0 z-20 w-2 cursor-ew-resize rounded-r-md bg-white/25 opacity-0 group-hover:opacity-100" />
-    </div>
+        onPointerUp={onEndDrag}
+        onPointerCancel={onEndDrag}
+        onClick={(event) => { if (movedRef.current || confirmRemove) return; setDetailsOpen(true); event.stopPropagation(); }}
+        className={`group absolute z-10 flex h-7 touch-none cursor-grab items-center rounded-md border px-2 text-[10px] font-semibold text-white shadow-sm active:cursor-grabbing ${isDone ? 'opacity-50 line-through grayscale' : ''}`}
+        style={{ left, width, backgroundColor: color, borderColor: color }}
+        title="单击查看详情；拖动移动；拖动两端调整"
+      >
+        <div onPointerDown={(event) => onBeginDrag(event, 'start')} onPointerMove={onMoveDrag} onPointerUp={onEndDrag} onPointerCancel={onEndDrag} className="absolute inset-y-0 left-0 z-20 w-2 cursor-ew-resize rounded-l-md bg-white/25 opacity-0 group-hover:opacity-100" />
+        <span className="pointer-events-none min-w-0 flex-1 truncate">{item.text}</span>
+        {width > 80 ? <span className="pointer-events-none ml-1 flex items-center gap-0.5 opacity-80"><Clock3 className="h-2.5 w-2.5" />{durationLabel(previewStart, previewEnd)}</span> : null}
+        <button
+          type="button"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            if (confirmRemove) { onRemove(); return; }
+            setConfirmRemove(true);
+          }}
+          onMouseLeave={() => setConfirmRemove(false)}
+          className={`absolute -right-2 -top-2 flex h-5 items-center justify-center rounded-full border px-1.5 text-[9px] font-bold shadow-sm transition-all ${confirmRemove ? 'border-rose-500 bg-rose-600 text-white opacity-100' : 'w-5 border-rose-200 bg-white text-rose-500 opacity-0 group-hover:opacity-100'}`}
+          title={confirmRemove ? '再次点击确认删除' : '删除时间块'}
+        >{confirmRemove ? '确认' : <Trash2 className="h-3 w-3" />}</button>
+        <div onPointerDown={(event) => onBeginDrag(event, 'end')} onPointerMove={onMoveDrag} onPointerUp={onEndDrag} onPointerCancel={onEndDrag} className="absolute inset-y-0 right-0 z-20 w-2 cursor-ew-resize rounded-r-md bg-white/25 opacity-0 group-hover:opacity-100" />
+      </div>
+      {detailsOpen ? createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto p-4">
+          <button type="button" onClick={() => setDetailsOpen(false)} className="absolute inset-0 bg-neutral-900/25" aria-label="关闭时间块详情" />
+          <section className="custom-scrollbar relative max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-2xl border border-neutral-200 bg-white p-5 shadow-2xl">
+            <div className="mb-5 flex items-center justify-between"><h2 className="text-sm font-bold text-neutral-800">时间块详情</h2><button type="button" onClick={() => setDetailsOpen(false)} className="flex h-8 w-8 items-center justify-center rounded-md text-neutral-400 hover:bg-neutral-100" aria-label="关闭"><X className="h-4 w-4" /></button></div>
+            <div className="space-y-4">
+              <label className="block space-y-1.5"><span className="text-xs font-semibold text-neutral-600">所属待办</span><input readOnly value={item.text || '未命名待办'} className="h-10 w-full cursor-default rounded-lg border border-neutral-200 bg-neutral-50 px-3 text-sm text-neutral-500 outline-none" aria-label="所属待办" /></label>
+              <label className="block space-y-1.5"><span className="text-xs font-semibold text-neutral-600">开始时间</span><DateTimePicker value={block.startTime} onChange={(value) => onUpdate({ startTime: value })} placeholder="选择开始日期与时间" /></label>
+              <label className="block space-y-1.5"><span className="text-xs font-semibold text-neutral-600">结束时间</span><DateTimePicker value={block.endTime} onChange={(value) => onUpdate({ endTime: value })} placeholder="选择结束日期与时间" /></label>
+              <div className="rounded-lg bg-neutral-50 px-3 py-2 text-xs text-neutral-500">{formatLocalDateTime(parseTaskTime(block.startTime))} — {formatLocalDateTime(parseTaskTime(block.endTime))} · {durationLabel(parseTaskTime(block.startTime), parseTaskTime(block.endTime))}</div>
+            </div>
+          </section>
+        </div>,
+        document.body,
+      ) : null}
+    </>
   );
 };
 
@@ -222,7 +252,7 @@ export const TodoGantt: React.FC<{ lane: TodoLane }> = ({ lane }) => {
               const left = ((Math.max(start, rangeStart) - rangeStart) / definition.unitMs) * definition.width;
               const width = Math.max(5, ((Math.min(end, rangeEnd) - Math.max(start, rangeStart)) / definition.unitMs) * definition.width);
               const color = colors[item.color || ''] || item.color || colors.indigo;
-              return <GanttTimeBlock key={block.id} item={item} left={left} width={width} color={color} previewStart={start} previewEnd={end} isDone={item.isDone} onBeginDrag={(event, edge) => beginDrag(event, item.id, block, edge)} onMoveDrag={moveDrag} onEndDrag={endDrag} onRemove={() => removeBlock(item.id, block.id)} />;
+              return <GanttTimeBlock key={block.id} item={item} block={block} left={left} width={width} color={color} previewStart={start} previewEnd={end} isDone={item.isDone} onBeginDrag={(event, edge) => beginDrag(event, item.id, block, edge)} onMoveDrag={moveDrag} onEndDrag={endDrag} onUpdate={(updates) => updateBlock(item.id, block.id, updates)} onRemove={() => removeBlock(item.id, block.id)} />;
             })}
           </div>
         </div>)}
