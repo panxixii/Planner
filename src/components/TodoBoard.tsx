@@ -3,6 +3,7 @@ import { Circle, CircleDashed, CircleCheck, Plus } from 'lucide-react';
 import { useAppStore } from '../store';
 import type { TodoItem, TodoLane } from '../types';
 import { TodoItemToolbarHost } from './TodoItemToolbar';
+import { TodoStatusBadge } from './TodoStatusBadge';
 import { useTapClick } from './useTapClick';
 
 const STATUS_COLUMNS: { id: string; label: string; accent: string; icon: React.FC<{ className?: string }> }[] = [
@@ -55,9 +56,10 @@ const TodoCard: React.FC<{
           onChange={(event) => onUpdate(event.target.value)}
           onBlur={() => { if (!item.text.trim()) onUpdate('未命名待办'); setEditing(false); }}
           onKeyDown={(event) => { if (event.key === 'Enter' || event.key === 'Escape') event.currentTarget.blur(); }}
-          className={`min-w-0 flex-1 bg-transparent py-0.5 text-xs font-semibold outline-none ${item.isDone ? 'text-neutral-400 line-through' : 'text-neutral-700'}`}
+          className={`min-w-0 flex-1 bg-transparent py-0.5 text-xs font-semibold outline-none ${editing ? 'cursor-text' : 'cursor-default'} ${item.isDone ? 'text-neutral-400 line-through' : 'text-neutral-700'}`}
           aria-label="待办文本"
         />
+        <TodoStatusBadge itemId={item.id} />
       </div>
     </article>
   );
