@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, GripHorizontal, ListPlus, PanelRightOpen } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { GripHorizontal, PanelRightOpen } from 'lucide-react';
 import { Handle, Position } from '@xyflow/react';
 import { useAppStore } from '../store';
 
@@ -13,17 +13,9 @@ interface ComponentHandleNodeData {
 export const ComponentHandleNode: React.FC<{ data: ComponentHandleNodeData }> = ({ data }) => {
   const openComponentDetails = useAppStore((state) => state.openComponentDetails);
   const updateComponent = useAppStore((state) => state.updateWorkspaceComponent);
-  const addComponentToTodo = useAppStore((state) => state.addComponentToTodo);
-  const tasks = useAppStore((state) => state.tasks);
-  const todoItems = useAppStore((state) => state.todoItems);
-  const memberTaskIds = useMemo(() => Object.values(tasks)
-    .filter((task) => task.componentIds?.includes(data.componentId))
-    .map((task) => task.id), [data.componentId, tasks]);
-  const todoTaskIds = useMemo(() => new Set(todoItems.map((item) => item.taskId)), [todoItems]);
   const handleNodeId = `handle-cc-${data.componentId}`;
   const showActions = useAppStore((state) => state.activeNodeActionsId === handleNodeId);
   const setActiveNodeActionsId = useAppStore((state) => state.setActiveNodeActionsId);
-  const allInTodo = memberTaskIds.length > 0 && memberTaskIds.every((taskId) => todoTaskIds.has(taskId));
   const inputRef = useRef<HTMLInputElement>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [draftName, setDraftName] = useState('');
@@ -48,19 +40,6 @@ export const ComponentHandleNode: React.FC<{ data: ComponentHandleNodeData }> = 
           onDoubleClick={(event) => event.stopPropagation()}
           onMouseDown={(event) => event.stopPropagation()}
         >
-          <button
-            type="button"
-            disabled={memberTaskIds.length === 0 || allInTodo}
-            onClick={() => {
-              addComponentToTodo(data.componentId);
-              setActiveNodeActionsId(null);
-            }}
-            className="flex h-8 min-w-[104px] items-center justify-center gap-1.5 rounded-md border border-sky-200 bg-sky-50 px-3 text-[11px] font-semibold text-sky-600 transition-colors hover:bg-sky-100 disabled:cursor-default disabled:opacity-50"
-            title={allInTodo ? '此联通块的节点均已在 Todo 中' : '创建同名 Todo 分线并加入全部未加入节点'}
-          >
-            {allInTodo ? <Check className="h-3.5 w-3.5" /> : <ListPlus className="h-3.5 w-3.5" />}
-            <span>Todo</span>
-          </button>
           <button type="button" onClick={() => { setActiveNodeActionsId(null); openComponentDetails(data.componentId); }} className="flex h-8 min-w-[76px] items-center justify-center gap-1.5 rounded-md border border-neutral-200 bg-neutral-50 px-3 text-[11px] font-semibold text-neutral-600 hover:border-purple-200 hover:bg-purple-50 hover:text-purple-600" title="打开联通块详情"><PanelRightOpen className="h-3.5 w-3.5" />详情</button>
         </div>
       ) : null}

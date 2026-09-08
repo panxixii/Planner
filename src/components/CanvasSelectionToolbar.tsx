@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CheckCircle2, ListPlus, Network, Trash2, Undo2 } from 'lucide-react';
+import { CheckCircle2, Network, Trash2, Undo2 } from 'lucide-react';
 import { useAppStore } from '../store';
 import { getComponentLabel } from '../workspaceComponents';
 import { ColorPicker } from './ColorPicker';
@@ -13,7 +13,6 @@ export const CanvasSelectionToolbar: React.FC<CanvasSelectionToolbarProps> = ({ 
   const tasks = useAppStore((state) => state.tasks);
   const components = useAppStore((state) => state.workspaceComponents);
   const updateTask = useAppStore((state) => state.updateTask);
-  const addTaskToTodo = useAppStore((state) => state.addTaskToTodo);
   const setTaskComponentIds = useAppStore((state) => state.setTaskComponentIds);
   const beginHistoryGroup = useAppStore((state) => state.beginHistoryGroup);
   const endHistoryGroup = useAppStore((state) => state.endHistoryGroup);
@@ -33,7 +32,6 @@ export const CanvasSelectionToolbar: React.FC<CanvasSelectionToolbarProps> = ({ 
       <button type="button" onClick={() => runGrouped(() => taskIds.forEach((taskId) => updateTask(taskId, { isDone: !allDone })))} className="flex h-9 items-center gap-1.5 rounded-lg border border-neutral-200 px-2.5 text-[11px] font-semibold text-neutral-600 hover:bg-neutral-50">
         {allDone ? <Undo2 className="h-3.5 w-3.5" /> : <CheckCircle2 className="h-3.5 w-3.5" />}{allDone ? '恢复任务' : '设为完成'}
       </button>
-      <button type="button" onClick={() => runGrouped(() => taskIds.forEach(addTaskToTodo))} className="flex h-9 items-center gap-1.5 rounded-lg border border-sky-200 bg-sky-50 px-2.5 text-[11px] font-semibold text-sky-600"><ListPlus className="h-3.5 w-3.5" />加入 Todo</button>
       <div className="relative">
         <button type="button" onClick={() => setShowComponents((value) => !value)} className="flex h-9 items-center gap-1.5 rounded-lg border border-purple-200 bg-purple-50 px-2.5 text-[11px] font-semibold text-purple-600"><Network className="h-3.5 w-3.5" />归属</button>
         {showComponents ? (

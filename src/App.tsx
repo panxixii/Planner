@@ -8,16 +8,9 @@ import {
   FilePenLine,
   ListTodo,
   Redo2,
-  Trash2,
   Undo2,
-  Workflow,
 } from 'lucide-react';
 import { useAppStore } from './store';
-import { TaskDrawer } from './components/TaskDrawer';
-import { DAGWorkspace } from './components/DAGWorkspace';
-import { TimelineLayer } from './components/TimelineLayer';
-import { WorkspaceFilterBar } from './components/WorkspaceFilterBar';
-import { ComponentDetailsDrawer } from './components/ComponentDetailsDrawer';
 import { DataTransferControls } from './components/DataTransferControls';
 import { WelcomeScreen } from './components/WelcomeScreen';
 
@@ -25,11 +18,10 @@ const TodoPage = lazy(() => import('./components/TodoPage').then((module) => ({ 
 const TimeTemplatesPage = lazy(() => import('./components/TimeTemplatesPage').then((module) => ({ default: module.TimeTemplatesPage })));
 const DraftsPage = lazy(() => import('./components/DraftsPage').then((module) => ({ default: module.DraftsPage })));
 
-type MenuId = 'task-pool' | 'workspace' | 'drafts' | 'time-templates' | 'statistics';
+type MenuId = 'task-pool' | 'drafts' | 'time-templates' | 'statistics';
 
 const menuItems = [
   { id: 'task-pool' as const, label: 'Todo', icon: ListTodo },
-  { id: 'workspace' as const, label: '工作区', icon: Workflow },
   { id: 'drafts' as const, label: '草稿', icon: FilePenLine },
   { id: 'time-templates' as const, label: '时间模版', icon: Clock3 },
   { id: 'statistics' as const, label: '统计', icon: BarChart3 },
@@ -37,11 +29,8 @@ const menuItems = [
 
 export default function App() {
   const [showWelcome, setShowWelcome] = useState(true);
-  const [activeMenu, setActiveMenu] = useState<MenuId>('workspace');
-  const isMergedView = useAppStore((state) => state.isMergedView);
-  const setMergedView = useAppStore((state) => state.setMergedView);
+  const [activeMenu, setActiveMenu] = useState<MenuId>('task-pool');
   const selectTask = useAppStore((state) => state.selectTask);
-  const clearWorkspace = useAppStore((state) => state.clearWorkspace);
   const isSidebarCollapsed = useAppStore((state) => state.isSidebarCollapsed);
   const toggleSidebar = useAppStore((state) => state.toggleSidebar);
   const canUndo = useAppStore((state) => state.canUndo);
@@ -49,13 +38,7 @@ export default function App() {
   const undo = useAppStore((state) => state.undo);
   const redo = useAppStore((state) => state.redo);
 
-  const activeMenuLabel = menuItems.find((item) => item.id === activeMenu)?.label || '工作区';
-
-  useEffect(() => {
-    if (activeMenu === 'workspace' && !isMergedView) {
-      setMergedView(true);
-    }
-  }, [activeMenu, isMergedView, setMergedView]);
+  const activeMenuLabel = menuItems.find((item) => item.id === activeMenu)?.label || 'Todo';
 
   useEffect(() => {
     const handleHistoryShortcut = (event: KeyboardEvent) => {
@@ -72,11 +55,7 @@ export default function App() {
 
   const handleMenuChange = (menuId: MenuId) => {
     setActiveMenu(menuId);
-    if (menuId === 'workspace') {
-      setMergedView(true);
-    } else {
-      selectTask(null);
-    }
+    selectTask(null);
   };
 
   if (showWelcome) return <WelcomeScreen onStart={() => setShowWelcome(false)} />;
@@ -158,35 +137,13 @@ export default function App() {
               <button type="button" disabled={!canUndo} onClick={undo} className="flex h-7 w-8 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-white hover:text-purple-600 disabled:cursor-default disabled:opacity-30" title="撤销（Ctrl/Cmd + Z）" aria-label="撤销"><Undo2 className="h-3.5 w-3.5" /></button>
               <button type="button" disabled={!canRedo} onClick={redo} className="flex h-7 w-8 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-white hover:text-purple-600 disabled:cursor-default disabled:opacity-30" title="重做（Ctrl/Cmd + Shift + Z）" aria-label="重做"><Redo2 className="h-3.5 w-3.5" /></button>
             </div>
-            {activeMenu === 'workspace' ? (
-              <>
+            {activeMenu === 'task-pool' ? (
               <DataTransferControls />
-              <button
-                onClick={() => {
-                  if (window.confirm('您确定要清空工作区中的所有计划和目标数据吗？')) {
-                    clearWorkspace();
-                  }
-                }}
-                className="planner-danger-button flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1 text-xs font-bold shadow-2xs transition-all"
-                title="清空所有自定义计划与任务"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-                <span>清空计划</span>
-              </button>
-              </>
             ) : null}
           </div>
         </header>
 
-        {activeMenu === 'workspace' ? (
-          <div className="relative flex min-h-0 flex-1 flex-col">
-            <WorkspaceFilterBar />
-            <div className="flex min-h-0 flex-grow flex-col">
-              <DAGWorkspace />
-            </div>
-            <TimelineLayer />
-          </div>
-        ) : activeMenu === 'task-pool' ? (
+        {activeMenu === 'task-pool' ? (
           <Suspense fallback={<div className="flex min-h-0 flex-1 items-center justify-center text-sm text-neutral-400">正在加载 Todo…</div>}>
             <TodoPage />
           </Suspense>
@@ -203,8 +160,6 @@ export default function App() {
         )}
       </main>
 
-      {activeMenu === 'workspace' || activeMenu === 'task-pool' ? <TaskDrawer /> : null}
-      {activeMenu === 'workspace' ? <ComponentDetailsDrawer /> : null}
     </div>
   );
 }

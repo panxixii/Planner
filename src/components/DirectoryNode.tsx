@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Handle, NodeProps, NodeResizer, Position } from '@xyflow/react';
-import { Check, ChevronDown, ChevronRight, Clock3, ListPlus, ListTodo, Network, Trash2, X } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, Clock3, ListTodo, Network, Trash2, X } from 'lucide-react';
 import { useAppStore } from '../store';
 import { getComponentLabel } from '../workspaceComponents';
 import { getNodeColorScheme } from '../nodeColors';
@@ -23,7 +23,6 @@ export const DirectoryNode = React.memo(({ id, data, selected }: NodeProps) => {
   const components = useAppStore((state) => state.workspaceComponents);
   const updateDirectory = useAppStore((state) => state.updateWorkspaceDirectory);
   const deleteDirectory = useAppStore((state) => state.deleteWorkspaceDirectory);
-  const addDirectoryToTodo = useAppStore((state) => state.addDirectoryToTodo);
   const convertToTask = useAppStore((state) => state.convertWorkspaceDirectoryToTask);
   const showActions = useAppStore((state) => state.activeNodeActionsId === id);
   const setActiveNodeActionsId = useAppStore((state) => state.setActiveNodeActionsId);
@@ -155,7 +154,6 @@ export const DirectoryNode = React.memo(({ id, data, selected }: NodeProps) => {
               </div>
             ) : null}
           </div>
-          <button type="button" onClick={() => { addDirectoryToTodo(directory.id); setActiveNodeActionsId(null); }} className="flex h-8 w-[68px] items-center justify-center gap-1.5 rounded-md border border-sky-200 bg-sky-50 text-[11px] font-semibold text-sky-600 hover:bg-sky-100" title="将目录下任务加入同名 Todo 分线"><ListPlus className="h-3.5 w-3.5" />Todo</button>
         </div>
       ) : null}
 

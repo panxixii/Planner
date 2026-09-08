@@ -1,4 +1,4 @@
-import { PLANNER_STORAGE_KEY, useAppStore } from './store';
+import { useAppStore } from './store';
 
 const BACKUP_FORMAT = 'planner-data-backup';
 const BACKUP_VERSION = 1;
@@ -33,12 +33,6 @@ const withoutDraftStrokes = (data: Record<string, unknown>): Record<string, unkn
 });
 
 const getCurrentPersistedData = (): Record<string, unknown> => {
-  const saved = localStorage.getItem(PLANNER_STORAGE_KEY);
-  if (saved) {
-    const parsed: unknown = JSON.parse(saved);
-    if (validateData(parsed)) return withoutDraftStrokes(parsed);
-  }
-
   const state = useAppStore.getState();
   return {
     tasks: state.tasks,
@@ -55,6 +49,8 @@ const getCurrentPersistedData = (): Record<string, unknown> => {
     workspaceDirectories: state.workspaceDirectories,
     todoLanes: state.todoLanes,
     todoItems: state.todoItems,
+    todoEdges: state.todoEdges,
+    todoWorkspaceMigrated: state.todoWorkspaceMigrated,
     timeTemplates: state.timeTemplates,
     activeTimeTemplateIds: state.activeTimeTemplateIds,
     favoriteColors: state.favoriteColors,
