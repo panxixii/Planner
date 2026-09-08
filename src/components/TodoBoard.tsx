@@ -71,7 +71,7 @@ export const TodoBoard: React.FC<{ lane: TodoLane }> = ({ lane }) => {
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropColumn, setDropColumn] = useState<string | null>(null);
   const [toolbar, setToolbar] = useState<{ id: string; el: HTMLElement } | null>(null);
-  const items = useMemo(() => allItems.filter((item) => item.laneId === lane.id).sort((a, b) => a.order - b.order), [allItems, lane.id]);
+  const items = useMemo(() => allItems.filter((item) => item.laneId === lane.id && !item.isDirectory).sort((a, b) => a.order - b.order), [allItems, lane.id]);
   const doneSet = useMemo(() => new Set(items.filter((item) => item.isDone).map((item) => item.id)), [items]);
   const columns = useMemo(() => STATUS_COLUMNS.map((column) => ({
     ...column,

@@ -231,6 +231,7 @@ const normalizeTodoItems = (
       color: typeof item.color === 'string' ? item.color : undefined,
       sectionId: typeof item.sectionId === 'string' ? item.sectionId : undefined,
       progressStatus: item.progressStatus === 'in-progress' ? 'in-progress' : item.progressStatus === 'not-started' ? 'not-started' : undefined,
+      isDirectory: item.isDirectory === true ? true : undefined,
       timeBlocks: Array.isArray(item.timeBlocks) ? item.timeBlocks.flatMap((block: unknown): TaskTimeBlock[] => {
         if (!block || typeof block !== 'object') return [];
         const candidate = block as Partial<TaskTimeBlock>;
@@ -1255,6 +1256,11 @@ export const useAppStore = create<AppState>((set, get) => {
     }),
     toggleTodoItemDone: (itemId) => persistSet((state: AppState) => ({
       todoItems: state.todoItems.map((item) => item.id === itemId ? { ...item, isDone: !item.isDone } : item),
+    })),
+    toggleTodoItemDirectory: (itemId) => persistSet((state: AppState) => ({
+      todoItems: state.todoItems.map((item) => item.id === itemId
+        ? { ...item, isDirectory: !item.isDirectory, position: item.position, width: item.isDirectory ? item.width : Math.max(item.width || 0, 176), height: item.isDirectory ? item.height : Math.max(item.height || 0, 48) }
+        : item),
     })),
     removeTodoItem: (itemId) => persistSet((state: AppState) => {
       return {

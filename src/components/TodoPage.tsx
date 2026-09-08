@@ -349,7 +349,7 @@ const ListLane: React.FC<{ lane: TodoLane; onOpenView: (view: 'board' | 'kanban'
   const updateSection = useAppStore((state) => state.updateTodoLaneSection);
   const deleteSection = useAppStore((state) => state.deleteTodoLaneSection);
   const [draft, setDraft] = useState('');
-  const items = useMemo(() => allItems.filter((item) => item.laneId === lane.id).sort((a, b) => a.order - b.order), [allItems, lane.id]);
+  const items = useMemo(() => allItems.filter((item) => item.laneId === lane.id && !item.isDirectory).sort((a, b) => a.order - b.order), [allItems, lane.id]);
   const listRef = useRef<HTMLDivElement>(null);
   const [listHeight, setListHeight] = useState(0);
   const [bandDrag, setBandDrag] = useState<{ id: string; mode: 'move' | 'top' | 'bottom'; startY: number; originTop: number; originHeight: number } | null>(null);
@@ -495,10 +495,16 @@ const SectionTabWrapper: React.FC<{
   return <SectionTab section={section} onRename={(name) => updateSection(laneId, section.id, { name })} onColor={(color) => updateSection(laneId, section.id, { color })} onDelete={() => deleteSection(laneId, section.id, 'merge')} onHandleDown={onHandleDown} />;
 };
 
-interface BoardNodeData extends Record<string, unknown> { itemId: string; text: string; done: boolean; color?: string; progressStatus?: 'not-started' | 'in-progress' }
+interface BoardNodeData extends Record<string, unknown> { itemId: string; text: string; done: boolean; color?: string; progressStatus?: 'not-started' | 'in-progress'; isDirectory?: boolean }
 
 const boardColors: Record<string, string> = {
   emerald: '#67c8bd', rose: '#d78fb5', sky: '#79bfd5', amber: '#d9b958', violet: '#9b8ae4', indigo: '#9387d1',
+};
+
+const mixWithWhite = (hex: string, ratio: number) => {
+  const channels = hex.replace('#', '').match(/.{2}/g)?.map((channel) => Number.parseInt(channel, 16));
+  if (!channels || channels.length !== 3) return '#f6f5fc';
+  return `#${channels.map((channel) => Math.round(255 - (255 - channel) * ratio).toString(16).padStart(2, '0')).join('')}`;
 };
 
 const BoardNode = React.memo(({ id, data, selected }: NodeProps<Node<BoardNodeData>>) => {
@@ -511,16 +517,19 @@ const BoardNode = React.memo(({ id, data, selected }: NodeProps<Node<BoardNodeDa
   useEffect(() => { if (editing) { inputRef.current?.focus(); inputRef.current?.select(); } }, [editing]);
   const { handleClick, cancel } = useTapClick(() => setToolbarOpen((open) => !open));
   const color = boardColors[data.color || ''] || data.color || '#9387d1';
+  const surface = mixWithWhite(color, 0.08);
+  const borderColor = mixWithWhite(color, 0.34);
   return <div
     ref={nodeRef}
-    className={`group relative flex h-full min-h-10 w-full min-w-32 items-center rounded-[999px] border px-4 py-2 shadow-md transition-colors ${data.done ? 'border-neutral-300 bg-neutral-100/90' : 'bg-white'} ${editing ? 'nodrag' : ''}`}
-    style={data.done ? undefined : { borderColor: color }}
+    className={`group relative flex h-full min-h-10 w-full items-center border shadow-md transition-colors px-4 py-2 ${data.isDirectory ? 'rounded-xl justify-start' : 'rounded-[999px] justify-center'} ${data.done && !data.isDirectory ? 'border-neutral-300 bg-neutral-100/90' : ''} ${editing ? 'nodrag' : ''}`}
+    style={data.isDirectory ? { backgroundColor: surface, borderColor: selected ? color : borderColor } : data.done ? undefined : { borderColor: color }}
     onClick={(event) => { if (editing) return; if ((event.target as HTMLElement).closest('button, [role="toolbar"]')) return; handleClick(event); }}
     onDoubleClick={(event) => { if ((event.target as HTMLElement).closest('button')) return; cancel(); setToolbarOpen(false); setEditing(true); }}
     title={editing ? undefined : '单击显示操作，双击编辑'}>
     <NodeResizer isVisible={selected} minWidth={128} minHeight={40} maxWidth={420} maxHeight={180} color={color} handleStyle={{ width: 8, height: 8, borderRadius: 3 }} onResizeEnd={(_event, params) => update(data.itemId, { width: params.width, height: params.height })} />
     <Handle type="target" position={Position.Left} className="!h-2.5 !w-2.5 !border-2 !border-white !bg-purple-400" />
-    <div className="flex items-center gap-2">
+    {data.isDirectory ? <span className="absolute inset-y-2 left-1.5 w-1 rounded-full" style={{ backgroundColor: color }} /> : null}
+    <div className="flex w-full items-center gap-2">
       <TodoCheckbox done={data.done} onClick={() => toggle(data.itemId)} />
       <input
         ref={inputRef}
@@ -529,12 +538,12 @@ const BoardNode = React.memo(({ id, data, selected }: NodeProps<Node<BoardNodeDa
         onChange={(event) => update(data.itemId, { text: event.target.value })}
         onBlur={() => { if (!data.text.trim()) update(data.itemId, { text: '未命名待办' }); setEditing(false); }}
         onKeyDown={(event) => { if (event.key === 'Enter' || event.key === 'Escape') event.currentTarget.blur(); }}
-        className={`min-w-24 flex-1 bg-transparent py-1 text-xs font-semibold outline-none ${editing ? 'nodrag cursor-text' : 'cursor-default'} ${data.done ? 'text-neutral-400 line-through' : 'text-neutral-700'}`}
-        aria-label="待办文本"
+        className={`min-w-0 flex-1 bg-transparent py-1 text-xs font-semibold outline-none ${editing ? 'nodrag cursor-text' : 'cursor-default'} ${data.done ? 'text-neutral-400 line-through' : 'text-neutral-700'}`}
+        aria-label={data.isDirectory ? '目录标题' : '待办文本'}
       />
     </div>
     <Handle type="source" position={Position.Right} className="!h-2.5 !w-2.5 !border-2 !border-white" style={{ backgroundColor: color }} />
-    <TodoItemToolbarHost itemId={data.itemId} open={toolbarOpen} anchor={nodeRef.current} onClose={() => setToolbarOpen(false)} />
+    <TodoItemToolbarHost itemId={data.itemId} open={toolbarOpen} anchor={nodeRef.current} onClose={() => setToolbarOpen(false)} showDirectoryToggle />
   </div>;
 });
 BoardNode.displayName = 'BoardNode';
@@ -571,7 +580,7 @@ const BoardCanvas: React.FC<{ lane: TodoLane }> = ({ lane }) => {
   const suppressCreateRef = useRef(false);
   const [canvasTool, setCanvasTool] = useState<'pan' | 'select'>('pan');
   const items = useMemo(() => allItems.filter((item) => item.laneId === lane.id), [allItems, lane.id]);
-  const nodes = useMemo<Node<BoardNodeData>[]>(() => items.map((item) => ({ id: item.id, type: 'todoNode', position: item.position, width: item.width, height: item.height, data: { itemId: item.id, text: item.text, done: item.isDone, color: item.color, progressStatus: item.progressStatus } })), [items]);
+  const nodes = useMemo<Node<BoardNodeData>[]>(() => items.map((item) => ({ id: item.id, type: 'todoNode', position: item.position, width: item.width, height: item.height, data: { itemId: item.id, text: item.text, done: item.isDone, color: item.color, progressStatus: item.progressStatus, isDirectory: item.isDirectory } })), [items]);
   const edges = useMemo<Edge[]>(() => allEdges.filter((edge) => edge.laneId === lane.id).map((edge) => ({ id: edge.id, source: edge.sourceItemId, target: edge.targetItemId, type: 'bezier', style: { stroke: '#9b8ae4', strokeWidth: 2 }, interactionWidth: 24 })), [allEdges, lane.id]);
   const [localNodes, setLocalNodes] = useState(nodes);
   useEffect(() => setLocalNodes(nodes), [nodes]);

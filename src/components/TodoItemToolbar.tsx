@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, CircleDot, Trash2 } from 'lucide-react';
+import { Check, CircleDot, FolderInput, ListTodo, Trash2 } from 'lucide-react';
 import { useAppStore } from '../store';
 import type { TodoItem } from '../types';
 
@@ -19,11 +19,13 @@ export const TodoItemToolbarHost: React.FC<{
   open: boolean;
   anchor: HTMLElement | null;
   onClose: () => void;
-}> = ({ itemId, open, anchor, onClose }) => {
+  showDirectoryToggle?: boolean;
+}> = ({ itemId, open, anchor, onClose, showDirectoryToggle = false }) => {
   const item = useAppStore((state) => state.todoItems.find((candidate) => candidate.id === itemId));
   const update = useAppStore((state) => state.updateTodoItem);
   const toggle = useAppStore((state) => state.toggleTodoItemDone);
   const remove = useAppStore((state) => state.removeTodoItem);
+  const toggleDirectory = useAppStore((state) => state.toggleTodoItemDirectory);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
@@ -70,6 +72,17 @@ export const TodoItemToolbarHost: React.FC<{
             </div>
           ) : null}
         </div>
+        {showDirectoryToggle ? (
+          <button
+            type="button"
+            onClick={() => { toggleDirectory(item.id); onClose(); }}
+            className="flex h-8 w-[68px] items-center justify-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 text-[11px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-100"
+            title={item.isDirectory ? '保留位置和连线并转换为任务节点' : '转换为目录节点'}
+          >
+            {item.isDirectory ? <ListTodo className="h-3.5 w-3.5" /> : <FolderInput className="h-3.5 w-3.5" />}
+            <span>{item.isDirectory ? '任务' : '目录'}</span>
+          </button>
+        ) : null}
         <button
           type="button"
           onClick={() => {
