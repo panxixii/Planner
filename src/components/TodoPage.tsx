@@ -220,7 +220,7 @@ const SectionTab: React.FC<{
   onRename: (name: string) => void;
   onColor: (color: string) => void;
   onDelete: () => void;
-  onHandleDown: (event: React.PointerEvent) => void;
+  onHandleDown: (event: { clientY: number; preventDefault: () => void; stopPropagation: () => void }) => void;
 }> = ({ section, onRename, onColor, onDelete, onHandleDown }) => {
   const [toolbarOpen, setToolbarOpen] = useState(false);
   const [toolbarPos, setToolbarPos] = useState<{ top: number; left: number } | null>(null);
@@ -231,6 +231,8 @@ const SectionTab: React.FC<{
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
   const anchorRef = useRef<HTMLDivElement>(null);
   const tapTimer = useRef<number | null>(null);
+  const dragMovedRef = useRef(false);
+  const pressRef = useRef<{ x: number; y: number; dragging: boolean } | null>(null);
   const clearTap = () => { if (tapTimer.current !== null) { window.clearTimeout(tapTimer.current); tapTimer.current = null; } };
   useEffect(() => clearTap, []);
   useEffect(() => { if (!editing) setDraft(section.name); }, [section.name, editing]);
@@ -245,6 +247,7 @@ const SectionTab: React.FC<{
     setToolbarOpen(true);
   };
   const handleTap = () => {
+    if (dragMovedRef.current) { dragMovedRef.current = false; return; }
     if (tapTimer.current !== null) { clearTap(); return; }
     tapTimer.current = window.setTimeout(() => { tapTimer.current = null; if (toolbarOpen) closeToolbar(); else openToolbar(); }, 230);
   };
@@ -265,7 +268,28 @@ const SectionTab: React.FC<{
       ) : (
         <button
           type="button"
-          onPointerDown={(event) => { if (!toolbarOpen && !menuOpen) onHandleDown(event); }}
+          onPointerDown={(event) => {
+            dragMovedRef.current = false;
+            pressRef.current = { x: event.clientX, y: event.clientY, dragging: false };
+            if (toolbarOpen || menuOpen) return;
+            const move = (moveEvent: PointerEvent) => {
+              const press = pressRef.current;
+              if (!press || press.dragging) return;
+              if (Math.hypot(moveEvent.clientX - press.x, moveEvent.clientY - press.y) < 4) return;
+              press.dragging = true;
+              dragMovedRef.current = true;
+              clearTap();
+              window.removeEventListener('pointermove', move);
+              window.removeEventListener('pointerup', up);
+              onHandleDown(moveEvent);
+            };
+            const up = () => {
+              window.removeEventListener('pointermove', move);
+              window.removeEventListener('pointerup', up);
+            };
+            window.addEventListener('pointermove', move);
+            window.addEventListener('pointerup', up);
+          }}
           onClick={handleTap}
           onDoubleClick={startEditing}
           className="flex h-7 max-w-40 cursor-grab items-center gap-1.5 rounded-md border border-purple-200 pl-2 pr-2.5 text-[11px] font-bold text-neutral-700 shadow-md transition-all hover:-translate-y-px hover:border-purple-300 hover:shadow-lg active:cursor-grabbing"
@@ -417,7 +441,7 @@ const DeleteLaneButton: React.FC<{ onDelete: () => void }> = ({ onDelete }) => {
 const SectionTabWrapper: React.FC<{
   laneId: string;
   section: TodoLaneSection;
-  onHandleDown: (event: React.PointerEvent) => void;
+  onHandleDown: (event: { clientY: number; preventDefault: () => void; stopPropagation: () => void }) => void;
 }> = ({ laneId, section, onHandleDown }) => {
   const updateSection = useAppStore((state) => state.updateTodoLaneSection);
   const deleteSection = useAppStore((state) => state.deleteTodoLaneSection);
