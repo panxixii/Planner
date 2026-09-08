@@ -94,19 +94,41 @@ export interface WorkspaceDirectory {
   endTime?: string;
 }
 
+export interface TodoLaneSection {
+  id: string;
+  name: string;
+  color: string;
+  top: number; // px offset from the top of the lane's list area (free-form visual band).
+  height: number; // px height of the band.
+}
+
 export interface TodoLane {
   id: string;
   name: string;
   type: 'main' | 'custom';
+  sections: TodoLaneSection[];
 }
 
 export interface TodoItem {
   id: string;
-  taskId: string;
+  text: string;
   laneId: string;
-  parentItemId: string | null;
   order: number;
   isDone: boolean;
+  position: { x: number; y: number };
+  width?: number;
+  height?: number;
+  color?: string;
+  sectionId?: string; // Legacy visual band linkage; kept only for saved-data compatibility.
+  progressStatus?: 'not-started' | 'in-progress'; // Board column; isDone wins as completed.
+  timeBlocks?: TaskTimeBlock[];
+}
+
+export interface TodoEdge {
+  id: string;
+  laneId: string;
+  sourceItemId: string;
+  targetItemId: string;
 }
 
 export interface TimeTemplateBlock {
@@ -162,6 +184,8 @@ export interface AppState {
   activeComponentDetailsId: string | null;
   todoLanes: TodoLane[];
   todoItems: TodoItem[];
+  todoEdges: TodoEdge[];
+  todoWorkspaceMigrated: boolean;
   timeTemplates: TimeTemplate[];
   activeTimeTemplateIds: { daily: string | null; weekly: string | null };
   favoriteColors: string[];
@@ -192,22 +216,25 @@ export interface AppState {
   endHistoryGroup: () => void;
   restoreFromBackup: (data: Record<string, unknown>) => void;
 
-  // Todo execution graph
-  addTaskToTodo: (taskId: string) => boolean;
-  addComponentToTodo: (componentId: string) => string | null;
-  addDirectoryToTodo: (directoryId: string) => string | null;
-  createTodoTask: (laneId: string) => string | null;
-  toggleTodoTaskComponent: (taskId: string, componentId: string) => void;
+  // Standalone Todo views
+  createTodoItem: (laneId: string, text?: string) => string | null;
+  updateTodoItem: (itemId: string, updates: Partial<Pick<TodoItem, 'text' | 'position' | 'width' | 'height' | 'color' | 'progressStatus'>>) => void;
   addTodoLane: (name?: string) => string;
-  moveTodoLane: (laneId: string, beforeLaneId?: string) => void;
   renameTodoLane: (laneId: string, name: string) => void;
   deleteTodoLane: (laneId: string) => void;
-  moveTodoItem: (itemId: string, laneId: string, parentItemId: string | null, beforeItemId?: string) => void;
-  duplicateTodoItem: (itemId: string, laneId: string) => boolean;
-  copyTaskToTodoLane: (taskId: string, laneId: string, parentItemId?: string | null, beforeItemId?: string, isDone?: boolean) => boolean;
+  addTodoLaneSection: (laneId: string, name?: string) => string | null;
+  updateTodoLaneSection: (laneId: string, sectionId: string, updates: Partial<Pick<TodoLaneSection, 'name' | 'color' | 'top' | 'height'>>) => void;
+  deleteTodoLaneSection: (laneId: string, sectionId: string, mode?: 'merge' | 'delete-items') => void;
+  setTodoLaneItemOrder: (laneId: string, orderedIds: string[]) => void;
+  updateTodoItemSection: (itemId: string, sectionId: string | null) => void;
+  moveTodoItemToLanePosition: (itemId: string, laneId: string, order: number, sectionId?: string | null) => void;
   toggleTodoItemDone: (itemId: string) => void;
   removeTodoItem: (itemId: string) => void;
-  removeTaskFromTodo: (taskId: string) => void;
+  addTodoEdge: (laneId: string, sourceItemId: string, targetItemId: string) => void;
+  removeTodoEdge: (edgeId: string) => void;
+  addTodoTimeBlock: (itemId: string, block: Omit<TaskTimeBlock, 'id'>) => void;
+  updateTodoTimeBlock: (itemId: string, blockId: string, updates: Partial<Omit<TaskTimeBlock, 'id'>>) => void;
+  removeTodoTimeBlock: (itemId: string, blockId: string) => void;
 
   // Reusable weekly time backgrounds
   addTimeTemplate: (type: TimeTemplate['type'], name?: string) => string;

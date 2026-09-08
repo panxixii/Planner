@@ -1,6 +1,6 @@
 import { create } from 'zustand';
-import { AppState, Task, Goal, BOMTreeItem, CategoryType, DraftBoard, DraftStroke, GoalNode, GoalEdge, AppCategory, TaskStatus, TimeTemplate, TimeTemplateBlock, TodoItem, TodoLane, WorkspaceComponent, WorkspaceDirectory } from './types';
-import { getDescendantTaskIds, getDirectoryDescendantTaskIds, getWorkspaceGraph } from './workspaceComponents';
+import { AppState, Task, TaskTimeBlock, Goal, BOMTreeItem, CategoryType, DraftBoard, DraftStroke, GoalNode, GoalEdge, AppCategory, TaskStatus, TimeTemplate, TimeTemplateBlock, TodoEdge, TodoItem, TodoLane, TodoLaneSection, WorkspaceComponent, WorkspaceDirectory } from './types';
+import { getDescendantTaskIds, getWorkspaceGraph } from './workspaceComponents';
 import { getTaskTimeBlocks, normalizeTaskTimeBlocks } from './taskTimeBlocks';
 
 // Helper to generate IDs
@@ -141,7 +141,39 @@ const DEFAULT_TASK_STATUSES: TaskStatus[] = [
   { id: 'status-completed', label: '已完成', isCompleted: true, isSystem: true },
 ];
 
-const DEFAULT_TODO_LANES: TodoLane[] = [{ id: 'todo-main', name: '主线', type: 'main' }];
+const DEFAULT_TODO_LANES: TodoLane[] = [{ id: 'todo-main', name: '主线', type: 'main', sections: [] }];
+
+const SECTION_SWATCH_COLORS = ['#F5E6CF', '#DDEBD4', '#D6E6F0', '#EADFF2', '#F6DDE2', '#E8E8E8'];
+
+const normalizeHexColor = (value: unknown, fallback: string): string => {
+  if (typeof value !== 'string') return fallback;
+  const cleaned = value.trim().replace(/^#/, '');
+  if (/^[0-9a-f]{6}$/i.test(cleaned)) return `#${cleaned.toUpperCase()}`;
+  if (/^[0-9a-f]{3}$/i.test(cleaned)) return `#${cleaned.split('').map((character) => character + character).join('').toUpperCase()}`;
+  return fallback;
+};
+
+export const TODO_SECTION_PALETTE = SECTION_SWATCH_COLORS;
+
+const normalizeTodoSections = (value: unknown): TodoLaneSection[] => {
+  if (!Array.isArray(value)) return [];
+  const usedIds = new Set<string>();
+  return value.flatMap((section: unknown, index: number): TodoLaneSection[] => {
+    if (!section || typeof section !== 'object') return [];
+    const candidate = section as Partial<TodoLaneSection>;
+    if (typeof candidate.name !== 'string' || !candidate.name.trim()) return [];
+    let id = typeof candidate.id === 'string' && candidate.id && !usedIds.has(candidate.id) ? candidate.id : `todo-section-${genId()}`;
+    while (usedIds.has(id)) id = `todo-section-${genId()}`;
+    usedIds.add(id);
+    return [{
+      id,
+      name: candidate.name.trim(),
+      color: normalizeHexColor(candidate.color, SECTION_SWATCH_COLORS[index % SECTION_SWATCH_COLORS.length]),
+      top: typeof candidate.top === 'number' && Number.isFinite(candidate.top) ? Math.max(0, candidate.top) : index * 120,
+      height: typeof candidate.height === 'number' && Number.isFinite(candidate.height) ? Math.max(28, candidate.height) : 120,
+    }];
+  });
+};
 const DEFAULT_TIME_TEMPLATES: TimeTemplate[] = [];
 
 const TASK_COLOR_HEX: Record<string, string> = {
@@ -166,11 +198,11 @@ const normalizeTodoItems = (
   const validItems = value.filter((item): item is Record<string, unknown> => (
     Boolean(item)
     && typeof item === 'object'
-    && typeof (item as Record<string, unknown>).taskId === 'string'
+    && (typeof (item as Record<string, unknown>).text === 'string'
+      || typeof (item as Record<string, unknown>).taskId === 'string')
     && typeof (item as Record<string, unknown>).laneId === 'string'
     && typeof (item as Record<string, unknown>).order === 'number'
     && (!normalLaneIds || normalLaneIds.has((item as Record<string, unknown>).laneId as string))
-    && (!tasks || Boolean(tasks[(item as Record<string, unknown>).taskId as string]))
   ));
   const usedItemIds = new Set<string>();
   const itemIds = validItems.map((item) => {
@@ -179,43 +211,177 @@ const normalizeTodoItems = (
     usedItemIds.add(itemId);
     return itemId;
   });
-  const legacyItemIdByLaneAndTask = new Map<string, string>();
-  validItems.forEach((item, index) => {
-    legacyItemIdByLaneAndTask.set(`${item.laneId}:${item.taskId}`, itemIds[index]);
-  });
-
-  const normalizedItems = validItems.map((item, index) => {
-    const legacyParentTaskId = typeof item.parentTaskId === 'string' ? item.parentTaskId : null;
-    const requestedParentItemId = typeof item.parentItemId === 'string'
-      ? item.parentItemId
-      : (legacyParentTaskId ? legacyItemIdByLaneAndTask.get(`${item.laneId}:${legacyParentTaskId}`) || null : null);
-    return {
+  return validItems.map((item, index) => ({
       id: itemIds[index],
-      taskId: item.taskId as string,
+      text: typeof item.text === 'string'
+        ? item.text
+        : (tasks?.[item.taskId as string]?.title || '未命名待办'),
       laneId: item.laneId as string,
-      parentItemId: requestedParentItemId && usedItemIds.has(requestedParentItemId) ? requestedParentItemId : null,
       order: item.order as number,
       isDone: typeof item.isDone === 'boolean'
         ? item.isDone
         : Boolean(tasks?.[item.taskId as string]?.isDone),
+      position: item.position && typeof item.position === 'object'
+        && typeof (item.position as { x?: unknown }).x === 'number'
+        && typeof (item.position as { y?: unknown }).y === 'number'
+        ? item.position as { x: number; y: number }
+        : { x: (index % 4) * 220, y: Math.floor(index / 4) * 120 },
+      width: typeof item.width === 'number' ? item.width : undefined,
+      height: typeof item.height === 'number' ? item.height : undefined,
+      color: typeof item.color === 'string' ? item.color : undefined,
+      sectionId: typeof item.sectionId === 'string' ? item.sectionId : undefined,
+      progressStatus: item.progressStatus === 'in-progress' ? 'in-progress' : item.progressStatus === 'not-started' ? 'not-started' : undefined,
+      timeBlocks: Array.isArray(item.timeBlocks) ? item.timeBlocks.flatMap((block: unknown): TaskTimeBlock[] => {
+        if (!block || typeof block !== 'object') return [];
+        const candidate = block as Partial<TaskTimeBlock>;
+        if (typeof candidate.startTime !== 'string' || typeof candidate.endTime !== 'string') return [];
+        return [{ id: typeof candidate.id === 'string' ? candidate.id : `todo-time-${genId()}`, startTime: candidate.startTime, endTime: candidate.endTime }];
+      }) : [],
+    }));
+};
+
+const normalizeTodoEdges = (value: unknown, items: TodoItem[], lanes: TodoLane[]): TodoEdge[] => {
+  if (!Array.isArray(value)) return [];
+  const itemById = new Map(items.map((item) => [item.id, item]));
+  const laneIds = new Set(lanes.map((lane) => lane.id));
+  const usedIds = new Set<string>();
+  return value.flatMap((edge: unknown): TodoEdge[] => {
+    if (!edge || typeof edge !== 'object') return [];
+    const candidate = edge as Partial<TodoEdge>;
+    if (typeof candidate.laneId !== 'string' || !laneIds.has(candidate.laneId)
+      || typeof candidate.sourceItemId !== 'string' || typeof candidate.targetItemId !== 'string'
+      || candidate.sourceItemId === candidate.targetItemId
+      || itemById.get(candidate.sourceItemId)?.laneId !== candidate.laneId
+      || itemById.get(candidate.targetItemId)?.laneId !== candidate.laneId) return [];
+    let id = typeof candidate.id === 'string' ? candidate.id : `todo-edge-${genId()}`;
+    while (usedIds.has(id)) id = `todo-edge-${genId()}`;
+    usedIds.add(id);
+    return [{ id, laneId: candidate.laneId, sourceItemId: candidate.sourceItemId, targetItemId: candidate.targetItemId }];
+  });
+};
+
+const migrateLegacyWorkspaceToTodo = (
+  source: Record<string, any>,
+  tasks: Record<string, Task>,
+  initialLanes: TodoLane[],
+  initialItems: TodoItem[],
+) => {
+  if (source.todoWorkspaceMigrated === true) {
+    return {
+      lanes: initialLanes,
+      items: initialItems,
+      edges: normalizeTodoEdges(source.todoEdges, initialItems, initialLanes),
     };
+  }
+
+  const lanes = [...initialLanes];
+  const items = [...initialItems];
+  const rawTodoItems = Array.isArray(source.todoItems) ? source.todoItems : [];
+  const existingItemIdByTaskId = new Map<string, string>();
+  rawTodoItems.forEach((item: unknown, index: number) => {
+    if (!item || typeof item !== 'object' || typeof (item as { taskId?: unknown }).taskId !== 'string') return;
+    const normalizedItem = items[index];
+    if (normalizedItem) existingItemIdByTaskId.set((item as { taskId: string }).taskId, normalizedItem.id);
   });
-  const itemById = new Map(normalizedItems.map((item) => [item.id, item]));
-  return normalizedItems.map((item) => {
-    let parentItemId = item.parentItemId;
-    if (parentItemId && itemById.get(parentItemId)?.laneId !== item.laneId) parentItemId = null;
-    const visited = new Set([item.id]);
-    let ancestorId = parentItemId;
-    while (ancestorId) {
-      if (visited.has(ancestorId)) {
-        parentItemId = null;
-        break;
+
+  const components = Array.isArray(source.workspaceComponents)
+    ? source.workspaceComponents.filter((component: unknown) => component && typeof component === 'object' && typeof (component as { id?: unknown }).id === 'string')
+    : [];
+  const laneIdByComponentId = new Map<string, string>();
+  components.forEach((component: { id: string; name?: unknown }, index: number) => {
+    const name = typeof component.name === 'string' && component.name.trim() ? component.name.trim() : `分线-${index + 1}`;
+    const existing = lanes.find((lane) => lane.type === 'custom' && lane.name === name);
+    const laneId = existing?.id || `todo-lane-${genId()}`;
+    if (!existing) lanes.push({ id: laneId, name, type: 'custom', sections: [] });
+    laneIdByComponentId.set(component.id, laneId);
+  });
+
+  const rawNodes = [
+    ...(Array.isArray(source.workspaceNodes) ? source.workspaceNodes : []),
+    ...Object.values(source.goals || {}).flatMap((goal: any) => Array.isArray(goal?.nodes) ? goal.nodes : []),
+  ];
+  const itemIdByTaskAndLane = new Map<string, string>();
+  existingItemIdByTaskId.forEach((itemId, taskId) => {
+    const laneId = items.find((item) => item.id === itemId)?.laneId;
+    if (laneId) itemIdByTaskAndLane.set(`${taskId}:${laneId}`, itemId);
+  });
+  const itemIdByLegacyNodeAndLane = new Map<string, string>();
+  rawNodes.forEach((node: any) => {
+    if (!node || typeof node.id !== 'string' || typeof node.taskId !== 'string' || !tasks[node.taskId]) return;
+    const task = tasks[node.taskId];
+    const laneIds = Array.from(new Set((task.componentIds || []).map((id) => laneIdByComponentId.get(id)).filter((id): id is string => Boolean(id))));
+    if (laneIds.length === 0) laneIds.push('todo-main');
+    const position = source.mergedNodePositions?.[node.id] || node.position;
+    if (!position || typeof position.x !== 'number' || typeof position.y !== 'number') return;
+    laneIds.forEach((laneId) => {
+      const key = `${node.taskId}:${laneId}`;
+      let itemId = itemIdByTaskAndLane.get(key);
+      if (!itemId) {
+        itemId = `todo-item-${genId()}`;
+        items.push({
+          id: itemId,
+          text: task.title || '未命名待办',
+          laneId,
+          order: items.filter((item) => item.laneId === laneId).length,
+          isDone: task.isDone,
+          position,
+          width: typeof node.width === 'number' ? node.width : undefined,
+          height: typeof node.height === 'number' ? node.height : undefined,
+          color: task.color,
+          timeBlocks: getTaskTimeBlocks(task).map((block) => ({ ...block, id: `todo-time-${genId()}` })),
+        });
+        itemIdByTaskAndLane.set(key, itemId);
+      } else {
+        const index = items.findIndex((item) => item.id === itemId);
+        if (index >= 0) items[index] = { ...items[index], position, color: task.color || items[index].color };
       }
-      visited.add(ancestorId);
-      ancestorId = itemById.get(ancestorId)?.parentItemId || null;
-    }
-    return parentItemId === item.parentItemId ? item : { ...item, parentItemId };
+      itemIdByLegacyNodeAndLane.set(`${node.id}:${laneId}`, itemId);
+    });
   });
+  const directories = Array.isArray(source.workspaceDirectories) ? source.workspaceDirectories : [];
+  directories.forEach((directory: any) => {
+    if (!directory || typeof directory.id !== 'string' || typeof directory.name !== 'string') return;
+    const laneIds: string[] = Array.from(new Set<string>((Array.isArray(directory.componentIds) ? directory.componentIds : [])
+      .map((id: string) => laneIdByComponentId.get(id)).filter((id: string | undefined): id is string => Boolean(id))));
+    if (laneIds.length === 0) laneIds.push('todo-main');
+    const position = source.mergedNodePositions?.[directory.id] || directory.position;
+    if (!position || typeof position.x !== 'number' || typeof position.y !== 'number') return;
+    laneIds.forEach((laneId) => {
+      const id = `todo-item-${genId()}`;
+      items.push({
+        id,
+        text: directory.name.trim() || '未命名待办',
+        laneId,
+        order: items.filter((item) => item.laneId === laneId).length,
+        isDone: false,
+        position,
+        width: typeof directory.width === 'number' ? directory.width : undefined,
+        height: typeof directory.height === 'number' ? directory.height : undefined,
+          color: typeof directory.color === 'string' ? directory.color : 'indigo',
+          timeBlocks: directory.startTime && directory.endTime ? [{ id: `todo-time-${genId()}`, startTime: directory.startTime, endTime: directory.endTime }] : [],
+      });
+      itemIdByLegacyNodeAndLane.set(`${directory.id}:${laneId}`, id);
+    });
+  });
+
+  const rawEdges = [
+    ...(Array.isArray(source.mergedEdges) ? source.mergedEdges : []),
+    ...Object.values(source.goals || {}).flatMap((goal: any) => Array.isArray(goal?.edges) ? goal.edges : []),
+  ];
+  const edges: TodoEdge[] = [];
+  const seen = new Set<string>();
+  rawEdges.forEach((edge: any) => {
+    lanes.forEach((lane) => {
+      const sourceItemId = itemIdByLegacyNodeAndLane.get(`${edge?.source}:${lane.id}`);
+      const targetItemId = itemIdByLegacyNodeAndLane.get(`${edge?.target}:${lane.id}`);
+      if (!sourceItemId || !targetItemId || sourceItemId === targetItemId) return;
+      const key = `${lane.id}:${sourceItemId}:${targetItemId}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      edges.push({ id: `todo-edge-${genId()}`, laneId: lane.id, sourceItemId, targetItemId });
+    });
+  });
+  return { lanes, items, edges };
 };
 
 const normalizeTodoLanes = (value: unknown): TodoLane[] => {
@@ -226,7 +392,7 @@ const normalizeTodoLanes = (value: unknown): TodoLane[] => {
         if (typeof candidate.id !== 'string' || typeof candidate.name !== 'string') return [];
         if ((candidate.type as string) === 'category-sync' || candidate.id.startsWith('todo-category-')) return [];
         const type = candidate.id === 'todo-main' ? 'main' : 'custom';
-        return [{ id: candidate.id, name: candidate.name, type }];
+        return [{ id: candidate.id, name: candidate.name, type, sections: normalizeTodoSections(candidate.sections) }];
       })
     : [];
   const main = loadedLanes.find((lane) => lane.id === 'todo-main');
@@ -237,132 +403,7 @@ const normalizeTodoLanes = (value: unknown): TodoLane[] => {
     usedCustomIds.add(lane.id);
     return true;
   });
-  return [{ ...(main || DEFAULT_TODO_LANES[0]), id: 'todo-main', name: '主线', type: 'main' }, ...customLanes];
-};
-
-const removeTodoTaskInstances = (items: TodoItem[], taskId: string): TodoItem[] => {
-  const removedItems = new Map(items.filter((item) => item.taskId === taskId).map((item) => [item.id, item]));
-  return items
-    .filter((item) => item.taskId !== taskId)
-    .map((item) => {
-      let parentItemId = item.parentItemId;
-      while (parentItemId && removedItems.has(parentItemId)) {
-        parentItemId = removedItems.get(parentItemId)?.parentItemId || null;
-      }
-      return parentItemId !== item.parentItemId ? { ...item, parentItemId } : item;
-    });
-};
-
-const buildTodoItemsForTasks = (
-  state: AppState,
-  requestedTaskIds: Set<string>,
-  laneId: string,
-  rootOrderStart = 0,
-  forcedRootTaskIds: Set<string> = new Set(),
-): TodoItem[] => {
-  const existingTaskIds = new Set(
-    state.todoItems.filter((item) => item.laneId === laneId).map((item) => item.taskId),
-  );
-  const taskIds = new Set(
-    Array.from(requestedTaskIds).filter((taskId) => state.tasks[taskId] && !existingTaskIds.has(taskId)),
-  );
-  if (taskIds.size === 0) return [];
-
-  const graph = getWorkspaceGraph(state.goals, state.workspaceNodes, state.mergedEdges, state.mergedNodePositions);
-  const positionByTaskId = new Map<string, { x: number; y: number }>();
-  graph.nodeTaskIds.forEach((taskId, nodeId) => {
-    if (!taskIds.has(taskId)) return;
-    const position = graph.nodePositions.get(nodeId);
-    if (!position) return;
-    const current = positionByTaskId.get(taskId);
-    if (!current || position.x < current.x || (position.x === current.x && position.y < current.y)) {
-      positionByTaskId.set(taskId, position);
-    }
-  });
-
-  const parentCandidates = new Map<string, Array<{ taskId: string; distance: number }>>();
-  graph.edges.forEach((edge) => {
-    const sourceTaskId = graph.nodeTaskIds.get(edge.source);
-    const targetTaskId = graph.nodeTaskIds.get(edge.target);
-    const sourcePosition = graph.nodePositions.get(edge.source);
-    const targetPosition = graph.nodePositions.get(edge.target);
-    if (
-      !sourceTaskId
-      || !targetTaskId
-      || sourceTaskId === targetTaskId
-      || !sourcePosition
-      || !targetPosition
-      || !taskIds.has(sourceTaskId)
-      || !taskIds.has(targetTaskId)
-    ) return;
-
-    const sourceIsParent = sourcePosition.x <= targetPosition.x;
-    const parentTaskId = sourceIsParent ? sourceTaskId : targetTaskId;
-    const childTaskId = sourceIsParent ? targetTaskId : sourceTaskId;
-    if (forcedRootTaskIds.has(childTaskId)) return;
-    const candidates = parentCandidates.get(childTaskId) || [];
-    candidates.push({ taskId: parentTaskId, distance: Math.abs(targetPosition.x - sourcePosition.x) });
-    parentCandidates.set(childTaskId, candidates);
-  });
-
-  const parentByTaskId = new Map<string, string>();
-  const orderedTaskIds = Array.from(taskIds).sort((leftId, rightId) => {
-    const left = positionByTaskId.get(leftId) || { x: 0, y: 0 };
-    const right = positionByTaskId.get(rightId) || { x: 0, y: 0 };
-    return left.x - right.x || left.y - right.y || leftId.localeCompare(rightId);
-  });
-  orderedTaskIds.forEach((childTaskId) => {
-    if (forcedRootTaskIds.has(childTaskId)) return;
-    const candidates = (parentCandidates.get(childTaskId) || []).sort((left, right) => (
-      left.distance - right.distance || left.taskId.localeCompare(right.taskId)
-    ));
-    const candidate = candidates.find(({ taskId: parentTaskId }) => {
-      let ancestorId: string | undefined = parentTaskId;
-      while (ancestorId) {
-        if (ancestorId === childTaskId) return false;
-        ancestorId = parentByTaskId.get(ancestorId);
-      }
-      return true;
-    });
-    if (candidate) parentByTaskId.set(childTaskId, candidate.taskId);
-  });
-
-  const compareByPosition = (leftId: string, rightId: string) => {
-    const left = positionByTaskId.get(leftId) || { x: 0, y: 0 };
-    const right = positionByTaskId.get(rightId) || { x: 0, y: 0 };
-    return left.y - right.y || left.x - right.x || leftId.localeCompare(rightId);
-  };
-  const childrenByTaskId = new Map<string | null, string[]>();
-  taskIds.forEach((taskId) => {
-    const parentTaskId = parentByTaskId.get(taskId) || null;
-    const children = childrenByTaskId.get(parentTaskId) || [];
-    children.push(taskId);
-    childrenByTaskId.set(parentTaskId, children);
-  });
-  childrenByTaskId.forEach((children) => children.sort(compareByPosition));
-
-  const items: TodoItem[] = [];
-  const itemIdByTaskId = new Map(Array.from(taskIds).map((taskId) => [taskId, `todo-item-${genId()}`]));
-  const visited = new Set<string>();
-  const appendTask = (taskId: string, parentItemId: string | null, order: number) => {
-    if (visited.has(taskId)) return;
-    visited.add(taskId);
-    const itemId = itemIdByTaskId.get(taskId)!;
-    items.push({ id: itemId, taskId, laneId, parentItemId, order, isDone: state.tasks[taskId].isDone });
-    (childrenByTaskId.get(taskId) || []).forEach((childTaskId, childOrder) => {
-      appendTask(childTaskId, itemId, childOrder);
-    });
-  };
-  (childrenByTaskId.get(null) || []).forEach((taskId, index) => {
-    appendTask(taskId, null, rootOrderStart + index);
-  });
-  orderedTaskIds.forEach((taskId) => {
-    if (!visited.has(taskId)) {
-      const rootCount = items.filter((item) => item.parentItemId === null).length;
-      appendTask(taskId, null, rootOrderStart + rootCount);
-    }
-  });
-  return items;
+  return [{ ...(main || DEFAULT_TODO_LANES[0]), id: 'todo-main', name: '主线', type: 'main', sections: (main || DEFAULT_TODO_LANES[0]).sections }, ...customLanes];
 };
 
 // Helper to load state from localStorage with robust schema verification & fallback migration
@@ -472,6 +513,8 @@ const loadSavedState = () => {
         const finalBOMTree = cleanedBOMTree.length > 0 ? cleanedBOMTree : EMPTY_BOM_TREE;
 
         const normalizedTodoLanes = normalizeTodoLanes(parsed.todoLanes);
+        const normalizedTodoItems = normalizeTodoItems(parsed.todoItems, validatedTasks, normalizedTodoLanes);
+        const migratedTodo = migrateLegacyWorkspaceToTodo(parsed, validatedTasks, normalizedTodoLanes, normalizedTodoItems);
         return {
           tasks: validatedTasks,
           goals: validatedGoals,
@@ -521,8 +564,10 @@ const loadSavedState = () => {
                 isCollapsed: Boolean(directory.isCollapsed),
               }))
             : [],
-          todoLanes: normalizedTodoLanes,
-          todoItems: normalizeTodoItems(parsed.todoItems, validatedTasks, normalizedTodoLanes),
+          todoLanes: migratedTodo.lanes,
+          todoItems: migratedTodo.items,
+          todoEdges: migratedTodo.edges,
+          todoWorkspaceMigrated: true,
           timeTemplates: Array.isArray(parsed.timeTemplates)
             ? parsed.timeTemplates.filter((template: unknown): template is TimeTemplate => (
                 Boolean(template)
@@ -622,6 +667,8 @@ const initialWorkspaceComponents = savedState ? savedState.workspaceComponents :
 const initialWorkspaceDirectories = savedState ? savedState.workspaceDirectories : [];
 const initialTodoLanes = normalizeTodoLanes(savedState?.todoLanes);
 const initialTodoItems = savedState ? savedState.todoItems : [];
+const initialTodoEdges = savedState ? savedState.todoEdges : [];
+const initialTodoWorkspaceMigrated = savedState ? savedState.todoWorkspaceMigrated : true;
 const initialTimeTemplates = savedState ? savedState.timeTemplates : DEFAULT_TIME_TEMPLATES;
 const initialActiveTimeTemplateIds = savedState ? savedState.activeTimeTemplateIds : { daily: null, weekly: null };
 const initialFavoriteColors = savedState ? savedState.favoriteColors : [];
@@ -661,6 +708,7 @@ type HistorySnapshot = Pick<AppState,
   | 'workspaceDirectories'
   | 'todoLanes'
   | 'todoItems'
+  | 'todoEdges'
   | 'timeTemplates'
   | 'activeTimeTemplateIds'
   | 'favoriteColors'
@@ -676,7 +724,7 @@ type HistorySnapshot = Pick<AppState,
 const HISTORY_LIMIT = 100;
 const HISTORY_KEYS = new Set<keyof HistorySnapshot>([
   'tasks', 'taskStatuses', 'goals', 'bomTree', 'categories', 'workspaceComponents', 'workspaceDirectories',
-  'todoLanes', 'todoItems', 'timeTemplates', 'activeTimeTemplateIds', 'favoriteColors',
+  'todoLanes', 'todoItems', 'todoEdges', 'timeTemplates', 'activeTimeTemplateIds', 'favoriteColors',
   'drafts', 'crossGoalEdges', 'timelineTaskOrder', 'mergedNodePositions', 'workspaceNodes',
   'mergedEdges', 'mergedNodeIds',
 ]);
@@ -693,6 +741,7 @@ const captureHistorySnapshot = (state: AppState): HistorySnapshot => cloneHistor
   workspaceDirectories: state.workspaceDirectories,
   todoLanes: state.todoLanes,
   todoItems: state.todoItems,
+  todoEdges: state.todoEdges,
   timeTemplates: state.timeTemplates,
   activeTimeTemplateIds: state.activeTimeTemplateIds,
   favoriteColors: state.favoriteColors,
@@ -730,6 +779,8 @@ export const useAppStore = create<AppState>((set, get) => {
         workspaceDirectories: state.workspaceDirectories,
         todoLanes: state.todoLanes,
         todoItems: state.todoItems,
+        todoEdges: state.todoEdges,
+        todoWorkspaceMigrated: state.todoWorkspaceMigrated,
         timeTemplates: state.timeTemplates,
         activeTimeTemplateIds: state.activeTimeTemplateIds,
         favoriteColors: state.favoriteColors,
@@ -801,6 +852,8 @@ export const useAppStore = create<AppState>((set, get) => {
     activeComponentDetailsId: null,
     todoLanes: initialTodoLanes,
     todoItems: initialTodoItems,
+    todoEdges: initialTodoEdges,
+    todoWorkspaceMigrated: initialTodoWorkspaceMigrated,
     timeTemplates: initialTimeTemplates,
     activeTimeTemplateIds: initialActiveTimeTemplateIds,
     favoriteColors: initialFavoriteColors,
@@ -1038,6 +1091,8 @@ export const useAppStore = create<AppState>((set, get) => {
       const nextTasks = data.tasks && typeof data.tasks === 'object' && !Array.isArray(data.tasks) ? data.tasks as Record<string, Task> : state.tasks;
       const nextCategories = Array.isArray(data.categories) ? data.categories as AppCategory[] : state.categories;
       const nextTodoLanes = normalizeTodoLanes(data.todoLanes);
+      const nextTodoItems = normalizeTodoItems(data.todoItems, nextTasks, nextTodoLanes);
+      const migratedTodo = migrateLegacyWorkspaceToTodo(data, nextTasks, nextTodoLanes, nextTodoItems);
       return {
         tasks: nextTasks,
         taskStatuses: Array.isArray(data.taskStatuses) ? data.taskStatuses as TaskStatus[] : state.taskStatuses,
@@ -1046,8 +1101,10 @@ export const useAppStore = create<AppState>((set, get) => {
         categories: nextCategories,
         workspaceComponents: Array.isArray(data.workspaceComponents) ? data.workspaceComponents as WorkspaceComponent[] : state.workspaceComponents,
         workspaceDirectories: Array.isArray(data.workspaceDirectories) ? data.workspaceDirectories as WorkspaceDirectory[] : state.workspaceDirectories,
-        todoLanes: nextTodoLanes,
-        todoItems: normalizeTodoItems(data.todoItems, nextTasks, nextTodoLanes),
+        todoLanes: migratedTodo.lanes,
+        todoItems: migratedTodo.items,
+        todoEdges: migratedTodo.edges,
+        todoWorkspaceMigrated: true,
         timeTemplates: Array.isArray(data.timeTemplates) ? data.timeTemplates as TimeTemplate[] : [],
         activeTimeTemplateIds: data.activeTimeTemplateIds && typeof data.activeTimeTemplateIds === 'object'
           ? data.activeTimeTemplateIds as AppState['activeTimeTemplateIds']
@@ -1068,135 +1125,37 @@ export const useAppStore = create<AppState>((set, get) => {
       };
     }),
 
-    addTaskToTodo: (taskId) => {
+    createTodoItem: (laneId, text = '') => {
       const state = get();
-      if (!state.tasks[taskId]) return false;
-      const mainLaneId = state.todoLanes.find((lane) => lane.id === 'todo-main')?.id || state.todoLanes[0]?.id || 'todo-main';
-      const nextOrder = state.todoItems
-        .filter((item) => item.laneId === mainLaneId && item.parentItemId === null)
-        .reduce((max, item) => Math.max(max, item.order), -1) + 1;
-      const graph = getWorkspaceGraph(state.goals, state.workspaceNodes, state.mergedEdges, state.mergedNodePositions);
-      const taskIds = getDescendantTaskIds(graph, taskId);
-      taskIds.add(taskId);
-      const nextItems = buildTodoItemsForTasks(state, taskIds, mainLaneId, nextOrder, new Set([taskId]));
-      if (nextItems.length === 0) return false;
-      persistSet((current: AppState) => ({
-        todoLanes: current.todoLanes.length > 0 ? current.todoLanes : DEFAULT_TODO_LANES,
-        todoItems: [...current.todoItems, ...nextItems],
-      }));
-      return true;
-    },
-    addComponentToTodo: (componentId) => {
-      const state = get();
-      const componentIndex = state.workspaceComponents.findIndex((component) => component.id === componentId);
-      const component = state.workspaceComponents[componentIndex];
-      if (!component) return null;
-      const taskIds = new Set(
-        Object.values(state.tasks)
-          .filter((task) => task.componentIds?.includes(componentId))
-          .map((task) => task.id),
-      );
-      const laneId = `todo-lane-${genId()}`;
-      const nextItems = buildTodoItemsForTasks(state, taskIds, laneId);
-      if (nextItems.length === 0) return null;
-      const laneName = component.name.trim() || `未命名联通块 ${componentIndex + 1}`;
-      persistSet((current: AppState) => ({
-        todoLanes: [...current.todoLanes, { id: laneId, name: laneName, type: 'custom' }],
-        todoItems: [...current.todoItems, ...nextItems],
-      }));
-      return laneId;
-    },
-    addDirectoryToTodo: (directoryId) => {
-      const state = get();
-      const directory = state.workspaceDirectories.find((candidate) => candidate.id === directoryId);
-      if (!directory) return null;
-      const graph = getWorkspaceGraph(state.goals, state.workspaceNodes, state.mergedEdges, {
-        ...state.mergedNodePositions,
-        ...Object.fromEntries(state.workspaceDirectories.map((item) => [item.id, state.mergedNodePositions[item.id] || item.position])),
-      });
-      const taskIds = getDirectoryDescendantTaskIds(directoryId, state.workspaceDirectories, graph);
-      const laneId = `todo-lane-${genId()}`;
-      const stateWithTemporaryLane = { ...state, todoLanes: [...state.todoLanes, { id: laneId, name: directory.name, type: 'custom' as const }] };
-      const nextItems = buildTodoItemsForTasks(stateWithTemporaryLane, taskIds, laneId);
-      if (nextItems.length === 0) return null;
-      persistSet((current: AppState) => ({
-        todoLanes: [...current.todoLanes, { id: laneId, name: directory.name.trim() || '未命名目录', type: 'custom' }],
-        todoItems: [...current.todoItems, ...nextItems],
-      }));
-      return laneId;
-    },
-    createTodoTask: (laneId) => {
-      const state = get();
-      const lane = state.todoLanes.find((candidate) => candidate.id === laneId);
-      if (!lane) return null;
-      const taskId = `t-todo-${genId()}`;
+      if (!state.todoLanes.some((lane) => lane.id === laneId)) return null;
       const itemId = `todo-item-${genId()}`;
       const nextOrder = state.todoItems
-        .filter((item) => item.laneId === laneId && item.parentItemId === null)
+        .filter((item) => item.laneId === laneId)
         .reduce((max, item) => Math.max(max, item.order), -1) + 1;
-      const task: Task = {
-        id: taskId,
-        title: '',
-        description: '',
-        duration: 0,
-        isDone: false,
-        statusId: 'status-not-started',
-        categoryIds: [],
-        componentIds: [],
-        color: 'indigo',
-      };
       persistSet((current: AppState) => ({
-        tasks: { ...current.tasks, [taskId]: task },
-        todoItems: [...current.todoItems, { id: itemId, taskId, laneId, parentItemId: null, order: nextOrder, isDone: false }],
+        todoItems: [...current.todoItems, {
+          id: itemId,
+          text: text.trim(),
+          laneId,
+          order: nextOrder,
+          isDone: false,
+          position: { x: (nextOrder % 4) * 220, y: Math.floor(nextOrder / 4) * 120 },
+          color: 'indigo',
+          timeBlocks: [],
+        }],
       }));
-      return taskId;
+      return itemId;
     },
-    toggleTodoTaskComponent: (taskId, componentId) => persistSet((state: AppState) => {
-      const task = state.tasks[taskId];
-      if (!task || !state.workspaceComponents.some((component) => component.id === componentId)) return {};
-      const currentComponentIds = task.componentIds || [];
-      const componentIds = currentComponentIds.includes(componentId)
-        ? currentComponentIds.filter((id) => id !== componentId)
-        : [...currentComponentIds, componentId];
-      const alreadyInWorkspace = state.workspaceNodes.some((node) => node.taskId === taskId)
-        || Object.values(state.goals).some((goal) => goal.nodes.some((node) => node.taskId === taskId));
-      const workspaceIndex = state.workspaceNodes.length;
-      return {
-        tasks: { ...state.tasks, [taskId]: { ...task, componentIds } },
-        ...(!alreadyInWorkspace && componentIds.length > 0 ? {
-          workspaceNodes: [
-            ...state.workspaceNodes,
-            {
-              id: `node-todo-${genId()}`,
-              taskId,
-              position: {
-                x: 60 + (workspaceIndex % 5) * 180,
-                y: 60 + Math.floor(workspaceIndex / 5) * 100,
-              },
-            },
-          ],
-        } : {}),
-      };
-    }),
+    updateTodoItem: (itemId, updates) => persistSet((state: AppState) => ({
+      todoItems: state.todoItems.map((item) => item.id === itemId ? { ...item, ...updates } : item),
+    })),
     addTodoLane: (name) => {
       const id = `todo-lane-${genId()}`;
       persistSet((state: AppState) => ({
-        todoLanes: [...state.todoLanes, { id, name: name?.trim() || `分线-${state.todoLanes.filter((lane) => lane.type === 'custom').length + 1}`, type: 'custom' }],
+        todoLanes: [...state.todoLanes, { id, name: name?.trim() || `分线-${state.todoLanes.filter((lane) => lane.type === 'custom').length + 1}`, type: 'custom', sections: [] }],
       }));
       return id;
     },
-    moveTodoLane: (laneId, beforeLaneId) => persistSet((state: AppState) => {
-      const fromIndex = state.todoLanes.findIndex((lane) => lane.id === laneId);
-      if (fromIndex < 0 || laneId === beforeLaneId) return {};
-      const movedLane = state.todoLanes[fromIndex];
-      const targetLane = beforeLaneId ? state.todoLanes.find((lane) => lane.id === beforeLaneId) : undefined;
-      if (movedLane.type !== 'custom' || (targetLane && targetLane.type !== 'custom')) return {};
-      const nextLanes = [...state.todoLanes];
-      nextLanes.splice(fromIndex, 1);
-      const targetIndex = beforeLaneId ? nextLanes.findIndex((lane) => lane.id === beforeLaneId) : -1;
-      nextLanes.splice(targetIndex >= 0 ? targetIndex : nextLanes.length, 0, movedLane);
-      return { todoLanes: nextLanes };
-    }),
     renameTodoLane: (laneId, name) => persistSet((state: AppState) => ({
       todoLanes: state.todoLanes.map((lane) => lane.id === laneId && lane.type === 'custom' ? { ...lane, name } : lane),
     })),
@@ -1204,109 +1163,133 @@ export const useAppStore = create<AppState>((set, get) => {
       const lane = state.todoLanes.find((candidate) => candidate.id === laneId);
       if (!lane || lane.type !== 'custom') return {};
       const mainLaneId = state.todoLanes.find((lane) => lane.id === 'todo-main')?.id || state.todoLanes[0]?.id || 'todo-main';
-      const deletedLaneItemIds = new Set(state.todoItems.filter((item) => item.laneId === laneId).map((item) => item.id));
       const mainTail = state.todoItems
-        .filter((item) => item.laneId === mainLaneId && item.parentItemId === null)
+        .filter((item) => item.laneId === mainLaneId)
         .reduce((max, item) => Math.max(max, item.order), -1) + 1;
       let offset = 0;
       return {
         todoLanes: state.todoLanes.filter((lane) => lane.id !== laneId),
+        todoItems: state.todoItems.map((item) => item.laneId === laneId
+          ? { ...item, laneId: mainLaneId, order: mainTail + offset++, sectionId: undefined }
+          : item),
+        todoEdges: state.todoEdges.filter((edge) => edge.laneId !== laneId),
+      };
+    }),
+    addTodoLaneSection: (laneId, name) => {
+      const state = get();
+      const lane = state.todoLanes.find((candidate) => candidate.id === laneId);
+      if (!lane) return null;
+      const sectionId = `todo-section-${genId()}`;
+      const fallbackIndex = lane.sections.length;
+      const listBottom = Math.max(
+        160,
+        document.querySelector(`[data-lane-list="${laneId}"]`)?.getBoundingClientRect().height || 160,
+      );
+      const newSection: TodoLaneSection = {
+        id: sectionId,
+        name: name?.trim() || '新分段',
+        color: SECTION_SWATCH_COLORS[fallbackIndex % SECTION_SWATCH_COLORS.length],
+        top: Math.max(0, listBottom - 140 + fallbackIndex * 16),
+        height: 120,
+      };
+      persistSet((current: AppState) => ({
+        todoLanes: current.todoLanes.map((candidate) => candidate.id === laneId ? { ...candidate, sections: [...candidate.sections, newSection] } : candidate),
+      }));
+      return sectionId;
+    },
+    updateTodoLaneSection: (laneId, sectionId, updates) => persistSet((state: AppState) => ({
+      todoLanes: state.todoLanes.map((lane) => lane.id === laneId
+        ? { ...lane, sections: lane.sections.map((section) => section.id === sectionId ? { ...section, ...updates } : section) }
+        : lane),
+    })),
+    deleteTodoLaneSection: (laneId, sectionId, mode = 'merge') => persistSet((state: AppState) => {
+      const lane = state.todoLanes.find((candidate) => candidate.id === laneId);
+      if (!lane) return {};
+      const index = lane.sections.findIndex((section) => section.id === sectionId);
+      if (index < 0) return {};
+      const remaining = lane.sections.filter((section) => section.id !== sectionId);
+      const targetSectionId = mode === 'delete-items' ? undefined : remaining[Math.min(index, remaining.length - 1)]?.id;
+      const removedItemIds = mode === 'delete-items'
+        ? new Set(state.todoItems.filter((item) => item.sectionId === sectionId).map((item) => item.id))
+        : new Set<string>();
+      return {
+        todoLanes: state.todoLanes.map((candidate) => candidate.id === laneId ? { ...candidate, sections: remaining } : candidate),
+        todoItems: mode === 'delete-items'
+          ? state.todoItems.filter((item) => !removedItemIds.has(item.id))
+          : state.todoItems.map((item) => item.sectionId === sectionId ? { ...item, sectionId: targetSectionId } : item),
+        todoEdges: mode === 'delete-items'
+          ? state.todoEdges.filter((edge) => !removedItemIds.has(edge.sourceItemId) && !removedItemIds.has(edge.targetItemId))
+          : state.todoEdges,
+      };
+    }),
+    updateTodoItemSection: (itemId, sectionId) => persistSet((state: AppState) => ({
+      todoItems: state.todoItems.map((item) => item.id === itemId ? { ...item, sectionId: sectionId || undefined } : item),
+    })),
+    setTodoLaneItemOrder: (laneId, orderedIds) => persistSet((state: AppState) => {
+      const orderById = new Map(orderedIds.map((id, index) => [id, index]));
+      const maxOrder = state.todoItems
+        .filter((item) => item.laneId === laneId)
+        .reduce((max, item) => Math.max(max, item.order), -1);
+      const base = Math.max(-1, maxOrder - orderedIds.length) + 1;
+      return {
         todoItems: state.todoItems.map((item) => {
           if (item.laneId !== laneId) return item;
-          const parentItemId = item.parentItemId && deletedLaneItemIds.has(item.parentItemId) ? item.parentItemId : null;
-          return { ...item, laneId: mainLaneId, parentItemId, order: parentItemId === null ? mainTail + offset++ : item.order };
+          const index = orderById.get(item.id);
+          if (index === undefined) return { ...item, order: base + item.order };
+          return { ...item, order: index };
         }),
       };
     }),
-    moveTodoItem: (itemId, laneId, parentItemId, beforeItemId) => persistSet((state: AppState) => {
-      const movedItem = state.todoItems.find((item) => item.id === itemId);
-      const targetLane = state.todoLanes.find((candidate) => candidate.id === laneId);
-      if (!movedItem || !targetLane || itemId === parentItemId) return {};
-      const byParent = new Map(state.todoItems.map((item) => [item.id, item.parentItemId]));
-      let ancestorId = parentItemId;
-      while (ancestorId) {
-        if (ancestorId === itemId) return {};
-        ancestorId = byParent.get(ancestorId) || null;
-      }
-
-      const withoutMoved = state.todoItems.filter((item) => item.id !== itemId);
-      const siblings = withoutMoved
-        .filter((item) => item.laneId === laneId && item.parentItemId === parentItemId)
-        .sort((a, b) => a.order - b.order);
-      const beforeIndex = beforeItemId ? siblings.findIndex((item) => item.id === beforeItemId) : -1;
-      const insertIndex = beforeIndex >= 0 ? beforeIndex : siblings.length;
-      const orderedItemIds = [...siblings.map((item) => item.id)];
-      orderedItemIds.splice(insertIndex, 0, itemId);
-      const orderByItemId = new Map(orderedItemIds.map((id, index) => [id, index]));
-      const descendantIds = new Set<string>();
-      const queue = [itemId];
-      while (queue.length > 0) {
-        const currentId = queue.shift();
-        if (!currentId) continue;
-        state.todoItems.forEach((item) => {
-          if (item.parentItemId === currentId && !descendantIds.has(item.id)) {
-            descendantIds.add(item.id);
-            queue.push(item.id);
-          }
-        });
-      }
-
-      return {
-        todoItems: [
-          ...withoutMoved.map((item) => {
-            if (orderByItemId.has(item.id)) return { ...item, order: orderByItemId.get(item.id)! };
-            if (descendantIds.has(item.id)) return { ...item, laneId };
-            return item;
-          }),
-          { ...movedItem, laneId, parentItemId, order: orderByItemId.get(itemId) || 0 },
-        ],
-      };
+    moveTodoItemToLanePosition: (itemId, laneId, order, sectionId) => persistSet((state: AppState) => {
+      const target = state.todoItems.find((item) => item.id === itemId);
+      if (!target) return {};
+      const normalizedSectionId = sectionId || undefined;
+      const scoped = state.todoItems.filter((item) => item.laneId === laneId && item.id !== itemId);
+      const after = scoped.filter((item) => item.order >= order).map((item) => item.id);
+      const updated = state.todoItems.map((item) => {
+        if (item.id === itemId) return { ...item, laneId, order, sectionId: normalizedSectionId };
+        if (after.includes(item.id)) return { ...item, order: item.order + 1 };
+        return item;
+      });
+      return { todoItems: updated };
     }),
-    duplicateTodoItem: (itemId, laneId) => {
-      const state = get();
-      const source = state.todoItems.find((item) => item.id === itemId);
-      if (!source) return false;
-      return get().copyTaskToTodoLane(source.taskId, laneId, null, undefined, source.isDone);
-    },
-    copyTaskToTodoLane: (taskId, laneId, parentItemId = null, beforeItemId, isDone) => {
-      const state = get();
-      const targetLane = state.todoLanes.find((lane) => lane.id === laneId);
-      if (!state.tasks[taskId] || !targetLane) return false;
-      const siblings = state.todoItems
-        .filter((item) => item.laneId === laneId && item.parentItemId === parentItemId)
-        .sort((left, right) => left.order - right.order);
-      const beforeIndex = beforeItemId ? siblings.findIndex((item) => item.id === beforeItemId) : -1;
-      const insertIndex = beforeIndex >= 0 ? beforeIndex : siblings.length;
-      const newItemId = `todo-item-${genId()}`;
-      const orderedItemIds = siblings.map((item) => item.id);
-      orderedItemIds.splice(insertIndex, 0, newItemId);
-      const orderByItemId = new Map(orderedItemIds.map((id, index) => [id, index]));
-      persistSet((current: AppState) => ({
-        todoItems: [
-          ...current.todoItems.map((item) => orderByItemId.has(item.id) ? { ...item, order: orderByItemId.get(item.id)! } : item),
-          { id: newItemId, taskId, laneId, parentItemId, order: insertIndex, isDone: isDone ?? state.tasks[taskId].isDone },
-        ],
-      }));
-      return true;
-    },
     toggleTodoItemDone: (itemId) => persistSet((state: AppState) => ({
       todoItems: state.todoItems.map((item) => item.id === itemId ? { ...item, isDone: !item.isDone } : item),
     })),
     removeTodoItem: (itemId) => persistSet((state: AppState) => {
-      const removedItem = state.todoItems.find((item) => item.id === itemId);
-      if (!removedItem) return {};
       return {
-        todoItems: state.todoItems
-          .filter((item) => item.id !== itemId)
-          .map((item) => item.parentItemId === itemId
-            ? { ...item, parentItemId: removedItem.parentItemId }
-            : item),
+        todoItems: state.todoItems.filter((item) => item.id !== itemId),
+        todoEdges: state.todoEdges.filter((edge) => edge.sourceItemId !== itemId && edge.targetItemId !== itemId),
       };
     }),
-    removeTaskFromTodo: (taskId) => persistSet((state: AppState) => {
-      return { todoItems: removeTodoTaskInstances(state.todoItems, taskId) };
+    addTodoEdge: (laneId, sourceItemId, targetItemId) => persistSet((state: AppState) => {
+      if (sourceItemId === targetItemId
+        || state.todoItems.find((item) => item.id === sourceItemId)?.laneId !== laneId
+        || state.todoItems.find((item) => item.id === targetItemId)?.laneId !== laneId
+        || state.todoEdges.some((edge) => edge.laneId === laneId && edge.sourceItemId === sourceItemId && edge.targetItemId === targetItemId)) return {};
+      return { todoEdges: [...state.todoEdges, { id: `todo-edge-${genId()}`, laneId, sourceItemId, targetItemId }] };
     }),
-
+    removeTodoEdge: (edgeId) => persistSet((state: AppState) => ({
+      todoEdges: state.todoEdges.filter((edge) => edge.id !== edgeId),
+    })),
+    addTodoTimeBlock: (itemId, block) => persistSet((state: AppState) => ({
+      todoItems: state.todoItems.map((item) => item.id === itemId ? {
+        ...item,
+        timeBlocks: [...(item.timeBlocks || []), { id: `todo-time-${genId()}`, ...block }],
+      } : item),
+    })),
+    updateTodoTimeBlock: (itemId, blockId, updates) => persistSet((state: AppState) => ({
+      todoItems: state.todoItems.map((item) => item.id === itemId ? {
+        ...item,
+        timeBlocks: (item.timeBlocks || []).map((block) => block.id === blockId ? { ...block, ...updates } : block),
+      } : item),
+    })),
+    removeTodoTimeBlock: (itemId, blockId) => persistSet((state: AppState) => ({
+      todoItems: state.todoItems.map((item) => item.id === itemId ? {
+        ...item,
+        timeBlocks: (item.timeBlocks || []).filter((block) => block.id !== blockId),
+      } : item),
+    })),
     addTimeTemplate: (type, name) => {
       const id = `time-template-${genId()}`;
       persistSet((state: AppState) => ({
@@ -1596,7 +1579,6 @@ export const useAppStore = create<AppState>((set, get) => {
           (edge) => !removedWorkspaceNodeIds.has(edge.source) && !removedWorkspaceNodeIds.has(edge.target)
         ),
         selectedTaskId: state.selectedTaskId === taskId ? null : state.selectedTaskId,
-        todoItems: removeTodoTaskInstances(state.todoItems, taskId),
       };
     }),
 
@@ -1631,7 +1613,6 @@ export const useAppStore = create<AppState>((set, get) => {
           }])),
           mergedEdges: state.mergedEdges.filter((edge) => !removedNodeIds.has(edge.source) && !removedNodeIds.has(edge.target)),
           selectedTaskId: state.selectedTaskId === taskId ? null : state.selectedTaskId,
-          todoItems: removeTodoTaskInstances(state.todoItems, taskId),
         };
       }
 
@@ -2097,6 +2078,7 @@ export const useAppStore = create<AppState>((set, get) => {
       drafts: [],
       todoLanes: normalizeTodoLanes([]),
       todoItems: [],
+      todoEdges: [],
       crossGoalEdges: [],
       bomTree: EMPTY_BOM_TREE,
       timelineTaskOrder: [],
