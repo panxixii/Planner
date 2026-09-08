@@ -338,75 +338,6 @@ const SectionTab: React.FC<{
   );
 };
 
-const ListLane: React.FC<{ lane: TodoLane; onOpenView: (view: 'board' | 'kanban' | 'gantt') => void }> = ({ lane, onOpenView }) => {
-  const allItems = useAppStore((state) => state.todoItems);
-  const create = useAppStore((state) => state.createTodoItem);
-  const update = useAppStore((state) => state.updateTodoItem);
-  const toggle = useAppStore((state) => state.toggleTodoItemDone);
-  const remove = useAppStore((state) => state.removeTodoItem);
-  const renameLane = useAppStore((state) => state.renameTodoLane);
-  const deleteLane = useAppStore((state) => state.deleteTodoLane);
-  const addSection = useAppStore((state) => state.addTodoLaneSection);
-  const updateSection = useAppStore((state) => state.updateTodoLaneSection);
-  const deleteSection = useAppStore((state) => state.deleteTodoLaneSection);
-  const [draft, setDraft] = useState('');
-  const items = useMemo(() => allItems.filter((item) => item.laneId === lane.id && !item.isDirectory).sort((a, b) => a.order - b.order), [allItems, lane.id]);
-  const listRef = useRef<HTMLDivElement>(null);
-  const [listHeight, setListHeight] = useState(0);
-  const [bandDrag, setBandDrag] = useState<{ id: string; mode: 'move' | 'top' | 'bottom'; startY: number; originTop: number; originHeight: number } | null>(null);
-  const [liveBands, setLiveBands] = useState<Record<string, { top: number; height: number }>>({});
-
-  useEffect(() => {
-    const element = listRef.current;
-    if (!element) return;
-    const observer = new ResizeObserver(() => setListHeight(element.getBoundingClientRect().height));
-    observer.observe(element);
-    setListHeight(element.getBoundingClientRect().height);
-    return () => observer.disconnect();
-  }, []);
-
-  useEffect(() => {
-    if (!bandDrag) return;
-    const onMove = (event: PointerEvent) => {
-      setLiveBands((current) => {
-        const base = bandDrag.id in current ? current[bandDrag.id] : { top: bandDrag.originTop, height: bandDrag.originHeight };
-        const delta = event.clientY - bandDrag.startY;
-        if (bandDrag.mode === 'move') {
-          return { ...current, [bandDrag.id]: { ...base, top: Math.max(0, bandDrag.originTop + delta) } };
-        }
-        if (bandDrag.mode === 'top') {
-          const maxGrow = bandDrag.originHeight - 28;
-          const shrink = Math.min(Math.max(-bandDrag.originTop, delta), maxGrow);
-          return { ...current, [bandDrag.id]: { ...base, top: bandDrag.top + shrink, height: bandDrag.originHeight - shrink } };
-        }
-        return { ...current, [bandDrag.id]: { ...base, height: Math.max(28, bandDrag.originHeight + delta) } };
-      });
-    };
-    const onUp = () => {
-      setBandDrag((current) => {
-        if (current && liveBands[current.id]) {
-          updateSection(lane.id, current.id, liveBands[current.id]);
-        }
-        return null;
-      });
-      setLiveBands({});
-    };
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
-    return () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-    };
-  }, [bandDrag, lane.id, liveBands, updateSection]);
-
-  const startBandDrag = useCallback((event: React.PointerEvent, section: TodoLaneSection, mode: 'move' | 'top' | 'bottom') => {
-    event.preventDefault();
-    event.stopPropagation();
-    setLiveBands({});
-    setBandDrag({ id: section.id, mode, startY: event.clientY, originTop: section.top, originHeight: section.height });
-  }, []);
-
-  const submit = () => { const text = draft.trim(); if (!text) return; create(lane.id, text); setDraft(''); };
 const TodoRow: React.FC<{ item: TodoItem }> = ({ item }) => {
   const update = useAppStore((state) => state.updateTodoItem);
   const toggle = useAppStore((state) => state.toggleTodoItemDone);
@@ -423,7 +354,7 @@ const TodoRow: React.FC<{ item: TodoItem }> = ({ item }) => {
       ref={rowRef}
       onClick={(event) => { if (editing) return; if ((event.target as HTMLElement).closest('button, [role="toolbar"]')) return; handleClick(event); }}
       onDoubleClick={(event) => { if ((event.target as HTMLElement).closest('button')) return; beginEdit(); }}
-      className={`group relative flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-neutral-50 ${editing ? 'bg-neutral-50' : 'cursor-default'}`}
+      className={`group relative z-10 flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-neutral-50 ${editing ? 'bg-neutral-50' : 'cursor-default'}`}
       title={editing ? undefined : '单击显示操作，双击编辑'}
     >
       <TodoCheckbox done={item.isDone} onClick={() => toggle(item.id)} />
@@ -442,33 +373,29 @@ const TodoRow: React.FC<{ item: TodoItem }> = ({ item }) => {
     </div>
   );
 };
-  return <section className="relative rounded-xl border border-neutral-200 bg-white/80 p-4 shadow-xs">
-    <div className="mb-3 flex items-center justify-between gap-3">
+
+const ListLane: React.FC<{ lane: TodoLane; onOpenView: (view: 'board' | 'kanban' | 'gantt') => void }> = ({ lane, onOpenView }) => {
+  const allItems = useAppStore((state) => state.todoItems);
+  const create = useAppStore((state) => state.createTodoItem);
+  const update = useAppStore((state) => state.updateTodoItem);
+  const toggle = useAppStore((state) => state.toggleTodoItemDone);
+  const remove = useAppStore((state) => state.removeTodoItem);
+  const renameLane = useAppStore((state) => state.renameTodoLane);
+  const deleteLane = useAppStore((state) => state.deleteTodoLane);
+  const addSection = useAppStore((state) => state.addTodoLaneSection);
+  const [draft, setDraft] = useState('');
+  const items = useMemo(() => allItems.filter((item) => item.laneId === lane.id && !item.isDirectory).sort((a, b) => a.order - b.order), [allItems, lane.id]);
+  const submit = () => { const text = draft.trim(); if (!text) return; create(lane.id, text); setDraft(''); };
+  return <section data-lane-card={lane.id} className="rounded-xl border border-neutral-200 bg-white/80 p-4 shadow-xs">
+    <div className="relative z-10 mb-3 flex items-center justify-between gap-3">
       <div className="flex min-w-0 items-center gap-2"><span className={`h-2 w-2 shrink-0 rounded-full ${lane.type === 'main' ? 'bg-purple-500' : 'bg-sky-400'}`} />{lane.type === 'custom' ? <input value={lane.name} onChange={(event) => renameLane(lane.id, event.target.value)} onBlur={(event) => { if (!event.currentTarget.value.trim()) renameLane(lane.id, '未命名分线'); }} className="min-w-0 flex-1 bg-transparent text-sm font-bold text-neutral-700 outline-none" aria-label="分线名称" /> : <h3 className="text-sm font-bold text-neutral-700">{lane.name}</h3>}</div>
       <div className="flex items-center gap-2"><span className="text-[11px] text-neutral-400">{items.filter((item) => item.isDone).length}/{items.length}</span><div className="flex rounded-lg border border-neutral-200 bg-neutral-50 p-0.5"><button type="button" onClick={() => onOpenView('board')} className="flex h-7 w-7 items-center justify-center rounded-md text-purple-600 hover:bg-white hover:shadow-sm" title="画板"><GitBranch className="h-3.5 w-3.5" /></button><button type="button" onClick={() => onOpenView('kanban')} className="flex h-7 w-7 items-center justify-center rounded-md text-amber-600 hover:bg-white hover:shadow-sm" title="看板"><Columns3 className="h-3.5 w-3.5" /></button><button type="button" onClick={() => onOpenView('gantt')} className="flex h-7 w-7 items-center justify-center rounded-md text-sky-600 hover:bg-white hover:shadow-sm" title="甘特图"><CalendarDays className="h-3.5 w-3.5" /></button></div>{lane.type === 'custom' ? <DeleteLaneButton onDelete={() => deleteLane(lane.id)} /> : null}</div>
     </div>
-    <div ref={listRef} data-lane-list={lane.id} className="relative space-y-1.5">
+    <div className="space-y-1.5">
       {items.map((item) => <TodoRow key={item.id} item={item} />)}
-      <div className="flex items-center gap-2 px-2 pt-1"><span className="h-[18px] w-[18px] shrink-0 rounded-[5px] border border-dashed border-neutral-300" /><input value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') submit(); }} placeholder="添加待办" className="min-w-0 flex-1 bg-transparent py-1 text-sm outline-none placeholder:text-neutral-300" aria-label={`添加到${lane.name}`} /><button type="button" onClick={submit} disabled={!draft.trim()} className="flex h-7 w-7 items-center justify-center rounded text-purple-500 hover:bg-purple-50 disabled:opacity-0" title="添加待办"><Plus className="h-4 w-4" /></button></div>
-      {lane.sections.map((section) => {
-        const live = liveBands[section.id];
-        const top = live ? live.top : section.top;
-        const height = live ? live.height : section.height;
-        const isDragging = bandDrag?.id === section.id;
-        return (
-          <div
-            key={section.id}
-            className="pointer-events-none absolute inset-x-0 rounded-lg transition-shadow"
-            style={{ top, height, backgroundColor: withAlpha(section.color, 0.35), zIndex: 10, boxShadow: isDragging ? '0 0 0 1.5px rgba(139,92,246,0.45)' : undefined }}
-          >
-            <div className="pointer-events-auto absolute inset-x-0 -top-px h-1.5 cursor-row-resize" onPointerDown={(event) => startBandDrag(event, section, 'top')} title="拖拽调整色块上边缘" style={{ touchAction: 'none' }} />
-            <div className="pointer-events-auto absolute inset-x-0 -bottom-px h-1.5 cursor-row-resize" onPointerDown={(event) => startBandDrag(event, section, 'bottom')} title="拖拽调整色块下边缘" style={{ touchAction: 'none' }} />
-            <SectionTabWrapper laneId={lane.id} section={section} onHandleDown={(event) => startBandDrag(event, section, 'move')} />
-          </div>
-        );
-      })}
+      <div className="relative z-10 flex items-center gap-2 px-2 pt-1"><span className="h-[18px] w-[18px] shrink-0 rounded-[5px] border border-dashed border-neutral-300" /><input value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') submit(); }} placeholder="添加待办" className="min-w-0 flex-1 bg-transparent py-1 text-sm outline-none placeholder:text-neutral-300" aria-label={`添加到${lane.name}`} /><button type="button" onClick={submit} disabled={!draft.trim()} className="flex h-7 w-7 items-center justify-center rounded text-purple-500 hover:bg-purple-50 disabled:opacity-0" title="添加待办"><Plus className="h-4 w-4" /></button></div>
     </div>
-    <button type="button" onClick={() => addSection(lane.id)} className="mt-2 flex h-6 items-center gap-1 self-start rounded px-1.5 text-[11px] font-semibold text-neutral-300 transition-colors hover:bg-neutral-100 hover:text-purple-500"><Plus className="h-3 w-3" />新增分段</button>
+    <button type="button" onClick={() => addSection(lane.id)} className="relative z-10 mt-2 flex h-6 items-center gap-1 self-start rounded px-1.5 text-[11px] font-semibold text-neutral-300 transition-colors hover:bg-neutral-100 hover:text-purple-500"><Plus className="h-3 w-3" />新增分段</button>
   </section>;
 };
 
@@ -495,6 +422,72 @@ const SectionTabWrapper: React.FC<{
   const updateSection = useAppStore((state) => state.updateTodoLaneSection);
   const deleteSection = useAppStore((state) => state.deleteTodoLaneSection);
   return <SectionTab section={section} onRename={(name) => updateSection(laneId, section.id, { name })} onColor={(color) => updateSection(laneId, section.id, { color })} onDelete={() => deleteSection(laneId, section.id, 'merge')} onHandleDown={onHandleDown} />;
+};
+
+const LaneBandsLayer: React.FC<{ lanes: TodoLane[] }> = ({ lanes }) => {
+  const updateSection = useAppStore((state) => state.updateTodoLaneSection);
+  const [bandDrag, setBandDrag] = useState<{ laneId: string; id: string; mode: 'move' | 'top' | 'bottom'; startY: number; originTop: number; originHeight: number } | null>(null);
+  const [liveBands, setLiveBands] = useState<Record<string, { top: number; height: number }>>({});
+
+  useEffect(() => {
+    if (!bandDrag) return;
+    const onMove = (event: PointerEvent) => {
+      setLiveBands((current) => {
+        const delta = event.clientY - bandDrag.startY;
+        if (bandDrag.mode === 'move') {
+          return { ...current, [bandDrag.id]: { top: Math.max(0, bandDrag.originTop + delta), height: bandDrag.originHeight } };
+        }
+        if (bandDrag.mode === 'top') {
+          const maxGrow = bandDrag.originHeight - 28;
+          const shift = Math.min(Math.max(-bandDrag.originTop, delta), maxGrow);
+          return { ...current, [bandDrag.id]: { top: bandDrag.originTop + shift, height: bandDrag.originHeight - shift } };
+        }
+        return { ...current, [bandDrag.id]: { top: bandDrag.originTop, height: Math.max(28, bandDrag.originHeight + delta) } };
+      });
+    };
+    const onUp = () => {
+      setBandDrag((current) => {
+        if (current && liveBands[current.id]) {
+          updateSection(current.laneId, current.id, liveBands[current.id]);
+        }
+        return null;
+      });
+      setLiveBands({});
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+  }, [bandDrag, liveBands, updateSection]);
+
+  const startBandDrag = useCallback((event: React.PointerEvent, laneId: string, section: TodoLaneSection, mode: 'move' | 'top' | 'bottom') => {
+    event.preventDefault();
+    event.stopPropagation();
+    setLiveBands({});
+    setBandDrag({ laneId, id: section.id, mode, startY: event.clientY, originTop: section.top, originHeight: section.height });
+  }, []);
+
+  return <>
+    {lanes.flatMap((lane) => lane.sections.map((section) => {
+      const live = liveBands[section.id];
+      const top = live ? live.top : section.top;
+      const height = live ? live.height : section.height;
+      const isDragging = bandDrag?.id === section.id;
+      return (
+        <div
+          key={section.id}
+          className="pointer-events-none absolute inset-x-0 rounded-lg transition-shadow"
+          style={{ top, height, backgroundColor: withAlpha(section.color, 0.35), zIndex: 0, boxShadow: isDragging ? '0 0 0 1.5px rgba(139,92,246,0.45)' : undefined }}
+        >
+          <div className="pointer-events-auto absolute inset-x-0 -top-px h-1.5 cursor-row-resize" onPointerDown={(event) => startBandDrag(event, lane.id, section, 'top')} title="拖拽调整色块上边缘" style={{ touchAction: 'none' }} />
+          <div className="pointer-events-auto absolute inset-x-0 -bottom-px h-1.5 cursor-row-resize" onPointerDown={(event) => startBandDrag(event, lane.id, section, 'bottom')} title="拖拽调整色块下边缘" style={{ touchAction: 'none' }} />
+          <SectionTabWrapper laneId={lane.id} section={section} onHandleDown={(event) => startBandDrag(event, lane.id, section, 'move')} />
+        </div>
+      );
+    }))}
+  </>;
 };
 
 interface BoardNodeData extends Record<string, unknown> { itemId: string; text: string; done: boolean; color?: string; progressStatus?: 'not-started' | 'in-progress'; isDirectory?: boolean }
@@ -630,6 +623,6 @@ export const TodoPage: React.FC = () => {
   }
   return <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-neutral-50 p-6 custom-scrollbar"><div className="mx-auto flex min-h-0 w-full max-w-[1100px] flex-1 flex-col">
     <div className="flex items-center justify-between gap-3"><div className="flex items-center gap-3"><h2 className="text-lg font-bold text-neutral-800">Todo</h2><div className="flex items-center gap-1 text-xs text-neutral-400"><List className="h-3.5 w-3.5" />List</div></div><button type="button" onClick={() => addLane()} className="flex h-9 items-center gap-1.5 rounded-lg border border-purple-200 bg-purple-50 px-3 text-xs font-semibold text-purple-600"><Plus className="h-4 w-4" />新增分线</button></div>
-    <div className="mt-6 flex flex-col gap-4">{lanes.map((lane) => <ListLane key={lane.id} lane={lane} onOpenView={(view) => { setLaneView(view); setBoardLaneId(lane.id); }} />)}</div>
+    <div data-lanes-container className="relative mt-6 flex flex-col gap-4">{lanes.map((lane) => <ListLane key={lane.id} lane={lane} onOpenView={(view) => { setLaneView(view); setBoardLaneId(lane.id); }} />)}<LaneBandsLayer lanes={lanes} /></div>
   </div></div>;
 };

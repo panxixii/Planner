@@ -1182,15 +1182,14 @@ export const useAppStore = create<AppState>((set, get) => {
       if (!lane) return null;
       const sectionId = `todo-section-${genId()}`;
       const fallbackIndex = lane.sections.length;
-      const listBottom = Math.max(
-        160,
-        document.querySelector(`[data-lane-list="${laneId}"]`)?.getBoundingClientRect().height || 160,
-      );
+      const card = typeof document !== 'undefined' ? document.querySelector(`[data-lane-card="${laneId}"]`) : null;
+      const container = typeof document !== 'undefined' ? document.querySelector('[data-lanes-container]') : null;
+      const cardTop = card instanceof HTMLElement && container instanceof HTMLElement && card.offsetParent === container ? card.offsetTop : null;
       const newSection: TodoLaneSection = {
         id: sectionId,
         name: name?.trim() || '新分段',
         color: SECTION_SWATCH_COLORS[fallbackIndex % SECTION_SWATCH_COLORS.length],
-        top: Math.max(0, listBottom - 140 + fallbackIndex * 16),
+        top: cardTop !== null ? cardTop + 56 : fallbackIndex * 120,
         height: 120,
       };
       persistSet((current: AppState) => ({
