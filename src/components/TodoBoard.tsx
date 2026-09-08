@@ -99,14 +99,14 @@ export const TodoBoard: React.FC<{ lane: TodoLane }> = ({ lane }) => {
   };
 
   return (
-    <div className="flex min-h-0 flex-1 gap-4 overflow-x-auto pb-2 custom-scrollbar">
+    <div className="grid min-h-0 flex-1 grid-cols-3 gap-6 pb-2">
       {columns.map((column) => (
         <section
           key={column.id}
           onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDropColumn(column.id); }}
           onDragLeave={() => setDropColumn((current) => (current === column.id ? null : current))}
           onDrop={(event) => { event.preventDefault(); if (dragId) moveToColumn(dragId, column.id); }}
-          className={`flex w-72 shrink-0 flex-col rounded-xl border bg-white/85 shadow-xs transition-colors ${dropColumn === column.id && dragId ? 'border-purple-300 bg-purple-50/50' : 'border-neutral-200'}`}
+          className={`flex min-h-0 flex-col rounded-xl border bg-white/85 shadow-xs transition-colors ${dropColumn === column.id && dragId ? 'border-purple-300 bg-purple-50/50' : 'border-neutral-200'}`}
         >
           <header className="flex items-center justify-between gap-2 border-b border-neutral-100 px-3 py-2.5">
             <div className="flex items-center gap-2">
