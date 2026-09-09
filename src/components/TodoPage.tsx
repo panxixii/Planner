@@ -279,7 +279,7 @@ const SectionTab: React.FC<{
   return (
     <div ref={anchorRef} className="pointer-events-auto absolute left-full top-0 z-40 select-none">
       {editing ? (
-        <input autoFocus value={draft} onChange={(event) => setDraft(event.target.value)} onBlur={commit} onKeyDown={(event) => { if (event.key === 'Enter') commit(); if (event.key === 'Escape') { setDraft(section.name); setEditing(false); } }} className="block h-7 w-36 rounded-md border border-purple-300 bg-white px-2 text-[11px] font-bold text-neutral-700 shadow-md outline-none" aria-label="分段名称" />
+        <input autoFocus value={draft} onChange={(event) => setDraft(event.target.value)} onBlur={commit} onKeyDown={(event) => { if (event.key === 'Enter' && !event.nativeEvent.isComposing) commit(); if (event.key === 'Escape') { setDraft(section.name); setEditing(false); } }} className="block h-7 w-36 rounded-md border border-purple-300 bg-white px-2 text-[11px] font-bold text-neutral-700 shadow-md outline-none" aria-label="分段名称" />
       ) : (
         <button
           type="button"
@@ -383,12 +383,18 @@ const TodoRow: React.FC<{ item: TodoItem }> = ({ item }) => {
   const [toolbarOpen, setToolbarOpen] = useState(false);
   const [pointerX, setPointerX] = useState<number | undefined>(undefined);
   const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
   const rowRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  useEffect(() => { if (editing) { inputRef.current?.focus(); inputRef.current?.select(); } }, [editing]);
+  useEffect(() => { if (editing) { setDraft(item.text); inputRef.current?.focus(); inputRef.current?.select(); } }, [editing]);
   const { handleClick, cancel } = useTapClick((element, event) => { setPointerX(event.clientX); setToolbarOpen((open) => !open); });
   const beginEdit = () => { cancel(); setToolbarOpen(false); setEditing(true); };
-  const commitEdit = () => { if (!item.text.trim()) update(item.id, { text: '未命名待办' }); setEditing(false); };
+  const commitEdit = () => {
+    setEditing(false);
+    const text = draft.trim();
+    if (!text) { if (item.text !== '未命名待办') update(item.id, { text: '未命名待办' }); return; }
+    if (text !== item.text) update(item.id, { text });
+  };
   return (
     <div
       ref={rowRef}
@@ -401,10 +407,10 @@ const TodoRow: React.FC<{ item: TodoItem }> = ({ item }) => {
       <input
         ref={inputRef}
         readOnly={!editing}
-        value={item.text}
-        onChange={(event) => update(item.id, { text: event.target.value })}
+        value={editing ? draft : item.text}
+        onChange={(event) => setDraft(event.target.value)}
         onBlur={commitEdit}
-        onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); if (event.key === 'Escape') { event.currentTarget.blur(); } }}
+        onKeyDown={(event) => { if (event.key === 'Enter' && !event.nativeEvent.isComposing) event.currentTarget.blur(); if (event.key === 'Escape') { setDraft(item.text); event.currentTarget.blur(); } }}
         className={`min-w-0 flex-1 bg-transparent py-1 text-sm outline-none ${editing ? 'cursor-text' : 'cursor-default'} ${item.isDone ? 'text-neutral-400 line-through' : 'text-neutral-700'}`}
         aria-label="待办文本"
       />
@@ -432,7 +438,7 @@ const ListLane: React.FC<{ lane: TodoLane; onOpenView: (view: 'board' | 'kanban'
     </div>
     <div className="space-y-1.5">
       {items.map((item) => <TodoRow key={item.id} item={item} />)}
-      <div className="relative z-10 flex items-center gap-2 px-2 pt-1"><span className="h-[18px] w-[18px] shrink-0 rounded-[5px] border border-dashed border-neutral-300" /><input value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') submit(); }} placeholder="添加待办" className="min-w-0 flex-1 bg-transparent py-1 text-sm outline-none placeholder:text-neutral-300" aria-label={`添加到${lane.name}`} /><button type="button" onClick={submit} disabled={!draft.trim()} className="flex h-7 w-7 items-center justify-center rounded text-purple-500 hover:bg-purple-50 disabled:opacity-0" title="添加待办"><Plus className="h-4 w-4" /></button></div>
+      <div className="relative z-10 flex items-center gap-2 px-2 pt-1"><span className="h-[18px] w-[18px] shrink-0 rounded-[5px] border border-dashed border-neutral-300" /><input value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.nativeEvent.isComposing) submit(); }} placeholder="添加待办" className="min-w-0 flex-1 bg-transparent py-1 text-sm outline-none placeholder:text-neutral-300" aria-label={`添加到${lane.name}`} /><button type="button" onClick={submit} disabled={!draft.trim()} className="flex h-7 w-7 items-center justify-center rounded text-purple-500 hover:bg-purple-50 disabled:opacity-0" title="添加待办"><Plus className="h-4 w-4" /></button></div>
     </div>
   </section>;
 };
@@ -546,9 +552,10 @@ const BoardNode = React.memo(({ id, data, selected }: NodeProps<Node<BoardNodeDa
   const [toolbarOpen, setToolbarOpen] = useState(false);
   const [pointerX, setPointerX] = useState<number | undefined>(undefined);
   const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
   const nodeRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  useEffect(() => { if (editing) { inputRef.current?.focus(); inputRef.current?.select(); } }, [editing]);
+  useEffect(() => { if (editing) { setDraft(data.text); inputRef.current?.focus(); inputRef.current?.select(); } }, [editing]);
   const { handleClick, cancel } = useTapClick((_element, event) => { setPointerX(event.clientX); setToolbarOpen((open) => !open); });
   const color = boardColors[data.color || ''] || data.color || '#9387d1';
   const surface = mixWithWhite(color, 0.08);
@@ -568,10 +575,15 @@ const BoardNode = React.memo(({ id, data, selected }: NodeProps<Node<BoardNodeDa
       <input
         ref={inputRef}
         readOnly={!editing}
-        value={data.text}
-        onChange={(event) => update(data.itemId, { text: event.target.value })}
-        onBlur={() => { if (!data.text.trim()) update(data.itemId, { text: '未命名待办' }); setEditing(false); }}
-        onKeyDown={(event) => { if (event.key === 'Enter' || event.key === 'Escape') event.currentTarget.blur(); }}
+        value={editing ? draft : data.text}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={() => {
+          setEditing(false);
+          const text = draft.trim();
+          if (!text) { if (data.text !== '未命名待办') update(data.itemId, { text: '未命名待办' }); return; }
+          if (text !== data.text) update(data.itemId, { text });
+        }}
+        onKeyDown={(event) => { if (event.key === 'Enter' && !event.nativeEvent.isComposing) event.currentTarget.blur(); if (event.key === 'Escape') event.currentTarget.blur(); }}
         className={`min-w-0 flex-1 bg-transparent py-1 text-xs font-semibold outline-none ${editing ? 'nodrag cursor-text' : 'cursor-default'} ${data.done ? 'text-neutral-400 line-through' : 'text-neutral-700'}`}
         aria-label={data.isDirectory ? '目录标题' : '待办文本'}
       />

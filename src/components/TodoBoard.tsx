@@ -29,8 +29,9 @@ const TodoCard: React.FC<{
   onOpenToolbar: (el: HTMLElement, pointerX: number) => void;
 }> = ({ item, isCurrent, dragging, onDragStart, onDragEnd, onToggle, onUpdate, onOpenToolbar }) => {
   const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
-  useEffect(() => { if (editing) { inputRef.current?.focus(); inputRef.current?.select(); } }, [editing]);
+  useEffect(() => { if (editing) { setDraft(item.text); inputRef.current?.focus(); inputRef.current?.select(); } }, [editing]);
   const { handleClick, cancel } = useTapClick((element, event) => onOpenToolbar(element, event.clientX));
   return (
     <article
@@ -52,10 +53,15 @@ const TodoCard: React.FC<{
         <input
           ref={inputRef}
           readOnly={!editing}
-          value={item.text}
-          onChange={(event) => onUpdate(event.target.value)}
-          onBlur={() => { if (!item.text.trim()) onUpdate('未命名待办'); setEditing(false); }}
-          onKeyDown={(event) => { if (event.key === 'Enter' || event.key === 'Escape') event.currentTarget.blur(); }}
+          value={editing ? draft : item.text}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={() => {
+            setEditing(false);
+            const text = draft.trim();
+            if (!text) { if (item.text !== '未命名待办') onUpdate('未命名待办'); return; }
+            if (text !== item.text) onUpdate(text);
+          }}
+          onKeyDown={(event) => { if (event.key === 'Enter' && !event.nativeEvent.isComposing) event.currentTarget.blur(); if (event.key === 'Escape') event.currentTarget.blur(); }}
           className={`min-w-0 flex-1 bg-transparent py-0.5 text-xs font-semibold outline-none ${editing ? 'cursor-text' : 'cursor-default'} ${item.isDone ? 'text-neutral-400 line-through' : 'text-neutral-700'}`}
           aria-label="待办文本"
         />
