@@ -26,13 +26,16 @@ type DragState = {
 
 const LEFT_WIDTH = 240;
 const COLUMNS = 360;
+const DAY_MS = 24 * 60 * 60_000;
 const scales = {
   minutes: { unitMs: 5 * 60_000, width: 58, snapMs: 60_000 },
   hours: { unitMs: 60 * 60_000, width: 64, snapMs: 15 * 60_000 },
-  days: { unitMs: 24 * 60 * 60_000, width: 82, snapMs: 60 * 60_000 },
+  days: { unitMs: DAY_MS, width: 82, snapMs: DAY_MS },
 };
 const colors: Record<string, string> = { emerald: '#67c8bd', rose: '#d78fb5', sky: '#79bfd5', amber: '#d9b958', violet: '#9b8ae4', indigo: '#9387d1' };
-const align = (timestamp: number, unitMs: number) => Math.floor(timestamp / unitMs) * unitMs;
+const startOfDay = (timestamp: number) => { const date = new Date(timestamp); date.setHours(0, 0, 0, 0); return date.getTime(); };
+const align = (timestamp: number, unitMs: number) => (unitMs >= DAY_MS ? startOfDay(timestamp) : Math.floor(timestamp / unitMs) * unitMs);
+const snapToGrid = (timestamp: number, snapMs: number) => (snapMs >= DAY_MS ? startOfDay(timestamp) : Math.round(timestamp / snapMs) * snapMs);
 const labelFor = (timestamp: number, scale: Scale) => {
   const date = new Date(timestamp);
   if (scale === 'days') return { main: `${date.getMonth() + 1}/${date.getDate()}`, sub: `周${'日一二三四五六'[date.getDay()]}` };
@@ -188,7 +191,7 @@ export const TodoGantt: React.FC<{ lane: TodoLane }> = ({ lane }) => {
     setRangeStart(next);
   };
   const addAt = (itemId: string, timestamp: number) => {
-    const start = Math.round(timestamp / definition.snapMs) * definition.snapMs;
+    const start = snapToGrid(timestamp, definition.snapMs);
     const duration = scale === 'days' ? 24 * 60 * 60_000 : 2 * 60 * 60_000;
     addBlock(itemId, { startTime: formatLocalDateTime(start), endTime: formatLocalDateTime(start + duration) });
   };
@@ -211,12 +214,12 @@ export const TodoGantt: React.FC<{ lane: TodoLane }> = ({ lane }) => {
     const current = dragRef.current;
     if (!current || current.pointerId !== event.pointerId) return;
     const rawDelta = ((event.clientX - current.startX) / definition.width) * definition.unitMs;
-    const delta = Math.round(rawDelta / definition.snapMs) * definition.snapMs;
+    const fineDelta = Math.round(rawDelta / (60_000)) * 60_000;
     let previewStart = current.originalStart;
     let previewEnd = current.originalEnd;
-    if (current.edge === 'move') { previewStart += delta; previewEnd += delta; }
-    else if (current.edge === 'start') previewStart = Math.min(current.originalStart + delta, current.originalEnd - definition.snapMs);
-    else previewEnd = Math.max(current.originalEnd + delta, current.originalStart + definition.snapMs);
+    if (current.edge === 'move') { previewStart += fineDelta; previewEnd += fineDelta; }
+    else if (current.edge === 'start') previewStart = Math.min(current.originalStart + fineDelta, current.originalEnd - 60_000);
+    else previewEnd = Math.max(current.originalEnd + fineDelta, current.originalStart + 60_000);
     const next = { ...current, previewStart, previewEnd };
     dragRef.current = next;
     setPreview(next);
@@ -224,7 +227,23 @@ export const TodoGantt: React.FC<{ lane: TodoLane }> = ({ lane }) => {
   const endDrag = (event: React.PointerEvent<HTMLDivElement>) => {
     const current = dragRef.current;
     if (!current || current.pointerId !== event.pointerId) return;
-    updateBlock(current.itemId, current.blockId, { startTime: formatLocalDateTime(current.previewStart), endTime: formatLocalDateTime(current.previewEnd) });
+    const minSpan = scale === 'days' ? DAY_MS : definition.snapMs;
+    let commitStart: number;
+    let commitEnd: number;
+    if (current.edge === 'move') {
+      const rawDelta = current.previewStart - current.originalStart;
+      const delta = Math.round(rawDelta / definition.snapMs) * definition.snapMs;
+      commitStart = current.originalStart + delta;
+      commitEnd = current.originalEnd + delta;
+    } else if (current.edge === 'start') {
+      commitStart = snapToGrid(current.previewStart, definition.snapMs);
+      commitEnd = Math.max(current.originalEnd, commitStart + minSpan);
+      if (commitStart >= commitEnd) commitStart = commitEnd - minSpan;
+    } else {
+      commitEnd = snapToGrid(current.previewEnd, definition.snapMs);
+      commitStart = Math.min(current.originalStart, commitEnd - minSpan);
+    }
+    updateBlock(current.itemId, current.blockId, { startTime: formatLocalDateTime(commitStart), endTime: formatLocalDateTime(commitEnd) });
     dragRef.current = null;
     setPreview(null);
   };
