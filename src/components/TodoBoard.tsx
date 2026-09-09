@@ -26,12 +26,12 @@ const TodoCard: React.FC<{
   onDragEnd: () => void;
   onToggle: () => void;
   onUpdate: (text: string) => void;
-  onOpenToolbar: (el: HTMLElement) => void;
+  onOpenToolbar: (el: HTMLElement, pointerX: number) => void;
 }> = ({ item, isCurrent, dragging, onDragStart, onDragEnd, onToggle, onUpdate, onOpenToolbar }) => {
   const [editing, setEditing] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => { if (editing) { inputRef.current?.focus(); inputRef.current?.select(); } }, [editing]);
-  const { handleClick, cancel } = useTapClick((element) => onOpenToolbar(element));
+  const { handleClick, cancel } = useTapClick((element, event) => onOpenToolbar(element, event.clientX));
   return (
     <article
       draggable
@@ -72,7 +72,7 @@ export const TodoBoard: React.FC<{ lane: TodoLane }> = ({ lane }) => {
   const updateItem = useAppStore((state) => state.updateTodoItem);
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropColumn, setDropColumn] = useState<string | null>(null);
-  const [toolbar, setToolbar] = useState<{ id: string; el: HTMLElement } | null>(null);
+  const [toolbar, setToolbar] = useState<{ id: string; el: HTMLElement; x: number } | null>(null);
   const items = useMemo(() => allItems.filter((item) => item.laneId === lane.id && !item.isDirectory).sort((a, b) => a.order - b.order), [allItems, lane.id]);
   const doneSet = useMemo(() => new Set(items.filter((item) => item.isDone).map((item) => item.id)), [items]);
   const columns = useMemo(() => STATUS_COLUMNS.map((column) => ({
@@ -128,14 +128,14 @@ export const TodoBoard: React.FC<{ lane: TodoLane }> = ({ lane }) => {
             {column.items.map((item) => {
               const isCurrent = statusOf(item) === column.id;
               return (
-                <TodoCard key={item.id} item={item} isCurrent={isCurrent} dragging={dragId === item.id} onDragStart={() => setDragId(item.id)} onDragEnd={() => { setDragId(null); setDropColumn(null); }} onToggle={() => toggleDone(item.id)} onUpdate={(text) => updateItem(item.id, { text })} onOpenToolbar={(el) => setToolbar((current) => current?.id === item.id ? null : { id: item.id, el })} />
+                <TodoCard key={item.id} item={item} isCurrent={isCurrent} dragging={dragId === item.id} onDragStart={() => setDragId(item.id)} onDragEnd={() => { setDragId(null); setDropColumn(null); }} onToggle={() => toggleDone(item.id)} onUpdate={(text) => updateItem(item.id, { text })} onOpenToolbar={(el, x) => setToolbar((current) => current?.id === item.id ? null : { id: item.id, el, x })} />
               );
             })}
             {column.items.length === 0 ? <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-neutral-200 py-6 text-[11px] text-neutral-300">拖拽任务到此列</div> : null}
           </div>
         </section>
       ))}
-      {toolbar ? <TodoItemToolbarHost itemId={toolbar.id} open anchor={toolbar.el} onClose={() => setToolbar(null)} /> : null}
+      {toolbar ? <TodoItemToolbarHost itemId={toolbar.id} open anchor={toolbar.el} pointerX={toolbar.x} onClose={() => setToolbar(null)} /> : null}
     </div>
   );
 };

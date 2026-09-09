@@ -47,9 +47,9 @@ const durationLabel = (start: number, end: number) => {
 const GanttTaskLabel: React.FC<{
   item: TodoGanttItem;
   onToggle: () => void;
-  onOpenToolbar: (el: HTMLElement) => void;
+  onOpenToolbar: (el: HTMLElement, pointerX: number) => void;
 }> = ({ item, onToggle, onOpenToolbar }) => {
-  const { handleClick } = useTapClick((element) => onOpenToolbar(element));
+  const { handleClick } = useTapClick((element, event) => onOpenToolbar(element, event.clientX));
   return (
     <div
       className="sticky left-0 z-20 flex shrink-0 cursor-default items-center gap-2 border-r border-neutral-200 bg-white px-4"
@@ -151,7 +151,7 @@ export const TodoGantt: React.FC<{ lane: TodoLane }> = ({ lane }) => {
   }, []);
   const [scale, setScale] = useState<Scale>('days');
   const definition = scales[scale];
-  const [toolbar, setToolbar] = useState<{ id: string; el: HTMLElement } | null>(null);
+  const [toolbar, setToolbar] = useState<{ id: string; el: HTMLElement; x: number } | null>(null);
   const [rangeStart, setRangeStart] = useState(() => align(initialFocus, scales.days.unitMs) - 30 * scales.days.unitMs);
   const [preview, setPreview] = useState<DragState | null>(null);
   const dragRef = useRef<DragState | null>(null);
@@ -230,10 +230,10 @@ export const TodoGantt: React.FC<{ lane: TodoLane }> = ({ lane }) => {
   };
 
   return <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-xs">
-    <div className="flex h-12 shrink-0 items-center justify-between border-b border-neutral-200 px-4">
-      <div className="flex items-center gap-2 text-xs font-bold text-neutral-700"><CalendarDays className="h-4 w-4 text-purple-500" />{lane.name} · 甘特图</div>
-      <div className="flex items-center gap-2"><div className="flex rounded-lg border border-neutral-200 bg-neutral-50 p-0.5">{(['minutes', 'hours', 'days'] as Scale[]).map((value) => <button key={value} type="button" onClick={() => changeScale(value)} className={`h-7 rounded-md px-2.5 text-[11px] font-semibold ${scale === value ? 'bg-white text-purple-600 shadow-sm' : 'text-neutral-400'}`}>{value === 'minutes' ? '分钟' : value === 'hours' ? '小时' : '天'}</button>)}</div><button type="button" onClick={focusToday} className="flex h-8 items-center gap-1 rounded-lg border border-purple-200 bg-purple-50 px-2.5 text-[11px] font-semibold text-purple-600"><LocateFixed className="h-3.5 w-3.5" />今天</button></div>
-    </div>
+      <div className="flex h-12 shrink-0 items-center justify-between border-b border-neutral-200 px-4">
+        <div className="flex items-center gap-2 text-xs font-bold text-neutral-700"><CalendarDays className="h-4 w-4 text-purple-500" />{lane.name} · 甘特图</div>
+        <div className="flex items-center gap-2"><div className="flex rounded-lg border border-neutral-200 bg-neutral-50 p-0.5">{(['minutes', 'hours', 'days'] as Scale[]).map((value) => <button key={value} type="button" onClick={() => changeScale(value)} className={`h-7 rounded-md px-2.5 text-[11px] font-semibold ${scale === value ? 'bg-white text-purple-600 shadow-sm' : 'text-neutral-400'}`}>{value === 'minutes' ? '分钟' : value === 'hours' ? '小时' : '天'}</button>)}</div><button type="button" onClick={focusToday} className="flex h-8 items-center gap-1 rounded-lg border border-purple-200 bg-purple-50 px-2.5 text-[11px] font-semibold text-purple-600"><LocateFixed className="h-3.5 w-3.5" />今天</button></div>
+      </div>
     <div ref={scrollRef} className="custom-scrollbar min-h-0 flex-1 overflow-auto">
       <div className="min-w-max" style={{ '--todo-column-width': `${LEFT_WIDTH}px` } as React.CSSProperties}>
         <div className="sticky top-0 z-30 flex h-12 border-b border-neutral-200 bg-white">
@@ -241,7 +241,7 @@ export const TodoGantt: React.FC<{ lane: TodoLane }> = ({ lane }) => {
           <div className="flex shrink-0" style={{ width: timelineWidth }}>{headers.map((header) => <div key={header.timestamp} className="flex shrink-0 flex-col items-center justify-center border-r border-neutral-100 text-[10px] text-neutral-500" style={{ width: definition.width }}><span className="font-semibold">{header.main}</span><span className="text-[9px] text-neutral-300">{header.sub}</span></div>)}</div>
         </div>
         {items.map((item) => <div key={item.id} className="flex h-[52px] border-b border-neutral-100 hover:bg-neutral-50/50">
-          <GanttTaskLabel item={item} onToggle={() => toggleItem(item.id)} onOpenToolbar={(el) => setToolbar((current) => current?.id === item.id ? null : { id: item.id, el })} />
+          <GanttTaskLabel item={item} onToggle={() => toggleItem(item.id)} onOpenToolbar={(el, x) => setToolbar((current) => current?.id === item.id ? null : { id: item.id, el, x })} />
           <div onDoubleClick={(event) => addAt(item.id, timestampAtEvent(event))} className="relative flex shrink-0 items-center" style={{ width: timelineWidth, backgroundImage: background }} title="双击添加时间块">
             {now >= rangeStart && now < rangeEnd ? <div className="pointer-events-none absolute inset-y-0 z-20 w-px bg-rose-400" style={{ left: ((now - rangeStart) / definition.unitMs) * definition.width }} /> : null}
             {(item.timeBlocks || []).map((block) => {
@@ -259,6 +259,6 @@ export const TodoGantt: React.FC<{ lane: TodoLane }> = ({ lane }) => {
         <div className="flex h-[52px] border-b border-neutral-100 bg-neutral-50/30"><div className="sticky left-0 z-20 flex shrink-0 items-center gap-2 border-r border-neutral-200 bg-neutral-50 px-5 text-[11px] font-semibold text-neutral-400" style={{ width: LEFT_WIDTH }}><Plus className="h-3.5 w-3.5" />新待办</div><div onDoubleClick={(event) => { const timestamp = timestampAtEvent(event); const itemId = createItem(lane.id, '新待办'); if (itemId) addAt(itemId, timestamp); }} className="relative shrink-0 cursor-crosshair" style={{ width: timelineWidth, backgroundImage: background }} title="双击创建带时间的待办" /></div>
       </div>
     </div>
-    {toolbar ? <TodoItemToolbarHost itemId={toolbar.id} open anchor={toolbar.el} onClose={() => setToolbar(null)} /> : null}
+    {toolbar ? <TodoItemToolbarHost itemId={toolbar.id} open anchor={toolbar.el} pointerX={toolbar.x} onClose={() => setToolbar(null)} /> : null}
   </div>;
 };
