@@ -122,6 +122,7 @@ export interface TodoItem {
   sectionId?: string; // Legacy visual band linkage; kept only for saved-data compatibility.
   progressStatus?: 'not-started' | 'in-progress'; // Board column; isDone wins as completed.
   isDirectory?: boolean; // Board node renders as a directory-style card when true.
+  referencedLaneIds?: string[]; // Extra lanes that mirror this item (reference display).
   timeBlocks?: TaskTimeBlock[];
 }
 
@@ -228,6 +229,7 @@ export interface AppState {
   deleteTodoLaneSection: (laneId: string, sectionId: string, mode?: 'merge' | 'delete-items') => void;
   setTodoLaneItemOrder: (laneId: string, orderedIds: string[]) => void;
   updateTodoItemSection: (itemId: string, sectionId: string | null) => void;
+  moveTodoItemToLane: (itemId: string, targetLaneId: string) => void;
   moveTodoItemToLanePosition: (itemId: string, laneId: string, order: number, sectionId?: string | null) => void;
   toggleTodoItemDone: (itemId: string) => void;
   toggleTodoItemDirectory: (itemId: string) => void;

@@ -232,6 +232,9 @@ const normalizeTodoItems = (
       sectionId: typeof item.sectionId === 'string' ? item.sectionId : undefined,
       progressStatus: item.progressStatus === 'in-progress' ? 'in-progress' : item.progressStatus === 'not-started' ? 'not-started' : undefined,
       isDirectory: item.isDirectory === true ? true : undefined,
+      referencedLaneIds: Array.isArray(item.referencedLaneIds)
+        ? item.referencedLaneIds.filter((id: unknown): id is string => typeof id === 'string')
+        : undefined,
       timeBlocks: Array.isArray(item.timeBlocks) ? item.timeBlocks.flatMap((block: unknown): TaskTimeBlock[] => {
         if (!block || typeof block !== 'object') return [];
         const candidate = block as Partial<TaskTimeBlock>;
@@ -1168,11 +1171,17 @@ export const useAppStore = create<AppState>((set, get) => {
         .filter((item) => item.laneId === mainLaneId)
         .reduce((max, item) => Math.max(max, item.order), -1) + 1;
       let offset = 0;
+      const stripReference = (ids: string[] | undefined) => {
+        if (!ids || !ids.includes(laneId)) return ids;
+        const next = ids.filter((id) => id !== laneId);
+        return next.length > 0 ? next : undefined;
+      };
       return {
         todoLanes: state.todoLanes.filter((lane) => lane.id !== laneId),
-        todoItems: state.todoItems.map((item) => item.laneId === laneId
-          ? { ...item, laneId: mainLaneId, order: mainTail + offset++, sectionId: undefined }
-          : item),
+        todoItems: state.todoItems.map((item) => {
+          if (item.laneId === laneId) return { ...item, laneId: mainLaneId, order: mainTail + offset++, sectionId: undefined, referencedLaneIds: stripReference(item.referencedLaneIds) };
+          return item.referencedLaneIds?.includes(laneId) ? { ...item, referencedLaneIds: stripReference(item.referencedLaneIds) } : item;
+        }),
         todoEdges: state.todoEdges.filter((edge) => edge.laneId !== laneId),
       };
     }),
@@ -1225,6 +1234,26 @@ export const useAppStore = create<AppState>((set, get) => {
     updateTodoItemSection: (itemId, sectionId) => persistSet((state: AppState) => ({
       todoItems: state.todoItems.map((item) => item.id === itemId ? { ...item, sectionId: sectionId || undefined } : item),
     })),
+    moveTodoItemToLane: (itemId, targetLaneId) => persistSet((state: AppState) => {
+      const item = state.todoItems.find((candidate) => candidate.id === itemId);
+      if (!item || item.laneId === targetLaneId) return {};
+      if (!state.todoLanes.some((lane) => lane.id === targetLaneId)) return {};
+      const nextOrder = state.todoItems
+        .filter((candidate) => candidate.laneId === targetLaneId)
+        .reduce((max, candidate) => Math.max(max, candidate.order), -1) + 1;
+      const references = new Set(item.referencedLaneIds || []);
+      references.delete(targetLaneId);
+      if (references.size === 1 && references.has(item.laneId)) references.delete(item.laneId);
+      else references.add(item.laneId);
+      return {
+        todoItems: state.todoItems.map((candidate) => candidate.id === itemId ? {
+          ...candidate,
+          laneId: targetLaneId,
+          order: nextOrder,
+          referencedLaneIds: references.size > 0 ? Array.from(references) : undefined,
+        } : candidate),
+      };
+    }),
     setTodoLaneItemOrder: (laneId, orderedIds) => persistSet((state: AppState) => {
       const orderById = new Map(orderedIds.map((id, index) => [id, index]));
       const maxOrder = state.todoItems
