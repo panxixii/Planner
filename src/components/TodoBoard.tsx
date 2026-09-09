@@ -56,6 +56,7 @@ const TodoCard: React.FC<{
           value={editing ? draft : item.text}
           onChange={(event) => setDraft(event.target.value)}
           onBlur={() => {
+            if (!editing) return;
             setEditing(false);
             const text = draft.trim();
             if (!text) { if (item.text !== '未命名待办') onUpdate('未命名待办'); return; }

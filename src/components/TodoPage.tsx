@@ -18,7 +18,7 @@ import {
   applyNodeChanges,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { CalendarDays, Check, CircleDot, Columns3, GitBranch, List, Maximize, MousePointer2, Pipette, Plus, Scan, Trash2, ZoomIn, ZoomOut } from 'lucide-react';
+import { CalendarDays, Check, CircleDot, Columns3, GitBranch, GripVertical, List, Maximize, MousePointer2, Pipette, Plus, Scan, Trash2, ZoomIn, ZoomOut } from 'lucide-react';
 import { useAppStore } from '../store';
 import type { TodoItem, TodoLane, TodoLaneSection } from '../types';
 import { TodoBoard } from './TodoBoard';
@@ -377,13 +377,14 @@ const SectionTab: React.FC<{
   );
 };
 
-const TodoRow: React.FC<{ item: TodoItem }> = ({ item }) => {
+const TodoRow: React.FC<{ item: TodoItem; isReference?: boolean }> = ({ item, isReference = false }) => {
   const update = useAppStore((state) => state.updateTodoItem);
   const toggle = useAppStore((state) => state.toggleTodoItemDone);
   const [toolbarOpen, setToolbarOpen] = useState(false);
   const [pointerX, setPointerX] = useState<number | undefined>(undefined);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
+  const [grabbing, setGrabbing] = useState(false);
   const rowRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => { if (editing) { setDraft(item.text); inputRef.current?.focus(); inputRef.current?.select(); } }, [editing]);
@@ -398,22 +399,35 @@ const TodoRow: React.FC<{ item: TodoItem }> = ({ item }) => {
   return (
     <div
       ref={rowRef}
+      draggable={grabbing}
+      onDragStart={(event) => { event.dataTransfer.setData('application/x-planner-todo-item', item.id); event.dataTransfer.effectAllowed = 'move'; }}
+      onDragEnd={() => setGrabbing(false)}
       onClick={(event) => { if (editing) return; if ((event.target as HTMLElement).closest('button, [role="toolbar"]')) return; handleClick(event); }}
       onDoubleClick={(event) => { if ((event.target as HTMLElement).closest('button')) return; beginEdit(); }}
       className={`group relative z-10 flex items-center gap-2 rounded-lg px-2 py-1 ${editing ? 'bg-neutral-50' : 'cursor-default'}`}
-      title={editing ? undefined : '单击显示操作，双击编辑'}
+      title={editing ? undefined : '单击显示操作，双击编辑；按住左侧手柄可拖入主线'}
     >
+      <span
+        onMouseDown={() => setGrabbing(true)}
+        onMouseUp={() => setGrabbing(false)}
+        onMouseLeave={() => setGrabbing(false)}
+        className={`flex h-6 w-3.5 shrink-0 cursor-grab items-center justify-center text-neutral-300 opacity-0 transition-opacity hover:text-neutral-500 active:cursor-grabbing group-hover:opacity-100 ${isReference ? 'opacity-100 text-purple-400' : ''}`}
+        title="拖动到主线（创建引用显示）"
+      >
+        <GripVertical className="h-3 w-3" />
+      </span>
       <TodoCheckbox done={item.isDone} onClick={() => toggle(item.id)} />
       <input
         ref={inputRef}
         readOnly={!editing}
         value={editing ? draft : item.text}
         onChange={(event) => setDraft(event.target.value)}
-        onBlur={commitEdit}
+        onBlur={() => { if (editing) commitEdit(); }}
         onKeyDown={(event) => { if (event.key === 'Enter' && !event.nativeEvent.isComposing) event.currentTarget.blur(); if (event.key === 'Escape') { setDraft(item.text); event.currentTarget.blur(); } }}
         className={`min-w-0 flex-1 bg-transparent py-1 text-sm outline-none ${editing ? 'cursor-text' : 'cursor-default'} ${item.isDone ? 'text-neutral-400 line-through' : 'text-neutral-700'}`}
         aria-label="待办文本"
       />
+      {isReference ? <span className="flex h-5 shrink-0 items-center gap-1 rounded-full border border-purple-200 bg-purple-50 px-1.5 text-[10px] font-bold text-purple-500" title="引用自其他分线">引用</span> : null}
       <TodoStatusBadge itemId={item.id} />
       <TodoItemToolbarHost itemId={item.id} open={toolbarOpen} anchor={rowRef.current} pointerX={pointerX} onClose={() => setToolbarOpen(false)} />
     </div>
@@ -423,21 +437,39 @@ const TodoRow: React.FC<{ item: TodoItem }> = ({ item }) => {
 const ListLane: React.FC<{ lane: TodoLane; onOpenView: (view: 'board' | 'kanban' | 'gantt') => void }> = ({ lane, onOpenView }) => {
   const allItems = useAppStore((state) => state.todoItems);
   const create = useAppStore((state) => state.createTodoItem);
-  const update = useAppStore((state) => state.updateTodoItem);
-  const toggle = useAppStore((state) => state.toggleTodoItemDone);
-  const remove = useAppStore((state) => state.removeTodoItem);
   const renameLane = useAppStore((state) => state.renameTodoLane);
   const deleteLane = useAppStore((state) => state.deleteTodoLane);
+  const moveItemToLane = useAppStore((state) => state.moveTodoItemToLane);
   const [draft, setDraft] = useState('');
-  const items = useMemo(() => allItems.filter((item) => item.laneId === lane.id && !item.isDirectory).sort((a, b) => a.order - b.order), [allItems, lane.id]);
+  const [dropActive, setDropActive] = useState(false);
+  const items = useMemo(() => allItems
+    .filter((item) => !item.isDirectory && (item.laneId === lane.id || (item.referencedLaneIds || []).includes(lane.id)))
+    .sort((a, b) => a.order - b.order), [allItems, lane.id]);
   const submit = () => { const text = draft.trim(); if (!text) return; create(lane.id, text); setDraft(''); };
-  return <section data-lane-card={lane.id} className="rounded-xl border border-neutral-200 bg-white/80 p-4 shadow-xs">
+  return <section
+    data-lane-card={lane.id}
+    onDragOver={(event) => {
+      if (!event.dataTransfer.types.includes('application/x-planner-todo-item')) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'move';
+      setDropActive(true);
+    }}
+    onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDropActive(false); }}
+    onDrop={(event) => {
+      setDropActive(false);
+      const draggedId = event.dataTransfer.getData('application/x-planner-todo-item');
+      if (!draggedId) return;
+      event.preventDefault();
+      moveItemToLane(draggedId, lane.id);
+    }}
+    className={`rounded-xl border bg-white/80 p-4 shadow-xs transition-colors ${dropActive ? 'border-purple-300 ring-2 ring-purple-100' : 'border-neutral-200'}`}
+  >
     <div className="relative z-10 mb-3 flex items-center justify-between gap-3">
       <div className="flex min-w-0 items-center gap-2"><span className={`h-2 w-2 shrink-0 rounded-full ${lane.type === 'main' ? 'bg-purple-500' : 'bg-sky-400'}`} />{lane.type === 'custom' ? <input value={lane.name} onChange={(event) => renameLane(lane.id, event.target.value)} onBlur={(event) => { if (!event.currentTarget.value.trim()) renameLane(lane.id, '未命名分线'); }} className="min-w-0 flex-1 bg-transparent text-sm font-bold text-neutral-700 outline-none" aria-label="分线名称" /> : <h3 className="text-sm font-bold text-neutral-700">{lane.name}</h3>}</div>
       <div className="flex items-center gap-2"><span className="text-[11px] text-neutral-400">{items.filter((item) => item.isDone).length}/{items.length}</span><div className="flex rounded-lg border border-neutral-200 bg-neutral-50 p-0.5"><button type="button" onClick={() => onOpenView('board')} className="flex h-7 w-7 items-center justify-center rounded-md text-purple-600 hover:bg-white hover:shadow-sm" title="画板"><GitBranch className="h-3.5 w-3.5" /></button><button type="button" onClick={() => onOpenView('gantt')} className="flex h-7 w-7 items-center justify-center rounded-md text-sky-600 hover:bg-white hover:shadow-sm" title="甘特图"><CalendarDays className="h-3.5 w-3.5" /></button><button type="button" onClick={() => onOpenView('kanban')} className="flex h-7 w-7 items-center justify-center rounded-md text-amber-600 hover:bg-white hover:shadow-sm" title="看板"><Columns3 className="h-3.5 w-3.5" /></button></div>{lane.type === 'custom' ? <DeleteLaneButton onDelete={() => deleteLane(lane.id)} /> : null}</div>
     </div>
     <div className="space-y-1.5">
-      {items.map((item) => <TodoRow key={item.id} item={item} />)}
+      {items.map((item) => <TodoRow key={`${item.id}-${item.laneId === lane.id ? 'own' : 'ref'}`} item={item} isReference={item.laneId !== lane.id} />)}
       <div className="relative z-10 flex items-center gap-2 px-2 pt-1"><span className="h-[18px] w-[18px] shrink-0 rounded-[5px] border border-dashed border-neutral-300" /><input value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.nativeEvent.isComposing) submit(); }} placeholder="添加待办" className="min-w-0 flex-1 bg-transparent py-1 text-sm outline-none placeholder:text-neutral-300" aria-label={`添加到${lane.name}`} /><button type="button" onClick={submit} disabled={!draft.trim()} className="flex h-7 w-7 items-center justify-center rounded text-purple-500 hover:bg-purple-50 disabled:opacity-0" title="添加待办"><Plus className="h-4 w-4" /></button></div>
     </div>
   </section>;
@@ -578,6 +610,7 @@ const BoardNode = React.memo(({ id, data, selected }: NodeProps<Node<BoardNodeDa
         value={editing ? draft : data.text}
         onChange={(event) => setDraft(event.target.value)}
         onBlur={() => {
+          if (!editing) return;
           setEditing(false);
           const text = draft.trim();
           if (!text) { if (data.text !== '未命名待办') update(data.itemId, { text: '未命名待办' }); return; }
