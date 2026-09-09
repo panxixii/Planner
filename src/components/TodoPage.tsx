@@ -378,7 +378,7 @@ const TodoRow: React.FC<{ item: TodoItem }> = ({ item }) => {
       ref={rowRef}
       onClick={(event) => { if (editing) return; if ((event.target as HTMLElement).closest('button, [role="toolbar"]')) return; handleClick(event); }}
       onDoubleClick={(event) => { if ((event.target as HTMLElement).closest('button')) return; beginEdit(); }}
-      className={`group relative z-10 flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-neutral-50 ${editing ? 'bg-neutral-50' : 'cursor-default'}`}
+      className={`group relative z-10 flex items-center gap-2 rounded-lg px-2 py-1 ${editing ? 'bg-neutral-50' : 'cursor-default'}`}
       title={editing ? undefined : '单击显示操作，双击编辑'}
     >
       <TodoCheckbox done={item.isDone} onClick={() => toggle(item.id)} />
