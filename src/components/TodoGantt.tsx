@@ -147,7 +147,7 @@ export const TodoGantt: React.FC<{ lane: TodoLane }> = ({ lane }) => {
   const addBlock = useAppStore((state) => state.addTodoTimeBlock);
   const updateBlock = useAppStore((state) => state.updateTodoTimeBlock);
   const removeBlock = useAppStore((state) => state.removeTodoTimeBlock);
-  const items = useMemo(() => allItems.filter((item) => item.laneId === lane.id).sort((a, b) => a.order - b.order), [allItems, lane.id]);
+  const items = useMemo(() => allItems.filter((item) => item.laneId === lane.id || (item.referencedLaneIds || []).includes(lane.id)).sort((a, b) => a.order - b.order), [allItems, lane.id]);
   const initialFocus = useMemo(() => {
     const first = items.flatMap((item) => item.timeBlocks || []).map((block) => parseTaskTime(block.startTime)).find(Number.isFinite);
     return first || Date.now();

@@ -235,6 +235,7 @@ const normalizeTodoItems = (
       referencedLaneIds: Array.isArray(item.referencedLaneIds)
         ? item.referencedLaneIds.filter((id: unknown): id is string => typeof id === 'string')
         : undefined,
+      originLaneId: typeof item.originLaneId === 'string' ? item.originLaneId : undefined,
       timeBlocks: Array.isArray(item.timeBlocks) ? item.timeBlocks.flatMap((block: unknown): TaskTimeBlock[] => {
         if (!block || typeof block !== 'object') return [];
         const candidate = block as Partial<TaskTimeBlock>;
@@ -1176,11 +1177,12 @@ export const useAppStore = create<AppState>((set, get) => {
         const next = ids.filter((id) => id !== laneId);
         return next.length > 0 ? next : undefined;
       };
+      const stripOrigin = (origin: string | undefined) => (origin === laneId ? undefined : origin);
       return {
         todoLanes: state.todoLanes.filter((lane) => lane.id !== laneId),
         todoItems: state.todoItems.map((item) => {
-          if (item.laneId === laneId) return { ...item, laneId: mainLaneId, order: mainTail + offset++, sectionId: undefined, referencedLaneIds: stripReference(item.referencedLaneIds) };
-          return item.referencedLaneIds?.includes(laneId) ? { ...item, referencedLaneIds: stripReference(item.referencedLaneIds) } : item;
+          if (item.laneId === laneId) return { ...item, laneId: mainLaneId, order: mainTail + offset++, sectionId: undefined, referencedLaneIds: stripReference(item.referencedLaneIds), originLaneId: stripOrigin(item.originLaneId) };
+          return item.referencedLaneIds?.includes(laneId) ? { ...item, referencedLaneIds: stripReference(item.referencedLaneIds), originLaneId: stripOrigin(item.originLaneId) } : item;
         }),
         todoEdges: state.todoEdges.filter((edge) => edge.laneId !== laneId),
       };
@@ -1251,6 +1253,20 @@ export const useAppStore = create<AppState>((set, get) => {
           laneId: targetLaneId,
           order: nextOrder,
           referencedLaneIds: references.size > 0 ? Array.from(references) : undefined,
+          originLaneId: targetLaneId === 'todo-main' && candidate.originLaneId === undefined ? candidate.laneId : candidate.originLaneId,
+        } : candidate),
+      };
+    }),
+    toggleTodoItemMainReference: (itemId) => persistSet((state: AppState) => {
+      const item = state.todoItems.find((candidate) => candidate.id === itemId);
+      if (!item || item.laneId === 'todo-main') return {};
+      const references = new Set(item.referencedLaneIds || []);
+      if (references.has('todo-main')) references.delete('todo-main');
+      else references.add('todo-main');
+      return {
+        todoItems: state.todoItems.map((candidate) => candidate.id === itemId ? {
+          ...candidate,
+          referencedLaneIds: references.size > 0 ? Array.from(references) : undefined,
         } : candidate),
       };
     }),
@@ -1297,9 +1313,10 @@ export const useAppStore = create<AppState>((set, get) => {
       };
     }),
     addTodoEdge: (laneId, sourceItemId, targetItemId) => persistSet((state: AppState) => {
+      const belongsToLane = (item: TodoItem | undefined) => Boolean(item && (item.laneId === laneId || (item.referencedLaneIds || []).includes(laneId)));
       if (sourceItemId === targetItemId
-        || state.todoItems.find((item) => item.id === sourceItemId)?.laneId !== laneId
-        || state.todoItems.find((item) => item.id === targetItemId)?.laneId !== laneId
+        || !belongsToLane(state.todoItems.find((item) => item.id === sourceItemId))
+        || !belongsToLane(state.todoItems.find((item) => item.id === targetItemId))
         || state.todoEdges.some((edge) => edge.laneId === laneId && edge.sourceItemId === sourceItemId && edge.targetItemId === targetItemId)) return {};
       return { todoEdges: [...state.todoEdges, { id: `todo-edge-${genId()}`, laneId, sourceItemId, targetItemId }] };
     }),

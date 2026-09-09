@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, FolderInput, ListTodo, Trash2 } from 'lucide-react';
+import { Check, FolderInput, Link2, Link2Off, ListTodo, Trash2 } from 'lucide-react';
 import { useAppStore } from '../store';
 
 export const TodoItemToolbarHost: React.FC<{
@@ -14,6 +14,7 @@ export const TodoItemToolbarHost: React.FC<{
   const item = useAppStore((state) => state.todoItems.find((candidate) => candidate.id === itemId));
   const remove = useAppStore((state) => state.removeTodoItem);
   const toggleDirectory = useAppStore((state) => state.toggleTodoItemDirectory);
+  const toggleMainReference = useAppStore((state) => state.toggleTodoItemMainReference);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const pointerXRef = useRef<number | undefined>(pointerX);
@@ -24,7 +25,7 @@ export const TodoItemToolbarHost: React.FC<{
     if (!open || !anchor) { setPos(null); return; }
     const rect = anchor.getBoundingClientRect();
     const x = pointerXRef.current ?? rect.left + rect.width / 2;
-    setPos({ top: Math.max(8, rect.top - 48), left: Math.max(90, Math.min(x, window.innerWidth - 90)) });
+    setPos({ top: Math.max(8, rect.top - 48), left: Math.max(115, Math.min(x, window.innerWidth - 115)) });
   }, [open, anchor]);
 
   useEffect(() => {
@@ -56,6 +57,17 @@ export const TodoItemToolbarHost: React.FC<{
           >
             {item.isDirectory ? <ListTodo className="h-3.5 w-3.5" /> : <FolderInput className="h-3.5 w-3.5" />}
             <span>{item.isDirectory ? '任务' : '目录'}</span>
+          </button>
+        ) : null}
+        {item.laneId !== 'todo-main' ? (
+          <button
+            type="button"
+            onClick={() => { toggleMainReference(item.id); onClose(); }}
+            className="flex h-8 w-[68px] items-center justify-center gap-1.5 rounded-md border border-sky-200 bg-sky-50 text-[11px] font-semibold text-sky-600 transition-colors hover:bg-sky-100"
+            title={(item.referencedLaneIds || []).includes('todo-main') ? '取消在主线显示此任务' : '在主线显示此任务（引用）'}
+          >
+            {(item.referencedLaneIds || []).includes('todo-main') ? <Link2Off className="h-3.5 w-3.5" /> : <Link2 className="h-3.5 w-3.5" />}
+            <span>{(item.referencedLaneIds || []).includes('todo-main') ? '取引用' : '引用'}</span>
           </button>
         ) : null}
         <button

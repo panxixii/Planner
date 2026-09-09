@@ -123,6 +123,7 @@ export interface TodoItem {
   progressStatus?: 'not-started' | 'in-progress'; // Board column; isDone wins as completed.
   isDirectory?: boolean; // Board node renders as a directory-style card when true.
   referencedLaneIds?: string[]; // Extra lanes that mirror this item (reference display).
+  originLaneId?: string; // Lane this item was dragged from into the main lane; drives the path hint.
   timeBlocks?: TaskTimeBlock[];
 }
 
@@ -230,6 +231,7 @@ export interface AppState {
   setTodoLaneItemOrder: (laneId: string, orderedIds: string[]) => void;
   updateTodoItemSection: (itemId: string, sectionId: string | null) => void;
   moveTodoItemToLane: (itemId: string, targetLaneId: string) => void;
+  toggleTodoItemMainReference: (itemId: string) => void;
   moveTodoItemToLanePosition: (itemId: string, laneId: string, order: number, sectionId?: string | null) => void;
   toggleTodoItemDone: (itemId: string) => void;
   toggleTodoItemDirectory: (itemId: string) => void;

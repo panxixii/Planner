@@ -20,7 +20,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import { CalendarDays, Check, CircleDot, Columns3, GitBranch, GripVertical, List, Maximize, MousePointer2, Pipette, Plus, Scan, Trash2, ZoomIn, ZoomOut } from 'lucide-react';
 import { useAppStore } from '../store';
-import type { TodoItem, TodoLane, TodoLaneSection } from '../types';
+import type { TodoEdge, TodoItem, TodoLane, TodoLaneSection } from '../types';
 import { TodoBoard } from './TodoBoard';
 import { TodoGantt } from './TodoGantt';
 import { TodoItemToolbarHost } from './TodoItemToolbar';
@@ -377,7 +377,29 @@ const SectionTab: React.FC<{
   );
 };
 
-const TodoRow: React.FC<{ item: TodoItem; isReference?: boolean }> = ({ item, isReference = false }) => {
+const buildDirectoryPath = (itemId: string, laneEdges: TodoEdge[], itemById: Map<string, TodoItem>): string[] => {
+  const parents = new Map<string, string[]>();
+  laneEdges.forEach((edge) => {
+    parents.set(edge.targetItemId, [...(parents.get(edge.targetItemId) || []), edge.sourceItemId]);
+  });
+  const segments: string[] = [];
+  const visited = new Set<string>([itemId]);
+  let currentId = itemId;
+  while (true) {
+    const parentIds = parents.get(currentId);
+    if (!parentIds || parentIds.length === 0) break;
+    const parentId = parentIds.find((id) => !visited.has(id)) || parentIds[0];
+    if (visited.has(parentId)) break;
+    const parent = itemById.get(parentId);
+    if (!parent || !parent.isDirectory) break;
+    segments.unshift(parent.text || '未命名目录');
+    visited.add(parentId);
+    currentId = parentId;
+  }
+  return segments;
+};
+
+const TodoRow: React.FC<{ item: TodoItem; pathLabel?: string }> = ({ item, pathLabel }) => {
   const update = useAppStore((state) => state.updateTodoItem);
   const toggle = useAppStore((state) => state.toggleTodoItemDone);
   const [toolbarOpen, setToolbarOpen] = useState(false);
@@ -405,14 +427,14 @@ const TodoRow: React.FC<{ item: TodoItem; isReference?: boolean }> = ({ item, is
       onClick={(event) => { if (editing) return; if ((event.target as HTMLElement).closest('button, [role="toolbar"]')) return; handleClick(event); }}
       onDoubleClick={(event) => { if ((event.target as HTMLElement).closest('button')) return; beginEdit(); }}
       className={`group relative z-10 flex items-center gap-2 rounded-lg px-2 py-1 ${editing ? 'bg-neutral-50' : 'cursor-default'}`}
-      title={editing ? undefined : '单击显示操作，双击编辑；按住左侧手柄可拖入主线'}
+      title={editing ? undefined : '单击显示操作，双击编辑；按住左侧手柄可拖入其他分线'}
     >
       <span
         onMouseDown={() => setGrabbing(true)}
         onMouseUp={() => setGrabbing(false)}
         onMouseLeave={() => setGrabbing(false)}
-        className={`flex h-6 w-3.5 shrink-0 cursor-grab items-center justify-center text-neutral-300 opacity-0 transition-opacity hover:text-neutral-500 active:cursor-grabbing group-hover:opacity-100 ${isReference ? 'opacity-100 text-purple-400' : ''}`}
-        title="拖动到主线（创建引用显示）"
+        className={`flex h-6 w-3.5 shrink-0 cursor-grab items-center justify-center text-neutral-300 opacity-0 transition-opacity hover:text-neutral-500 active:cursor-grabbing group-hover:opacity-100 ${pathLabel ? 'opacity-100 text-purple-400' : ''}`}
+        title="拖动到其他分线（引用显示）"
       >
         <GripVertical className="h-3 w-3" />
       </span>
@@ -427,15 +449,20 @@ const TodoRow: React.FC<{ item: TodoItem; isReference?: boolean }> = ({ item, is
         className={`min-w-0 flex-1 bg-transparent py-1 text-sm outline-none ${editing ? 'cursor-text' : 'cursor-default'} ${item.isDone ? 'text-neutral-400 line-through' : 'text-neutral-700'}`}
         aria-label="待办文本"
       />
-      {isReference ? <span className="flex h-5 shrink-0 items-center gap-1 rounded-full border border-purple-200 bg-purple-50 px-1.5 text-[10px] font-bold text-purple-500" title="引用自其他分线">引用</span> : null}
+      {pathLabel ? (
+        <span className="max-w-40 shrink-0 truncate text-[10px] leading-none text-neutral-300" title={`${pathLabel}${item.text}`}>
+          {pathLabel}
+        </span>
+      ) : null}
       <TodoStatusBadge itemId={item.id} />
       <TodoItemToolbarHost itemId={item.id} open={toolbarOpen} anchor={rowRef.current} pointerX={pointerX} onClose={() => setToolbarOpen(false)} />
     </div>
   );
 };
 
-const ListLane: React.FC<{ lane: TodoLane; onOpenView: (view: 'board' | 'kanban' | 'gantt') => void }> = ({ lane, onOpenView }) => {
+const ListLane: React.FC<{ lane: TodoLane; laneNamesById: Map<string, string>; onOpenView: (view: 'board' | 'kanban' | 'gantt') => void }> = ({ lane, laneNamesById, onOpenView }) => {
   const allItems = useAppStore((state) => state.todoItems);
+  const allEdges = useAppStore((state) => state.todoEdges);
   const create = useAppStore((state) => state.createTodoItem);
   const renameLane = useAppStore((state) => state.renameTodoLane);
   const deleteLane = useAppStore((state) => state.deleteTodoLane);
@@ -469,7 +496,20 @@ const ListLane: React.FC<{ lane: TodoLane; onOpenView: (view: 'board' | 'kanban'
       <div className="flex items-center gap-2"><span className="text-[11px] text-neutral-400">{items.filter((item) => item.isDone).length}/{items.length}</span><div className="flex rounded-lg border border-neutral-200 bg-neutral-50 p-0.5"><button type="button" onClick={() => onOpenView('board')} className="flex h-7 w-7 items-center justify-center rounded-md text-purple-600 hover:bg-white hover:shadow-sm" title="画板"><GitBranch className="h-3.5 w-3.5" /></button><button type="button" onClick={() => onOpenView('gantt')} className="flex h-7 w-7 items-center justify-center rounded-md text-sky-600 hover:bg-white hover:shadow-sm" title="甘特图"><CalendarDays className="h-3.5 w-3.5" /></button><button type="button" onClick={() => onOpenView('kanban')} className="flex h-7 w-7 items-center justify-center rounded-md text-amber-600 hover:bg-white hover:shadow-sm" title="看板"><Columns3 className="h-3.5 w-3.5" /></button></div>{lane.type === 'custom' ? <DeleteLaneButton onDelete={() => deleteLane(lane.id)} /> : null}</div>
     </div>
     <div className="space-y-1.5">
-      {items.map((item) => <TodoRow key={`${item.id}-${item.laneId === lane.id ? 'own' : 'ref'}`} item={item} isReference={item.laneId !== lane.id} />)}
+      {items.map((item) => {
+        let pathLabel: string | undefined;
+        if (lane.id === 'todo-main') {
+          const sourceLaneId = item.laneId !== 'todo-main' ? item.laneId : item.originLaneId;
+          if (sourceLaneId) {
+            const itemById = new Map(allItems.map((candidate) => [candidate.id, candidate]));
+            const laneEdges = allEdges.filter((edge) => edge.laneId === sourceLaneId);
+            const directorySegments = buildDirectoryPath(item.id, laneEdges, itemById);
+            const laneName = laneNamesById.get(sourceLaneId) || '未知分线';
+            pathLabel = [laneName, ...directorySegments].map((segment) => `${segment}/`).join('');
+          }
+        }
+        return <TodoRow key={`${item.id}-${item.laneId === lane.id ? 'own' : 'ref'}`} item={item} pathLabel={pathLabel} />;
+      })}
       <div className="relative z-10 flex items-center gap-2 px-2 pt-1"><span className="h-[18px] w-[18px] shrink-0 rounded-[5px] border border-dashed border-neutral-300" /><input value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.nativeEvent.isComposing) submit(); }} placeholder="添加待办" className="min-w-0 flex-1 bg-transparent py-1 text-sm outline-none placeholder:text-neutral-300" aria-label={`添加到${lane.name}`} /><button type="button" onClick={submit} disabled={!draft.trim()} className="flex h-7 w-7 items-center justify-center rounded text-purple-500 hover:bg-purple-50 disabled:opacity-0" title="添加待办"><Plus className="h-4 w-4" /></button></div>
     </div>
   </section>;
@@ -659,7 +699,7 @@ const BoardCanvas: React.FC<{ lane: TodoLane }> = ({ lane }) => {
   const { screenToFlowPosition, zoomIn, zoomOut, fitView } = useReactFlow();
   const suppressCreateRef = useRef(false);
   const [canvasTool, setCanvasTool] = useState<'pan' | 'select'>('pan');
-  const items = useMemo(() => allItems.filter((item) => item.laneId === lane.id), [allItems, lane.id]);
+  const items = useMemo(() => allItems.filter((item) => item.laneId === lane.id || (item.referencedLaneIds || []).includes(lane.id)), [allItems, lane.id]);
   const nodes = useMemo<Node<BoardNodeData>[]>(() => items.map((item) => ({ id: item.id, type: 'todoNode', position: item.position, width: item.width, height: item.height, data: { itemId: item.id, text: item.text, done: item.isDone, color: item.color, progressStatus: item.progressStatus, isDirectory: item.isDirectory } })), [items]);
   const edges = useMemo<Edge[]>(() => allEdges.filter((edge) => edge.laneId === lane.id).map((edge) => ({ id: edge.id, source: edge.sourceItemId, target: edge.targetItemId, type: 'bezier', style: { stroke: '#9b8ae4', strokeWidth: 2 }, interactionWidth: 24 })), [allEdges, lane.id]);
   const [localNodes, setLocalNodes] = useState(nodes);
@@ -702,12 +742,13 @@ export const TodoPage: React.FC = () => {
   const [boardLaneId, setBoardLaneId] = useState<string | null>(null);
   const [laneView, setLaneView] = useState<TodoLaneView>('board');
   const lanes = useMemo(() => allLanes.filter(visibleLane), [allLanes]);
+  const laneNamesById = useMemo(() => new Map(allLanes.map((lane) => [lane.id, lane.name])), [allLanes]);
   const boardLane = boardLaneId ? lanes.find((lane) => lane.id === boardLaneId) : null;
   if (boardLane) {
     return <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-neutral-50 p-6"><div className="mx-auto flex min-h-0 w-full max-w-[1500px] flex-1 flex-col"><div className="flex items-center justify-between gap-3"><h2 className="truncate text-lg font-bold text-neutral-800">{boardLane.name}</h2><TodoViewSwitcher view={laneView} onChange={setLaneView} onBack={() => setBoardLaneId(null)} /></div><div className="mt-5 flex min-h-0 flex-1">{laneView === 'board' ? <ReactFlowProvider><BoardCanvas lane={boardLane} /></ReactFlowProvider> : laneView === 'kanban' ? <TodoBoard lane={boardLane} /> : <TodoGantt lane={boardLane} />}</div></div></div>;
   }
   return <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-neutral-50 p-6 custom-scrollbar"><div className="mx-auto flex min-h-0 w-full max-w-[1100px] flex-1 flex-col">
     <div className="flex items-center justify-between gap-3"><div className="flex items-center gap-3"><h2 className="text-lg font-bold text-neutral-800">Todo</h2><div className="flex items-center gap-1 text-xs text-neutral-400"><List className="h-3.5 w-3.5" />List</div></div><div className="flex items-center gap-2"><button type="button" onClick={() => addSection(allLanes[0]?.id || '')} disabled={!allLanes[0]} className="flex h-9 items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-3 text-xs font-semibold text-neutral-600 hover:bg-neutral-50 disabled:opacity-40" title="新增分段色块（全局浮动）"><Plus className="h-4 w-4" />新增分段</button><button type="button" onClick={() => addLane()} className="flex h-9 items-center gap-1.5 rounded-lg border border-purple-200 bg-purple-50 px-3 text-xs font-semibold text-purple-600"><Plus className="h-4 w-4" />新增分线</button></div></div>
-    <div data-lanes-container className="relative mt-6 flex flex-col gap-4">{lanes.map((lane) => <ListLane key={lane.id} lane={lane} onOpenView={(view) => { setLaneView(view); setBoardLaneId(lane.id); }} />)}<LaneBandsLayer lanes={lanes} /></div>
+    <div data-lanes-container className="relative mt-6 flex flex-col gap-4">{lanes.map((lane) => <ListLane key={lane.id} lane={lane} laneNamesById={laneNamesById} onOpenView={(view) => { setLaneView(view); setBoardLaneId(lane.id); }} />)}<LaneBandsLayer lanes={lanes} /></div>
   </div></div>;
 };
