@@ -308,6 +308,15 @@ export interface AppState {
   showHelp: boolean;
   toggleHelp: () => void;
   clearWorkspace: () => void;
+
+  // Navigation: lane requested from the sidebar to scroll into view
+  pendingFocusLaneId: string | null;
+  focusLane: (laneId: string) => void;
+  consumeFocusedLane: () => void;
+
+  // Onboarding banner shown once until dismissed (persisted)
+  showWelcome: boolean;
+  dismissWelcome: () => void;
   
   // Custom task sorting for Gantt timeline
   timelineTaskOrder: string[];
