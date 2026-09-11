@@ -1283,6 +1283,24 @@ export const useAppStore = create<AppState>((set, get) => {
         } : candidate),
       };
     }),
+    reassignTodoItemLane: (itemId, targetLaneId) => persistSet((state: AppState) => {
+      const item = state.todoItems.find((candidate) => candidate.id === itemId);
+      if (!item || item.laneId === targetLaneId) return {};
+      if (!state.todoLanes.some((lane) => lane.id === targetLaneId && lane.type === 'custom')) return {};
+      const nextOrder = state.todoItems
+        .filter((candidate) => candidate.laneId === targetLaneId)
+        .reduce((max, candidate) => Math.max(max, candidate.order), -1) + 1;
+      const references = new Set(item.referencedLaneIds || []);
+      references.add('todo-main');
+      return {
+        todoItems: state.todoItems.map((candidate) => candidate.id === itemId ? {
+          ...candidate,
+          laneId: targetLaneId,
+          order: nextOrder,
+          referencedLaneIds: Array.from(references),
+        } : candidate),
+      };
+    }),
     setTodoItemTimeRange: (itemId, startTime, endTime) => persistSet((state: AppState) => {
       const item = state.todoItems.find((candidate) => candidate.id === itemId);
       if (!item) return {};

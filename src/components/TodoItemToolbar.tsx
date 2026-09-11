@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, FolderInput, Link2, Link2Off, ListTodo, Trash2 } from 'lucide-react';
 import { useAppStore } from '../store';
@@ -15,12 +15,17 @@ export const TodoItemToolbarHost: React.FC<{
   const remove = useAppStore((state) => state.removeTodoItem);
   const toggleDirectory = useAppStore((state) => state.toggleTodoItemDirectory);
   const toggleMainReference = useAppStore((state) => state.toggleTodoItemMainReference);
+  const reassignLane = useAppStore((state) => state.reassignTodoItemLane);
+  const allLanes = useAppStore((state) => state.todoLanes);
+  const lanes = useMemo(() => allLanes.filter((lane) => lane.type === 'custom'), [allLanes]);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [assignOpen, setAssignOpen] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const pointerXRef = useRef<number | undefined>(pointerX);
   if (pointerX !== undefined) pointerXRef.current = pointerX;
 
-  useEffect(() => { if (!open) setConfirmDelete(false); }, [open]);
+  useEffect(() => { if (!open) { setConfirmDelete(false); setAssignOpen(false); } }, [open]);
+
   useEffect(() => {
     if (!open || !anchor) { setPos(null); return; }
     const rect = anchor.getBoundingClientRect();
@@ -43,6 +48,7 @@ export const TodoItemToolbarHost: React.FC<{
   }, [open, itemId, remove, onClose]);
 
   if (!open || !pos || !item) return null;
+  const isReferencedInMain = (item.referencedLaneIds || []).includes('todo-main');
 
   return createPortal(
     <>
@@ -64,16 +70,49 @@ export const TodoItemToolbarHost: React.FC<{
             type="button"
             onClick={() => { toggleMainReference(item.id); onClose(); }}
             className="flex h-8 w-[68px] items-center justify-center gap-1.5 rounded-md border border-sky-200 bg-sky-50 text-[11px] font-semibold text-sky-600 transition-colors hover:bg-sky-100"
-            title={(item.referencedLaneIds || []).includes('todo-main') ? '取消在主线显示此任务' : '在主线显示此任务（引用）'}
+            title={isReferencedInMain ? '取消在主线显示此任务' : '在主线显示此任务（引用）'}
           >
-            {(item.referencedLaneIds || []).includes('todo-main') ? <Link2Off className="h-3.5 w-3.5" /> : <Link2 className="h-3.5 w-3.5" />}
-            <span>{(item.referencedLaneIds || []).includes('todo-main') ? '取引用' : '引用'}</span>
+            {isReferencedInMain ? <Link2Off className="h-3.5 w-3.5" /> : <Link2 className="h-3.5 w-3.5" />}
+            <span>{isReferencedInMain ? '取引用' : '引用'}</span>
           </button>
-        ) : null}
+        ) : (
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => { setConfirmDelete(false); setAssignOpen((value) => !value); }}
+              className={`flex h-8 w-[68px] items-center justify-center gap-1.5 rounded-md border text-[11px] font-semibold transition-colors ${assignOpen ? 'border-sky-300 bg-sky-100 text-sky-700' : 'border-sky-200 bg-sky-50 text-sky-600 hover:bg-sky-100'}`}
+              title="把此任务归属到某个分线，并在主线保留引用显示"
+              aria-expanded={assignOpen}
+            >
+              <Link2 className="h-3.5 w-3.5" />
+              <span>归属</span>
+            </button>
+            {assignOpen ? (
+              <div className="absolute bottom-full left-1/2 z-[210] mb-2 w-44 -translate-x-1/2 rounded-lg border border-neutral-200 bg-white p-1.5 shadow-xl">
+                <p className="px-2 pb-1 pt-0.5 text-[10px] font-semibold text-neutral-400">归属到分线（主线保留引用）</p>
+                <div className="max-h-52 space-y-0.5 overflow-y-auto custom-scrollbar">
+                  {lanes.length > 0 ? lanes.map((lane) => (
+                    <button
+                      key={lane.id}
+                      type="button"
+                      onClick={() => { reassignLane(item.id, lane.id); onClose(); }}
+                      className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-[11px] text-neutral-600 transition-colors hover:bg-neutral-50"
+                      title={lane.name}
+                    >
+                      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-sky-400" />
+                      <span className="truncate">{lane.name}</span>
+                    </button>
+                  )) : <span className="block px-2 py-2 text-[11px] text-neutral-400">暂无分线</span>}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        )}
         <button
           type="button"
           onClick={() => {
             if (confirmDelete) { onClose(); remove(item.id); return; }
+            setAssignOpen(false);
             setConfirmDelete(true);
           }}
           className={`flex h-8 w-[68px] items-center justify-center gap-1.5 rounded-md border text-[11px] font-semibold transition-colors ${confirmDelete ? 'border-rose-500 bg-rose-600 text-white hover:bg-rose-700' : 'border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100'}`}

@@ -234,6 +234,7 @@ export interface AppState {
   updateTodoItemSection: (itemId: string, sectionId: string | null) => void;
   moveTodoItemToLane: (itemId: string, targetLaneId: string) => void;
   toggleTodoItemMainReference: (itemId: string) => void;
+  reassignTodoItemLane: (itemId: string, targetLaneId: string) => void;
   setTodoItemTimeRange: (itemId: string, startTime: string | null, endTime: string | null) => void;
   moveTodoItemToLanePosition: (itemId: string, laneId: string, order: number, sectionId?: string | null) => void;
   toggleTodoItemDone: (itemId: string) => void;
