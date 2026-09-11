@@ -616,15 +616,18 @@ const LaneBandsLayer: React.FC<{
   useEffect(() => () => { setBandDeleteZoneActive(false); onDeleteZoneChange?.(false); }, [setBandDeleteZoneActive, onDeleteZoneChange]);
 
   useEffect(() => {
-    if (!bandDrag) return;
+    if (!bandDrag) return undefined;
     const headerZone = () => {
       const header = document.querySelector('[data-app-header]') as HTMLElement | null;
       return header ? header.getBoundingClientRect().bottom : Number.POSITIVE_INFINITY;
     };
-    const onMove = (event: PointerEvent) => {
-      if (bandDrag.mode === 'move') deleteArmedSetter(event.clientY < headerZone());
+    const scroller = () => document.querySelector('[data-todo-scroller]') as HTMLElement | null;
+    let lastClientY = bandDrag.startY;
+    let startScrollTop = scroller()?.scrollTop ?? 0;
+    const applyLive = (clientY: number) => {
+      const currentScrollTop = scroller()?.scrollTop ?? 0;
+      const delta = clientY - bandDrag.startY - (currentScrollTop - startScrollTop);
       setLiveBands((current) => {
-        const delta = event.clientY - bandDrag.startY;
         if (bandDrag.mode === 'move') {
           return { ...current, [bandDrag.id]: { top: bandDrag.originTop + delta, height: bandDrag.originHeight } };
         }
@@ -636,7 +639,30 @@ const LaneBandsLayer: React.FC<{
         return { ...current, [bandDrag.id]: { top: bandDrag.originTop, height: Math.max(28, bandDrag.originHeight + delta) } };
       });
     };
+    const onMove = (event: PointerEvent) => {
+      lastClientY = event.clientY;
+      if (bandDrag.mode === 'move') deleteArmedSetter(event.clientY < headerZone());
+      applyLive(event.clientY);
+    };
+    const EDGE = 64;
+    const MAX_SPEED = 18;
+    const autoScroll = () => {
+      rafId = window.requestAnimationFrame(autoScroll);
+      const container = scroller();
+      if (!container) return;
+      const distanceTop = lastClientY - EDGE;
+      const distanceBottom = window.innerHeight - EDGE - lastClientY;
+      let deltaScroll = 0;
+      if (distanceTop < 0) deltaScroll = -Math.min(MAX_SPEED, Math.ceil(-distanceTop / 6));
+      else if (distanceBottom < 0) deltaScroll = Math.min(MAX_SPEED, Math.ceil(-distanceBottom / 6));
+      if (deltaScroll === 0) return;
+      container.scrollTop += deltaScroll;
+      if (bandDrag.mode === 'move') deleteArmedSetter(lastClientY < headerZone());
+      applyLive(lastClientY);
+    };
+    let rafId = window.requestAnimationFrame(autoScroll);
     const onUp = () => {
+      window.cancelAnimationFrame(rafId);
       const armed = deleteArmedRef.current;
       deleteArmedSetter(false);
       setBandDrag((current) => {
@@ -654,6 +680,7 @@ const LaneBandsLayer: React.FC<{
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
     return () => {
+      window.cancelAnimationFrame(rafId);
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
     };
