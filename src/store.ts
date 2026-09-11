@@ -1353,6 +1353,9 @@ export const useAppStore = create<AppState>((set, get) => {
     toggleTodoItemDone: (itemId) => persistSet((state: AppState) => ({
       todoItems: state.todoItems.map((item) => item.id === itemId ? { ...item, isDone: !item.isDone } : item),
     })),
+    reorderTodoItem: (itemId, order) => persistSet((state: AppState) => ({
+      todoItems: state.todoItems.map((item) => item.id === itemId ? { ...item, order } : item),
+    })),
     toggleTodoItemDirectory: (itemId) => persistSet((state: AppState) => ({
       todoItems: state.todoItems.map((item) => item.id === itemId
         ? { ...item, isDirectory: !item.isDirectory, position: item.position, width: item.isDirectory ? item.width : Math.max(item.width || 0, 176), height: item.isDirectory ? item.height : Math.max(item.height || 0, 48) }

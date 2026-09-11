@@ -400,16 +400,22 @@ const buildDirectoryPath = (itemId: string, laneEdges: TodoEdge[], itemById: Map
   return segments;
 };
 
-const TodoRow: React.FC<{ item: TodoItem; pathLabel?: string }> = ({ item, pathLabel }) => {
+const TodoRow: React.FC<{
+  item: TodoItem;
+  pathLabel?: string;
+  dragging?: boolean;
+  dropHint?: 'above' | 'below' | null;
+  onSortDragStart?: (itemId: string, half: 'top' | 'bottom' | null, targetItemId: string | null, commit?: boolean) => void;
+}> = ({ item, pathLabel, dragging = false, dropHint = null, onSortDragStart }) => {
   const update = useAppStore((state) => state.updateTodoItem);
   const toggle = useAppStore((state) => state.toggleTodoItemDone);
   const [toolbarOpen, setToolbarOpen] = useState(false);
   const [pointerX, setPointerX] = useState<number | undefined>(undefined);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
-  const [grabbing, setGrabbing] = useState(false);
   const rowRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const dragMovedRef = useRef(false);
   useEffect(() => { if (editing) { setDraft(item.text); inputRef.current?.focus(); inputRef.current?.select(); } }, [editing]);
   const { handleClick, cancel } = useTapClick((element, event) => { setPointerX(event.clientX); setToolbarOpen((open) => !open); });
   const beginEdit = () => { cancel(); setToolbarOpen(false); setEditing(true); };
@@ -422,23 +428,53 @@ const TodoRow: React.FC<{ item: TodoItem; pathLabel?: string }> = ({ item, pathL
   return (
     <div
       ref={rowRef}
-      draggable={grabbing}
-      onDragStart={(event) => { event.dataTransfer.setData('application/x-planner-todo-item', item.id); event.dataTransfer.effectAllowed = 'move'; }}
-      onDragEnd={() => setGrabbing(false)}
-      onClick={(event) => { if (editing) return; if ((event.target as HTMLElement).closest('button, [role="toolbar"]')) return; handleClick(event); }}
+      data-todo-row={item.id}
+      onClick={(event) => {
+        if (dragMovedRef.current) { dragMovedRef.current = false; return; }
+        if (editing) return;
+        if ((event.target as HTMLElement).closest('button, [role="toolbar"]')) return;
+        handleClick(event);
+      }}
       onDoubleClick={(event) => { if ((event.target as HTMLElement).closest('button')) return; beginEdit(); }}
-      className={`group relative z-10 flex items-center gap-2 rounded-lg px-2 py-1 ${editing ? 'bg-neutral-50' : 'cursor-default'}`}
-      title={editing ? undefined : '单击显示操作，双击编辑；按住左侧手柄可拖入其他分线'}
+      className={`group relative z-10 flex items-center gap-2 rounded-lg px-2 py-1 transition-opacity ${editing ? 'bg-neutral-50' : 'cursor-default'} ${dragging ? 'opacity-40' : ''} ${dropHint === 'above' ? 'shadow-[inset_0_2px_0_0_#8b5cf6]' : dropHint === 'below' ? 'shadow-[inset_0_-2px_0_0_#8b5cf6]' : ''}`}
+      title={editing ? undefined : '单击显示操作，双击编辑；按住左侧手柄可拖动排序'}
     >
-      <span
-        onMouseDown={() => setGrabbing(true)}
-        onMouseUp={() => setGrabbing(false)}
-        onMouseLeave={() => setGrabbing(false)}
-        className={`flex h-6 w-3.5 shrink-0 cursor-grab items-center justify-center text-neutral-300 opacity-0 transition-opacity hover:text-neutral-500 active:cursor-grabbing group-hover:opacity-100 ${pathLabel ? 'opacity-100 text-purple-400' : ''}`}
-        title="拖动到其他分线（引用显示）"
-      >
-        <GripVertical className="h-3 w-3" />
-      </span>
+      {onSortDragStart ? (
+        <span
+          onPointerDown={(event) => {
+            if (event.button !== 0 || !onSortDragStart) return;
+            event.preventDefault();
+            event.currentTarget.setPointerCapture(event.pointerId);
+            dragMovedRef.current = false;
+            const move = (moveEvent: PointerEvent) => {
+              const element = document.elementFromPoint(moveEvent.clientX, moveEvent.clientY)?.closest('[data-todo-row]');
+              const row = element instanceof HTMLElement ? element : null;
+              if (row && row.dataset.todoRow !== item.id) { dragMovedRef.current = true; cancel(); }
+              if (!row) { onSortDragStart(item.id, null, null); return; }
+              const rect = row.getBoundingClientRect();
+              onSortDragStart(item.id, moveEvent.clientY < rect.top + rect.height / 2 ? 'top' : 'bottom', row.dataset.todoRow || null);
+            };
+            const up = (upEvent: PointerEvent) => {
+              window.removeEventListener('pointermove', move);
+              window.removeEventListener('pointerup', up);
+              const element = document.elementFromPoint(upEvent.clientX, upEvent.clientY)?.closest('[data-todo-row]');
+              const row = element instanceof HTMLElement ? element : null;
+              if (row) {
+                const rect = row.getBoundingClientRect();
+                onSortDragStart(item.id, upEvent.clientY < rect.top + rect.height / 2 ? 'top' : 'bottom', row.dataset.todoRow || null, true);
+              } else {
+                onSortDragStart(item.id, null, null, true);
+              }
+            };
+            window.addEventListener('pointermove', move);
+            window.addEventListener('pointerup', up);
+          }}
+          className="flex h-6 w-3.5 shrink-0 cursor-grab touch-none items-center justify-center text-neutral-300 transition-colors hover:text-neutral-500 active:cursor-grabbing"
+          title="拖动调整顺序"
+        >
+          <GripVertical className="h-3 w-3" />
+        </span>
+      ) : <span className="h-6 w-3.5 shrink-0" aria-hidden="true" />}
       <TodoCheckbox done={item.isDone} onClick={() => toggle(item.id)} />
       <input
         ref={inputRef}
@@ -468,30 +504,38 @@ const ListLane: React.FC<{ lane: TodoLane; laneNamesById: Map<string, string>; h
   const create = useAppStore((state) => state.createTodoItem);
   const renameLane = useAppStore((state) => state.renameTodoLane);
   const deleteLane = useAppStore((state) => state.deleteTodoLane);
-  const moveItemToLane = useAppStore((state) => state.moveTodoItemToLane);
   const [draft, setDraft] = useState('');
-  const [dropActive, setDropActive] = useState(false);
   const items = useMemo(() => allItems
     .filter((item) => !item.isDirectory && (item.laneId === lane.id || (item.referencedLaneIds || []).includes(lane.id)))
     .sort((a, b) => a.order - b.order), [allItems, lane.id]);
   const submit = () => { const text = draft.trim(); if (!text) return; create(lane.id, text); setDraft(''); };
+  const [sortDrag, setSortDrag] = useState<{ itemId: string; half: 'top' | 'bottom' | null; targetItemId: string | null } | null>(null);
+  const sortDragRef = useRef<{ itemId: string; half: 'top' | 'bottom' | null; targetItemId: string | null } | null>(null);
+  sortDragRef.current = sortDrag;
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
+  const reorderItem = useAppStore((state) => state.reorderTodoItem);
+  const handleSortDrag = (itemId: string, half: 'top' | 'bottom' | null, targetItemId: string | null, commit = false) => {
+    if (commit) {
+      const current = sortDragRef.current;
+      setSortDrag(null);
+      if (!current || !current.targetItemId || current.targetItemId === itemId) return;
+      const visible = itemsRef.current;
+      const targetIndex = visible.findIndex((candidate) => candidate.id === current.targetItemId);
+      if (targetIndex < 0) return;
+      const insertIndex = current.half === 'top' ? targetIndex : targetIndex + 1;
+      const draggedIndex = visible.findIndex((candidate) => candidate.id === itemId);
+      if (draggedIndex < 0 || draggedIndex === insertIndex || draggedIndex === insertIndex - 1) return;
+      const prevOrder = insertIndex > 0 ? visible[insertIndex - 1].order : visible[0].order - 1;
+      const nextOrder = insertIndex < visible.length ? visible[insertIndex].order : visible[visible.length - 1].order + 1;
+      reorderItem(itemId, (prevOrder + nextOrder) / 2);
+      return;
+    }
+    setSortDrag((current) => (current?.targetItemId === targetItemId && current?.half === half ? current : { itemId, half, targetItemId }));
+  };
   return <section
     data-lane-card={lane.id}
-    onDragOver={(event) => {
-      if (!event.dataTransfer.types.includes('application/x-planner-todo-item')) return;
-      event.preventDefault();
-      event.dataTransfer.dropEffect = 'move';
-      setDropActive(true);
-    }}
-    onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDropActive(false); }}
-    onDrop={(event) => {
-      setDropActive(false);
-      const draggedId = event.dataTransfer.getData('application/x-planner-todo-item');
-      if (!draggedId) return;
-      event.preventDefault();
-      moveItemToLane(draggedId, lane.id);
-    }}
-    className={`rounded-xl border bg-white/80 p-4 shadow-xs transition-all ${dropActive ? 'border-purple-300 ring-2 ring-purple-100' : 'border-neutral-200'} ${highlight ? 'ring-2 ring-purple-300 border-purple-300' : ''}`}
+    className={`rounded-xl border bg-white/80 p-4 shadow-xs transition-all ${highlight ? 'ring-2 ring-purple-300 border-purple-300' : 'border-neutral-200'}`}
   >
     <div className="relative z-10 mb-3 flex items-center justify-between gap-3">
       <div className="flex min-w-0 items-center gap-2"><span className={`h-2 w-2 shrink-0 rounded-full ${lane.type === 'main' ? 'bg-purple-500' : 'bg-sky-400'}`} />{lane.type === 'custom' ? <input value={lane.name} onChange={(event) => renameLane(lane.id, event.target.value)} onBlur={(event) => { if (!event.currentTarget.value.trim()) renameLane(lane.id, '未命名分线'); }} className="min-w-0 flex-1 bg-transparent text-sm font-bold text-neutral-700 outline-none" aria-label="分线名称" /> : <h3 className="text-sm font-bold text-neutral-700">{lane.name}</h3>}</div>
@@ -510,7 +554,14 @@ const ListLane: React.FC<{ lane: TodoLane; laneNamesById: Map<string, string>; h
             pathLabel = [laneName, ...directorySegments].map((segment) => `${segment}/`).join('');
           }
         }
-        return <TodoRow key={`${item.id}-${item.laneId === lane.id ? 'own' : 'ref'}`} item={item} pathLabel={pathLabel} />;
+        return <TodoRow
+          key={`${item.id}-${item.laneId === lane.id ? 'own' : 'ref'}`}
+          item={item}
+          pathLabel={pathLabel}
+          dragging={sortDrag?.itemId === item.id}
+          dropHint={sortDrag?.targetItemId === item.id ? (sortDrag.half === 'top' ? 'above' : 'below') : null}
+          onSortDragStart={handleSortDrag}
+        />;
       })}
       <div className="relative z-10 flex items-center gap-2 px-2 pt-1"><span className="h-[18px] w-[18px] shrink-0 rounded-[5px] border border-dashed border-neutral-300" /><input value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.nativeEvent.isComposing) submit(); }} placeholder="添加待办" className="min-w-0 flex-1 bg-transparent py-1 text-sm outline-none placeholder:text-neutral-300" aria-label={`添加到${lane.name}`} /><button type="button" onClick={submit} disabled={!draft.trim()} className="flex h-7 w-7 items-center justify-center rounded text-purple-500 hover:bg-purple-50 disabled:opacity-0" title="添加待办"><Plus className="h-4 w-4" /></button></div>
     </div>
