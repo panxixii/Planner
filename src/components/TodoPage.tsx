@@ -24,7 +24,7 @@ import type { TodoEdge, TodoItem, TodoLane, TodoLaneSection } from '../types';
 import { TodoBoard } from './TodoBoard';
 import { TodoGantt } from './TodoGantt';
 import { TodoItemToolbarHost } from './TodoItemToolbar';
-import { TodoStatusBadge } from './TodoStatusBadge';
+import { TodoStatusBadge, isTodoItemStruck } from './TodoStatusBadge';
 import { TodoTimeLabel } from './TodoTimeLabel';
 import { TodoViewSwitcher, type TodoLaneView } from './TodoViewSwitcher';
 import { useTapClick } from './useTapClick';
@@ -447,7 +447,7 @@ const TodoRow: React.FC<{ item: TodoItem; pathLabel?: string }> = ({ item, pathL
         onChange={(event) => setDraft(event.target.value)}
         onBlur={() => { if (editing) commitEdit(); }}
         onKeyDown={(event) => { if (event.key === 'Enter' && !event.nativeEvent.isComposing) event.currentTarget.blur(); if (event.key === 'Escape') { setDraft(item.text); event.currentTarget.blur(); } }}
-        className={`min-w-0 flex-1 bg-transparent py-1 text-sm outline-none ${editing ? 'cursor-text' : 'cursor-default'} ${item.isDone ? 'text-neutral-400 line-through' : 'text-neutral-700'}`}
+        className={`min-w-0 flex-1 bg-transparent py-1 text-sm outline-none ${editing ? 'cursor-text' : 'cursor-default'} ${isTodoItemStruck(item) ? 'text-neutral-400 line-through' : 'text-neutral-700'}`}
         aria-label="待办文本"
       />
       {pathLabel ? (
@@ -608,7 +608,7 @@ const LaneBandsLayer: React.FC<{ lanes: TodoLane[] }> = ({ lanes }) => {
   </>;
 };
 
-interface BoardNodeData extends Record<string, unknown> { itemId: string; text: string; done: boolean; color?: string; progressStatus?: 'not-started' | 'in-progress'; isDirectory?: boolean }
+interface BoardNodeData extends Record<string, unknown> { itemId: string; text: string; done: boolean; color?: string; progressStatus?: 'not-started' | 'in-progress' | 'cancelled'; isDirectory?: boolean }
 
 const boardColors: Record<string, string> = {
   emerald: '#67c8bd', rose: '#d78fb5', sky: '#79bfd5', amber: '#d9b958', violet: '#9b8ae4', indigo: '#9387d1',
@@ -659,7 +659,7 @@ const BoardNode = React.memo(({ id, data, selected }: NodeProps<Node<BoardNodeDa
           if (text !== data.text) update(data.itemId, { text });
         }}
         onKeyDown={(event) => { if (event.key === 'Enter' && !event.nativeEvent.isComposing) event.currentTarget.blur(); if (event.key === 'Escape') event.currentTarget.blur(); }}
-        className={`min-w-0 flex-1 bg-transparent py-1 text-xs font-semibold outline-none ${editing ? 'nodrag cursor-text' : 'cursor-default'} ${data.done ? 'text-neutral-400 line-through' : 'text-neutral-700'}`}
+        className={`min-w-0 flex-1 bg-transparent py-1 text-xs font-semibold outline-none ${editing ? 'nodrag cursor-text' : 'cursor-default'} ${data.done || data.progressStatus === 'cancelled' ? 'text-neutral-400 line-through' : 'text-neutral-700'}`}
         aria-label={data.isDirectory ? '目录标题' : '待办文本'}
       />
       <TodoTimeLabel itemId={data.itemId} />

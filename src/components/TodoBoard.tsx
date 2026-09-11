@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Circle, CircleDashed, CircleCheck, Plus } from 'lucide-react';
+import { Ban, Circle, CircleDashed, CircleCheck, Plus } from 'lucide-react';
 import { useAppStore } from '../store';
 import type { TodoItem, TodoLane } from '../types';
 import { TodoItemToolbarHost } from './TodoItemToolbar';
-import { TodoStatusBadge } from './TodoStatusBadge';
+import { TodoStatusBadge, isTodoItemStruck, statusKeyOf } from './TodoStatusBadge';
 import { TodoTimeLabel } from './TodoTimeLabel';
 import { useTapClick } from './useTapClick';
 
@@ -11,6 +11,7 @@ const STATUS_COLUMNS: { id: string; label: string; accent: string; icon: React.F
   { id: 'status-not-started', label: '未开始', accent: '#94a3b8', icon: CircleDashed },
   { id: 'status-in-progress', label: '进行中', accent: '#8b5cf6', icon: Circle },
   { id: 'status-completed', label: '已完成', accent: '#10b981', icon: CircleCheck },
+  { id: 'status-cancelled', label: '已取消', accent: '#f43f5e', icon: Ban },
 ];
 
 const TodoCheckbox: React.FC<{ done: boolean; onClick: () => void }> = ({ done, onClick }) => (
@@ -64,7 +65,7 @@ const TodoCard: React.FC<{
             if (text !== item.text) onUpdate(text);
           }}
           onKeyDown={(event) => { if (event.key === 'Enter' && !event.nativeEvent.isComposing) event.currentTarget.blur(); if (event.key === 'Escape') event.currentTarget.blur(); }}
-          className={`min-w-0 flex-1 bg-transparent py-0.5 text-xs font-semibold outline-none ${editing ? 'cursor-text' : 'cursor-default'} ${item.isDone ? 'text-neutral-400 line-through' : 'text-neutral-700'}`}
+          className={`min-w-0 flex-1 bg-transparent py-0.5 text-xs font-semibold outline-none ${editing ? 'cursor-text' : 'cursor-default'} ${isTodoItemStruck(item) ? 'text-neutral-400 line-through' : 'text-neutral-700'}`}
           aria-label="待办文本"
         />
           <TodoTimeLabel itemId={item.id} />
@@ -86,11 +87,7 @@ export const TodoBoard: React.FC<{ lane: TodoLane }> = ({ lane }) => {
   const doneSet = useMemo(() => new Set(items.filter((item) => item.isDone).map((item) => item.id)), [items]);
   const columns = useMemo(() => STATUS_COLUMNS.map((column) => ({
     ...column,
-    items: items.filter((item) => {
-      if (column.id === 'status-completed') return item.isDone;
-      if (column.id === 'status-in-progress') return !item.isDone && item.progressStatus === 'in-progress';
-      return !item.isDone && item.progressStatus !== 'in-progress';
-    }),
+    items: items.filter((item) => statusKeyOf(item) === column.id),
   })), [items]);
 
   const moveToColumn = (itemId: string, columnId: string) => {
@@ -101,16 +98,12 @@ export const TodoBoard: React.FC<{ lane: TodoLane }> = ({ lane }) => {
       return;
     }
     if (doneSet.has(itemId)) toggleDone(itemId);
-    updateItem(itemId, { progressStatus: columnId === 'status-in-progress' ? 'in-progress' : 'not-started' });
+    updateItem(itemId, { progressStatus: columnId === 'status-in-progress' ? 'in-progress' : columnId === 'status-cancelled' ? 'cancelled' : 'not-started' });
   };
-
-  const statusOf = (item: TodoItem) => {
-    if (item.isDone) return 'status-completed';
-    return item.progressStatus === 'in-progress' ? 'status-in-progress' : 'status-not-started';
-  };
+  const statusOf = statusKeyOf;
 
   return (
-    <div className="grid min-h-0 flex-1 grid-cols-3 gap-6 pb-2">
+    <div className="grid min-h-0 flex-1 grid-cols-4 gap-4 pb-2">
       {columns.map((column) => (
         <section
           key={column.id}

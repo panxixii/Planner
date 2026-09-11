@@ -62,7 +62,7 @@ const GanttTaskLabel: React.FC<{
     >
       <button type="button" onClick={onToggle} className={`flex h-[18px] w-[18px] items-center justify-center rounded-[5px] border ${item.isDone ? 'border-neutral-500 bg-neutral-500 text-white' : 'border-neutral-300 text-transparent'}`}><Check className="h-3 w-3" /></button>
       {item.isDirectory ? <Folder className="h-3.5 w-3.5 shrink-0 text-purple-400" /> : null}
-      <span className={`min-w-0 flex-1 truncate text-xs font-semibold ${item.isDone ? 'text-neutral-400 line-through' : 'text-neutral-700'}`}>{item.text || '未命名待办'}</span>
+      <span className={`min-w-0 flex-1 truncate text-xs font-semibold ${item.isDone || item.progressStatus === 'cancelled' ? 'text-neutral-400 line-through' : 'text-neutral-700'}`}>{item.text || '未命名待办'}</span>
       <TodoStatusBadge itemId={item.id} compact />
     </div>
   );

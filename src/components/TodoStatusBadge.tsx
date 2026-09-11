@@ -1,17 +1,25 @@
 import React from 'react';
-import { Circle, CircleCheck, CircleDashed } from 'lucide-react';
+import { Ban, Circle, CircleCheck, CircleDashed } from 'lucide-react';
 import { useAppStore } from '../store';
 import type { TodoItem } from '../types';
 
-type StatusKey = 'status-not-started' | 'status-in-progress' | 'status-completed';
+type StatusKey = 'status-not-started' | 'status-in-progress' | 'status-completed' | 'status-cancelled';
 
 const STATUS_META: Record<StatusKey, { label: string; dot: string; icon: React.FC<{ className?: string }>; next: StatusKey }> = {
   'status-not-started': { label: '未开始', dot: '#94a3b8', icon: CircleDashed, next: 'status-in-progress' },
   'status-in-progress': { label: '进行中', dot: '#8b5cf6', icon: Circle, next: 'status-completed' },
-  'status-completed': { label: '已完成', dot: '#10b981', icon: CircleCheck, next: 'status-not-started' },
+  'status-completed': { label: '已完成', dot: '#10b981', icon: CircleCheck, next: 'status-cancelled' },
+  'status-cancelled': { label: '已取消', dot: '#f43f5e', icon: Ban, next: 'status-not-started' },
 };
 
-export const statusKeyOf = (item: TodoItem): StatusKey => (item.isDone ? 'status-completed' : item.progressStatus === 'in-progress' ? 'status-in-progress' : 'status-not-started');
+export const statusKeyOf = (item: TodoItem): StatusKey => {
+  if (item.isDone) return 'status-completed';
+  if (item.progressStatus === 'in-progress') return 'status-in-progress';
+  if (item.progressStatus === 'cancelled') return 'status-cancelled';
+  return 'status-not-started';
+};
+
+export const isTodoItemStruck = (item: TodoItem): boolean => item.isDone || item.progressStatus === 'cancelled';
 
 export const TodoStatusBadge: React.FC<{ itemId: string; compact?: boolean }> = ({ itemId, compact = false }) => {
   const item = useAppStore((state) => state.todoItems.find((candidate) => candidate.id === itemId));
@@ -28,7 +36,7 @@ export const TodoStatusBadge: React.FC<{ itemId: string; compact?: boolean }> = 
       return;
     }
     if (item.isDone) toggle(item.id);
-    update(item.id, { progressStatus: next === 'status-in-progress' ? 'in-progress' : 'not-started' });
+    update(item.id, { progressStatus: next === 'status-in-progress' ? 'in-progress' : next === 'status-cancelled' ? 'cancelled' : 'not-started' });
   };
   if (compact) {
     return (

@@ -120,7 +120,7 @@ export interface TodoItem {
   height?: number;
   color?: string;
   sectionId?: string; // Legacy visual band linkage; kept only for saved-data compatibility.
-  progressStatus?: 'not-started' | 'in-progress'; // Board column; isDone wins as completed.
+  progressStatus?: 'not-started' | 'in-progress' | 'cancelled'; // Board column; isDone wins as completed, cancelled mirrors its visuals.
   isDirectory?: boolean; // Board node renders as a directory-style card when true.
   referencedLaneIds?: string[]; // Extra lanes that mirror this item (reference display).
   originLaneId?: string; // Lane this item was dragged from into the main lane; drives the path hint.

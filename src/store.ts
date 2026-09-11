@@ -237,7 +237,7 @@ const normalizeTodoItems = (
       height: typeof item.height === 'number' ? item.height : undefined,
       color: typeof item.color === 'string' ? item.color : undefined,
       sectionId: typeof item.sectionId === 'string' ? item.sectionId : undefined,
-      progressStatus: item.progressStatus === 'in-progress' ? 'in-progress' : item.progressStatus === 'not-started' ? 'not-started' : undefined,
+      progressStatus: item.progressStatus === 'in-progress' ? 'in-progress' : item.progressStatus === 'not-started' ? 'not-started' : item.progressStatus === 'cancelled' ? 'cancelled' : undefined,
       isDirectory: item.isDirectory === true ? true : undefined,
       referencedLaneIds: Array.isArray(item.referencedLaneIds)
         ? item.referencedLaneIds.filter((id: unknown): id is string => typeof id === 'string')
