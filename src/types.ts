@@ -227,7 +227,7 @@ export interface AppState {
   addTodoLane: (name?: string) => string;
   renameTodoLane: (laneId: string, name: string) => void;
   deleteTodoLane: (laneId: string) => void;
-  addTodoLaneSection: (laneId: string, name?: string) => string | null;
+  addTodoLaneSection: (laneId: string, name?: string, top?: number) => string | null;
   updateTodoLaneSection: (laneId: string, sectionId: string, updates: Partial<Pick<TodoLaneSection, 'name' | 'color' | 'top' | 'height'>>) => void;
   deleteTodoLaneSection: (laneId: string, sectionId: string, mode?: 'merge' | 'delete-items') => void;
   setTodoLaneItemOrder: (laneId: string, orderedIds: string[]) => void;
@@ -315,6 +315,10 @@ export interface AppState {
   pendingFocusLaneId: string | null;
   focusLane: (laneId: string) => void;
   consumeFocusedLane: () => void;
+
+  // Transient: section band dragged over the app header delete zone
+  bandDeleteZoneActive: boolean;
+  setBandDeleteZoneActive: (active: boolean) => void;
 
   // Onboarding banner shown once until dismissed (persisted)
   showWelcome: boolean;

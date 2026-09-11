@@ -35,6 +35,7 @@ export default function App() {
   const dismissWelcome = useAppStore((state) => state.dismissWelcome);
   const allTodoLanes = useAppStore((state) => state.todoLanes);
   const todoLanes = useMemo(() => allTodoLanes.filter((lane) => lane.id === 'todo-main' || lane.type === 'custom'), [allTodoLanes]);
+  const bandDeleteZoneActive = useAppStore((state) => state.bandDeleteZoneActive);
   const focusLane = useAppStore((state) => state.focusLane);
   const selectTask = useAppStore((state) => state.selectTask);
   const isSidebarCollapsed = useAppStore((state) => state.isSidebarCollapsed);
@@ -142,7 +143,12 @@ export default function App() {
       </aside>
 
       <main className="flex h-screen min-w-0 flex-grow flex-col overflow-hidden bg-neutral-50">
-        <header className="flex h-14 shrink-0 items-center justify-between border-b border-neutral-200 bg-white px-6 select-none">
+        <header data-app-header className={`relative flex h-14 shrink-0 items-center justify-between border-b px-6 select-none transition-colors ${bandDeleteZoneActive ? 'border-rose-400 bg-rose-50' : 'border-neutral-200 bg-white'}`}>
+          {bandDeleteZoneActive ? (
+            <div className="pointer-events-none absolute inset-x-3 inset-y-1.5 z-10 flex items-center justify-center rounded-lg border-2 border-dashed border-rose-400 bg-rose-50/90">
+              <span className="rounded-md bg-rose-600 px-3 py-1 text-xs font-bold text-white">松手后确认删除</span>
+            </div>
+          ) : null}
           <div className="flex min-w-0 items-center gap-2">
             {isSidebarCollapsed ? (
               <button

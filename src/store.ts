@@ -881,6 +881,7 @@ export const useAppStore = create<AppState>((set, get) => {
     showHelp: initialShowHelp,
     showWelcome: savedState ? savedState.showWelcome !== false : true,
     pendingFocusLaneId: null,
+    bandDeleteZoneActive: false,
     timelineTaskOrder: initialTimelineTaskOrder,
     isTimelineCollapsed: initialIsTimelineCollapsed,
     mergedNodePositions: initialMergedNodePositions,
@@ -1200,7 +1201,7 @@ export const useAppStore = create<AppState>((set, get) => {
         todoEdges: state.todoEdges.filter((edge) => edge.laneId !== laneId),
       };
     }),
-    addTodoLaneSection: (laneId, name) => {
+    addTodoLaneSection: (laneId, name, top) => {
       const state = get();
       const lane = state.todoLanes.find((candidate) => candidate.id === laneId);
       if (!lane) return null;
@@ -1213,7 +1214,7 @@ export const useAppStore = create<AppState>((set, get) => {
         id: sectionId,
         name: name?.trim() || '新分段',
         color: SECTION_SWATCH_COLORS[fallbackIndex % SECTION_SWATCH_COLORS.length],
-        top: cardTop !== null ? cardTop + 56 : fallbackIndex * 120,
+        top: typeof top === 'number' && Number.isFinite(top) ? Math.max(0, top) : (cardTop !== null ? cardTop + 56 : fallbackIndex * 120),
         height: 120,
       };
       persistSet((current: AppState) => ({
@@ -1979,6 +1980,7 @@ export const useAppStore = create<AppState>((set, get) => {
     toggleHelp: () => persistSet((state: AppState) => ({ showHelp: !state.showHelp })),
     focusLane: (laneId) => set({ pendingFocusLaneId: laneId }),
     consumeFocusedLane: () => set({ pendingFocusLaneId: null }),
+    setBandDeleteZoneActive: (active) => set({ bandDeleteZoneActive: active }),
     dismissWelcome: () => persistSet((state: AppState) => ({ showWelcome: false })),
     toggleTimeline: () => persistSet((state: AppState) => ({ isTimelineCollapsed: !state.isTimelineCollapsed })),
     setTimelineTaskOrder: (order) => persistSet({ timelineTaskOrder: order }),
