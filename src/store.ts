@@ -1305,17 +1305,16 @@ export const useAppStore = create<AppState>((set, get) => {
     setTodoItemTimeRange: (itemId, startTime, endTime) => persistSet((state: AppState) => {
       const item = state.todoItems.find((candidate) => candidate.id === itemId);
       if (!item) return {};
-      const start = startTime || undefined;
-      const end = endTime || undefined;
+      const normalizeStamp = (value: string, endOfDay = false) => {
+        if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return `${value}T${endOfDay ? '23:59' : '00:00'}`;
+        return value;
+      };
+      const start = startTime ? normalizeStamp(startTime) : undefined;
+      const end = endTime ? normalizeStamp(endTime, true) : undefined;
       const blocks = [...(item.timeBlocks || [])];
       if (start && end) {
-        const blockStart = `${start}T00:00`;
-        const endDate = new Date(`${end}T00:00`);
-        endDate.setDate(endDate.getDate() + 1);
-        const pad = (value: number) => String(value).padStart(2, '0');
-        const blockEnd = `${endDate.getFullYear()}-${pad(endDate.getMonth() + 1)}-${pad(endDate.getDate())}T00:00`;
-        if (blocks.length > 0) blocks[0] = { ...blocks[0], startTime: blockStart, endTime: blockEnd };
-        else blocks.push({ id: `todo-time-${genId()}`, startTime: blockStart, endTime: blockEnd });
+        if (blocks.length > 0) blocks[0] = { ...blocks[0], startTime: start, endTime: end };
+        else blocks.push({ id: `todo-time-${genId()}`, startTime: start, endTime: end });
       } else if (blocks.length > 0) {
         blocks.shift();
       }

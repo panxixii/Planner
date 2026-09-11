@@ -99,10 +99,10 @@ const GanttTimeBlock: React.FC<{
         }}
         onPointerUp={onEndDrag}
         onPointerCancel={onEndDrag}
-        onClick={(event) => { if (movedRef.current || confirmRemove) return; setDetailsOpen(true); event.stopPropagation(); }}
+        onDoubleClick={(event) => { if (movedRef.current || confirmRemove) return; setDetailsOpen(true); event.stopPropagation(); }}
         className={`group absolute z-10 flex h-7 touch-none cursor-grab items-center rounded-md border px-2 text-[10px] font-semibold text-white shadow-sm active:cursor-grabbing ${isDone ? 'opacity-50 line-through grayscale' : ''}`}
         style={{ left, width, backgroundColor: color, borderColor: color }}
-        title="单击查看详情；拖动移动；拖动两端调整"
+        title="双击查看详情；拖动移动；拖动两端调整"
       >
         <div onPointerDown={(event) => onBeginDrag(event, 'start')} onPointerMove={onMoveDrag} onPointerUp={onEndDrag} onPointerCancel={onEndDrag} className="absolute inset-y-0 left-0 z-20 w-2 cursor-ew-resize rounded-l-md bg-white/25 opacity-0 group-hover:opacity-100" />
         <span className="pointer-events-none min-w-0 flex-1 truncate">{item.text}</span>
@@ -227,7 +227,8 @@ export const TodoGantt: React.FC<{ lane: TodoLane }> = ({ lane }) => {
   const endDrag = (event: React.PointerEvent<HTMLDivElement>) => {
     const current = dragRef.current;
     if (!current || current.pointerId !== event.pointerId) return;
-    const minSpan = scale === 'days' ? DAY_MS : definition.snapMs;
+    const resizeSnapMs = scale === 'minutes' ? 60_000 : scale === 'hours' ? 15 * 60_000 : 60 * 60_000;
+    const minSpan = Math.min(definition.snapMs, resizeSnapMs);
     let commitStart: number;
     let commitEnd: number;
     if (current.edge === 'move') {
@@ -236,11 +237,11 @@ export const TodoGantt: React.FC<{ lane: TodoLane }> = ({ lane }) => {
       commitStart = current.originalStart + delta;
       commitEnd = current.originalEnd + delta;
     } else if (current.edge === 'start') {
-      commitStart = snapToGrid(current.previewStart, definition.snapMs);
+      commitStart = snapToGrid(current.previewStart, resizeSnapMs);
       commitEnd = Math.max(current.originalEnd, commitStart + minSpan);
       if (commitStart >= commitEnd) commitStart = commitEnd - minSpan;
     } else {
-      commitEnd = snapToGrid(current.previewEnd, definition.snapMs);
+      commitEnd = snapToGrid(current.previewEnd, resizeSnapMs);
       commitStart = Math.min(current.originalStart, commitEnd - minSpan);
     }
     updateBlock(current.itemId, current.blockId, { startTime: formatLocalDateTime(commitStart), endTime: formatLocalDateTime(commitEnd) });
