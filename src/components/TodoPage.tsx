@@ -462,7 +462,7 @@ const TodoRow: React.FC<{ item: TodoItem; pathLabel?: string }> = ({ item, pathL
   );
 };
 
-const ListLane: React.FC<{ lane: TodoLane; laneNamesById: Map<string, string>; onOpenView: (view: 'board' | 'kanban' | 'gantt') => void }> = ({ lane, laneNamesById, onOpenView }) => {
+const ListLane: React.FC<{ lane: TodoLane; laneNamesById: Map<string, string>; highlight?: boolean; onOpenView: (view: 'board' | 'kanban' | 'gantt') => void }> = ({ lane, laneNamesById, highlight = false, onOpenView }) => {
   const allItems = useAppStore((state) => state.todoItems);
   const allEdges = useAppStore((state) => state.todoEdges);
   const create = useAppStore((state) => state.createTodoItem);
@@ -491,7 +491,7 @@ const ListLane: React.FC<{ lane: TodoLane; laneNamesById: Map<string, string>; o
       event.preventDefault();
       moveItemToLane(draggedId, lane.id);
     }}
-    className={`rounded-xl border bg-white/80 p-4 shadow-xs transition-colors ${dropActive ? 'border-purple-300 ring-2 ring-purple-100' : 'border-neutral-200'}`}
+    className={`rounded-xl border bg-white/80 p-4 shadow-xs transition-all ${dropActive ? 'border-purple-300 ring-2 ring-purple-100' : 'border-neutral-200'} ${highlight ? 'ring-2 ring-purple-300 border-purple-300' : ''}`}
   >
     <div className="relative z-10 mb-3 flex items-center justify-between gap-3">
       <div className="flex min-w-0 items-center gap-2"><span className={`h-2 w-2 shrink-0 rounded-full ${lane.type === 'main' ? 'bg-purple-500' : 'bg-sky-400'}`} />{lane.type === 'custom' ? <input value={lane.name} onChange={(event) => renameLane(lane.id, event.target.value)} onBlur={(event) => { if (!event.currentTarget.value.trim()) renameLane(lane.id, '未命名分线'); }} className="min-w-0 flex-1 bg-transparent text-sm font-bold text-neutral-700 outline-none" aria-label="分线名称" /> : <h3 className="text-sm font-bold text-neutral-700">{lane.name}</h3>}</div>
@@ -742,16 +742,42 @@ export const TodoPage: React.FC = () => {
   const allLanes = useAppStore((state) => state.todoLanes);
   const addLane = useAppStore((state) => state.addTodoLane);
   const addSection = useAppStore((state) => state.addTodoLaneSection);
+  const pendingFocusLaneId = useAppStore((state) => state.pendingFocusLaneId);
+  const consumeFocusedLane = useAppStore((state) => state.consumeFocusedLane);
   const [boardLaneId, setBoardLaneId] = useState<string | null>(null);
   const [laneView, setLaneView] = useState<TodoLaneView>('board');
+  const [focusedLaneId, setFocusedLaneId] = useState<string | null>(null);
   const lanes = useMemo(() => allLanes.filter(visibleLane), [allLanes]);
   const laneNamesById = useMemo(() => new Map(allLanes.map((lane) => [lane.id, lane.name])), [allLanes]);
   const boardLane = boardLaneId ? lanes.find((lane) => lane.id === boardLaneId) : null;
+
+  useEffect(() => {
+    if (!pendingFocusLaneId) return;
+    const laneId = pendingFocusLaneId;
+    consumeFocusedLane();
+    setBoardLaneId(null);
+    window.setTimeout(() => {
+      const card = document.querySelector(`[data-lane-card="${laneId}"]`) as HTMLElement | null;
+      const scroller = document.querySelector('[data-todo-scroller]') as HTMLElement | null;
+      if (!card || !scroller) return;
+      let offset = 0;
+      let node: HTMLElement | null = card;
+      while (node && node !== scroller) {
+        offset += node.offsetTop;
+        node = node.offsetParent as HTMLElement | null;
+      }
+      const target = offset - (scroller.clientHeight - card.offsetHeight) / 2;
+      scroller.scrollTo({ top: Math.max(0, target), behavior: 'smooth' });
+      setFocusedLaneId(laneId);
+      window.setTimeout(() => setFocusedLaneId((current) => (current === laneId ? null : current)), 1600);
+    }, 60);
+  }, [pendingFocusLaneId, consumeFocusedLane]);
+
   if (boardLane) {
     return <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-neutral-50 p-6"><div className="mx-auto flex min-h-0 w-full max-w-[1500px] flex-1 flex-col"><div className="flex items-center justify-between gap-3"><h2 className="truncate text-lg font-bold text-neutral-800">{boardLane.name}</h2><TodoViewSwitcher view={laneView} onChange={setLaneView} onBack={() => setBoardLaneId(null)} /></div><div className="mt-5 flex min-h-0 flex-1">{laneView === 'board' ? <ReactFlowProvider><BoardCanvas lane={boardLane} /></ReactFlowProvider> : laneView === 'kanban' ? <TodoBoard lane={boardLane} /> : <TodoGantt lane={boardLane} />}</div></div></div>;
   }
-  return <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-neutral-50 p-6 custom-scrollbar"><div className="mx-auto flex min-h-0 w-full max-w-[1100px] flex-1 flex-col">
+  return <div data-todo-scroller className="relative flex min-h-0 flex-1 flex-col overflow-y-auto bg-neutral-50 p-6 custom-scrollbar"><div className="mx-auto flex min-h-0 w-full max-w-[1100px] flex-1 flex-col">
     <div className="flex items-center justify-between gap-3"><div className="flex items-center gap-3"><h2 className="text-lg font-bold text-neutral-800">Todo</h2><div className="flex items-center gap-1 text-xs text-neutral-400"><List className="h-3.5 w-3.5" />List</div></div><div className="flex items-center gap-2"><button type="button" onClick={() => addSection(allLanes[0]?.id || '')} disabled={!allLanes[0]} className="flex h-9 items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-3 text-xs font-semibold text-neutral-600 hover:bg-neutral-50 disabled:opacity-40" title="新增分段色块（全局浮动）"><Plus className="h-4 w-4" />新增分段</button><button type="button" onClick={() => addLane()} className="flex h-9 items-center gap-1.5 rounded-lg border border-purple-200 bg-purple-50 px-3 text-xs font-semibold text-purple-600"><Plus className="h-4 w-4" />新增分线</button></div></div>
-    <div data-lanes-container className="relative mt-6 flex flex-col gap-4">{lanes.map((lane) => <ListLane key={lane.id} lane={lane} laneNamesById={laneNamesById} onOpenView={(view) => { setLaneView(view); setBoardLaneId(lane.id); }} />)}<LaneBandsLayer lanes={lanes} /></div>
+    <div data-lanes-container className="relative mt-6 flex flex-col gap-4">{lanes.map((lane) => <ListLane key={lane.id} lane={lane} laneNamesById={laneNamesById} highlight={focusedLaneId === lane.id} onOpenView={(view) => { setLaneView(view); setBoardLaneId(lane.id); }} />)}<LaneBandsLayer lanes={lanes} /></div>
   </div></div>;
 };
