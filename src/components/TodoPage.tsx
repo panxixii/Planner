@@ -747,7 +747,7 @@ const BoardNode = React.memo(({ id, data, selected }: NodeProps<Node<BoardNodeDa
     onClick={(event) => { if (editing) return; if ((event.target as HTMLElement).closest('button, [role="toolbar"]')) return; handleClick(event); }}
     onDoubleClick={(event) => { if ((event.target as HTMLElement).closest('button')) return; cancel(); setToolbarOpen(false); setEditing(true); }}
     title={editing ? undefined : '单击显示操作，双击编辑'}>
-    <NodeResizer isVisible={selected} minWidth={128} minHeight={40} maxWidth={420} maxHeight={180} color={color} handleStyle={{ width: 8, height: 8, borderRadius: 3 }} onResizeEnd={(_event, params) => update(data.itemId, { width: params.width, height: params.height })} />
+    <NodeResizer isVisible={selected} minWidth={128} minHeight={40} maxWidth={Number.POSITIVE_INFINITY} maxHeight={180} color={color} handleStyle={{ width: 8, height: 8, borderRadius: 3 }} onResizeEnd={(_event, params) => update(data.itemId, { width: params.width, height: params.height })} />
     <Handle type="target" position={Position.Left} className="!h-2.5 !w-2.5 !border-2 !border-white !bg-purple-400" />
     {data.isDirectory ? <span className="absolute inset-y-2 left-1.5 w-1 rounded-full" style={{ backgroundColor: color }} /> : null}
     <div className="flex w-full items-center gap-2">
