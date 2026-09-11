@@ -25,6 +25,7 @@ import { TodoBoard } from './TodoBoard';
 import { TodoGantt } from './TodoGantt';
 import { TodoItemToolbarHost } from './TodoItemToolbar';
 import { TodoStatusBadge } from './TodoStatusBadge';
+import { TodoTimeLabel } from './TodoTimeLabel';
 import { TodoViewSwitcher, type TodoLaneView } from './TodoViewSwitcher';
 import { useTapClick } from './useTapClick';
 import { createPortal } from 'react-dom';
@@ -454,6 +455,7 @@ const TodoRow: React.FC<{ item: TodoItem; pathLabel?: string }> = ({ item, pathL
           {pathLabel}
         </span>
       ) : null}
+      <TodoTimeLabel itemId={item.id} />
       <TodoStatusBadge itemId={item.id} />
       <TodoItemToolbarHost itemId={item.id} open={toolbarOpen} anchor={rowRef.current} pointerX={pointerX} onClose={() => setToolbarOpen(false)} />
     </div>
@@ -660,6 +662,7 @@ const BoardNode = React.memo(({ id, data, selected }: NodeProps<Node<BoardNodeDa
         className={`min-w-0 flex-1 bg-transparent py-1 text-xs font-semibold outline-none ${editing ? 'nodrag cursor-text' : 'cursor-default'} ${data.done ? 'text-neutral-400 line-through' : 'text-neutral-700'}`}
         aria-label={data.isDirectory ? '目录标题' : '待办文本'}
       />
+      <TodoTimeLabel itemId={data.itemId} />
       <TodoStatusBadge itemId={data.itemId} compact={data.isDirectory} />
     </div>
     <Handle type="source" position={Position.Right} className="!h-2.5 !w-2.5 !border-2 !border-white" style={{ backgroundColor: color }} />

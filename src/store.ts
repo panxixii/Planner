@@ -155,6 +155,13 @@ const normalizeHexColor = (value: unknown, fallback: string): string => {
 
 export const TODO_SECTION_PALETTE = SECTION_SWATCH_COLORS;
 
+const deriveRangeFromBlocks = (blocks: TaskTimeBlock[]): { startTime?: string; endTime?: string } => {
+  if (blocks.length === 0) return { startTime: undefined, endTime: undefined };
+  const first = [...blocks].sort((a, b) => a.startTime.localeCompare(b.startTime))[0];
+  const last = [...blocks].sort((a, b) => a.endTime.localeCompare(b.endTime))[blocks.length - 1];
+  return { startTime: first.startTime.slice(0, 10), endTime: last.endTime.slice(0, 10) };
+};
+
 const normalizeTodoSections = (value: unknown): TodoLaneSection[] => {
   if (!Array.isArray(value)) return [];
   const usedIds = new Set<string>();
@@ -236,6 +243,8 @@ const normalizeTodoItems = (
         ? item.referencedLaneIds.filter((id: unknown): id is string => typeof id === 'string')
         : undefined,
       originLaneId: typeof item.originLaneId === 'string' ? item.originLaneId : undefined,
+      startTime: typeof item.startTime === 'string' ? item.startTime : undefined,
+      endTime: typeof item.endTime === 'string' ? item.endTime : undefined,
       timeBlocks: Array.isArray(item.timeBlocks) ? item.timeBlocks.flatMap((block: unknown): TaskTimeBlock[] => {
         if (!block || typeof block !== 'object') return [];
         const candidate = block as Partial<TaskTimeBlock>;
@@ -1270,6 +1279,27 @@ export const useAppStore = create<AppState>((set, get) => {
         } : candidate),
       };
     }),
+    setTodoItemTimeRange: (itemId, startTime, endTime) => persistSet((state: AppState) => {
+      const item = state.todoItems.find((candidate) => candidate.id === itemId);
+      if (!item) return {};
+      const start = startTime || undefined;
+      const end = endTime || undefined;
+      const blocks = [...(item.timeBlocks || [])];
+      if (start && end) {
+        const blockStart = `${start}T00:00`;
+        const endDate = new Date(`${end}T00:00`);
+        endDate.setDate(endDate.getDate() + 1);
+        const pad = (value: number) => String(value).padStart(2, '0');
+        const blockEnd = `${endDate.getFullYear()}-${pad(endDate.getMonth() + 1)}-${pad(endDate.getDate())}T00:00`;
+        if (blocks.length > 0) blocks[0] = { ...blocks[0], startTime: blockStart, endTime: blockEnd };
+        else blocks.push({ id: `todo-time-${genId()}`, startTime: blockStart, endTime: blockEnd });
+      } else if (blocks.length > 0) {
+        blocks.shift();
+      }
+      return {
+        todoItems: state.todoItems.map((candidate) => candidate.id === itemId ? { ...candidate, startTime: start, endTime: end, timeBlocks: blocks } : candidate),
+      };
+    }),
     setTodoLaneItemOrder: (laneId, orderedIds) => persistSet((state: AppState) => {
       const orderById = new Map(orderedIds.map((id, index) => [id, index]));
       const maxOrder = state.todoItems
@@ -1324,22 +1354,25 @@ export const useAppStore = create<AppState>((set, get) => {
       todoEdges: state.todoEdges.filter((edge) => edge.id !== edgeId),
     })),
     addTodoTimeBlock: (itemId, block) => persistSet((state: AppState) => ({
-      todoItems: state.todoItems.map((item) => item.id === itemId ? {
-        ...item,
-        timeBlocks: [...(item.timeBlocks || []), { id: `todo-time-${genId()}`, ...block }],
-      } : item),
+      todoItems: state.todoItems.map((item) => {
+        if (item.id !== itemId) return item;
+        const timeBlocks = [...(item.timeBlocks || []), { id: `todo-time-${genId()}`, ...block }];
+        return { ...item, timeBlocks, ...deriveRangeFromBlocks(timeBlocks) };
+      }),
     })),
     updateTodoTimeBlock: (itemId, blockId, updates) => persistSet((state: AppState) => ({
-      todoItems: state.todoItems.map((item) => item.id === itemId ? {
-        ...item,
-        timeBlocks: (item.timeBlocks || []).map((block) => block.id === blockId ? { ...block, ...updates } : block),
-      } : item),
+      todoItems: state.todoItems.map((item) => {
+        if (item.id !== itemId) return item;
+        const timeBlocks = (item.timeBlocks || []).map((block) => block.id === blockId ? { ...block, ...updates } : block);
+        return { ...item, timeBlocks, ...deriveRangeFromBlocks(timeBlocks) };
+      }),
     })),
     removeTodoTimeBlock: (itemId, blockId) => persistSet((state: AppState) => ({
-      todoItems: state.todoItems.map((item) => item.id === itemId ? {
-        ...item,
-        timeBlocks: (item.timeBlocks || []).filter((block) => block.id !== blockId),
-      } : item),
+      todoItems: state.todoItems.map((item) => {
+        if (item.id !== itemId) return item;
+        const timeBlocks = (item.timeBlocks || []).filter((block) => block.id !== blockId);
+        return { ...item, timeBlocks, ...deriveRangeFromBlocks(timeBlocks) };
+      }),
     })),
     addTimeTemplate: (type, name) => {
       const id = `time-template-${genId()}`;

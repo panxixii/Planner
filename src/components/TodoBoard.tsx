@@ -4,6 +4,7 @@ import { useAppStore } from '../store';
 import type { TodoItem, TodoLane } from '../types';
 import { TodoItemToolbarHost } from './TodoItemToolbar';
 import { TodoStatusBadge } from './TodoStatusBadge';
+import { TodoTimeLabel } from './TodoTimeLabel';
 import { useTapClick } from './useTapClick';
 
 const STATUS_COLUMNS: { id: string; label: string; accent: string; icon: React.FC<{ className?: string }> }[] = [
@@ -66,7 +67,8 @@ const TodoCard: React.FC<{
           className={`min-w-0 flex-1 bg-transparent py-0.5 text-xs font-semibold outline-none ${editing ? 'cursor-text' : 'cursor-default'} ${item.isDone ? 'text-neutral-400 line-through' : 'text-neutral-700'}`}
           aria-label="待办文本"
         />
-        <TodoStatusBadge itemId={item.id} />
+          <TodoTimeLabel itemId={item.id} />
+          <TodoStatusBadge itemId={item.id} />
       </div>
     </article>
   );
