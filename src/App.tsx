@@ -74,10 +74,10 @@ export default function App() {
     <div className="flex min-h-screen flex-row overflow-hidden bg-neutral-100 font-sans text-neutral-800 antialiased selection:bg-blue-500/10">
       <aside
         className={`relative flex h-screen shrink-0 flex-col overflow-hidden border-r border-neutral-200 bg-white transition-all duration-300 ${
-          isSidebarCollapsed ? 'w-0 border-r-0' : 'w-72'
+          isSidebarCollapsed ? 'w-0 border-r-0' : 'w-60'
         }`}
       >
-        <div className="flex h-full w-72 shrink-0 flex-col p-5">
+        <div className="flex h-full w-60 shrink-0 flex-col p-4">
           <div className="flex items-center justify-between px-1 py-1 select-none">
             <div className="flex min-w-0 items-center gap-3">
               <div className="group relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-gradient-to-tr from-[#79dce7] via-[#c9b9f1] to-[#efb5d4] shadow-md">
