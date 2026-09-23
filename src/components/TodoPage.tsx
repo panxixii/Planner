@@ -20,6 +20,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import { CalendarDays, Check, CircleDot, Columns3, GitBranch, GripVertical, List, Maximize, MousePointer2, Pipette, Plus, Scan, Trash2, ZoomIn, ZoomOut } from 'lucide-react';
 import { useAppStore } from '../store';
+import { isUpcomingTodayScheduleItem } from '../taskTimeBlocks';
 import type { TodoEdge, TodoItem, TodoLane, TodoLaneSection } from '../types';
 import { TodoBoard } from './TodoBoard';
 import { TodoGantt } from './TodoGantt';
@@ -506,7 +507,11 @@ const ListLane: React.FC<{ lane: TodoLane; laneNamesById: Map<string, string>; h
   const deleteLane = useAppStore((state) => state.deleteTodoLane);
   const [draft, setDraft] = useState('');
   const items = useMemo(() => allItems
-    .filter((item) => !item.isDirectory && (item.laneId === lane.id || (item.referencedLaneIds || []).includes(lane.id)))
+    .filter((item) => !item.isDirectory && (
+      item.laneId === lane.id
+      || (item.referencedLaneIds || []).includes(lane.id)
+      || (lane.id === 'todo-main' && isUpcomingTodayScheduleItem(item))
+    ))
     .sort((a, b) => a.order - b.order), [allItems, lane.id]);
   const submit = () => { const text = draft.trim(); if (!text) return; create(lane.id, text); setDraft(''); };
   const [sortDrag, setSortDrag] = useState<{ itemId: string; half: 'top' | 'bottom' | null; targetItemId: string | null } | null>(null);
@@ -808,7 +813,11 @@ const BoardCanvas: React.FC<{ lane: TodoLane }> = ({ lane }) => {
   const { screenToFlowPosition, zoomIn, zoomOut, fitView } = useReactFlow();
   const suppressCreateRef = useRef(false);
   const [canvasTool, setCanvasTool] = useState<'pan' | 'select'>('pan');
-  const items = useMemo(() => allItems.filter((item) => item.laneId === lane.id || (item.referencedLaneIds || []).includes(lane.id)), [allItems, lane.id]);
+  const items = useMemo(() => allItems.filter((item) => (
+    item.laneId === lane.id
+    || (item.referencedLaneIds || []).includes(lane.id)
+    || (lane.id === 'todo-main' && isUpcomingTodayScheduleItem(item))
+  )), [allItems, lane.id]);
   const nodes = useMemo<Node<BoardNodeData>[]>(() => items.map((item) => ({ id: item.id, type: 'todoNode', position: item.position, width: item.width, height: item.height, data: { itemId: item.id, text: item.text, done: item.isDone, color: item.color, progressStatus: item.progressStatus, isDirectory: item.isDirectory } })), [items]);
   const edges = useMemo<Edge[]>(() => allEdges.filter((edge) => edge.laneId === lane.id).map((edge) => ({ id: edge.id, source: edge.sourceItemId, target: edge.targetItemId, type: 'bezier', style: { stroke: '#9b8ae4', strokeWidth: 2 }, interactionWidth: 24 })), [allEdges, lane.id]);
   const [localNodes, setLocalNodes] = useState(nodes);

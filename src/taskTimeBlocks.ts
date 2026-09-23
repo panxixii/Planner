@@ -1,4 +1,4 @@
-import type { Task, TaskTimeBlock } from './types';
+import type { Task, TaskTimeBlock, TodoItem } from './types';
 
 export const parseTaskTime = (value: string, endOfDate = false) => {
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
@@ -47,5 +47,22 @@ export const taskOccursOnDay = (task: Task, day: Date) => {
   return getTaskTimeBlocks(task).some((block) => {
     const range = getTaskBlockTimestamps(block, task.duration);
     return range.start < dayEnd && range.end > dayStart;
+  });
+};
+
+export const getTodoItemTimeBlocks = (item: TodoItem): TaskTimeBlock[] => {
+  const validBlocks = (item.timeBlocks || []).filter((block) => block.startTime && block.endTime);
+  if (validBlocks.length > 0) return validBlocks;
+  if (!item.startTime || !item.endTime) return [];
+  return [{ id: `legacy-${item.id}`, startTime: item.startTime, endTime: item.endTime }];
+};
+
+export const isUpcomingTodayScheduleItem = (item: TodoItem, now = Date.now()) => {
+  if (!item.calendarId) return false;
+  const dayEnd = new Date(now);
+  dayEnd.setHours(23, 59, 59, 999);
+  return getTodoItemTimeBlocks(item).some((block) => {
+    const range = getTaskBlockTimestamps(block);
+    return range.start <= dayEnd.getTime() && range.end > now;
   });
 };

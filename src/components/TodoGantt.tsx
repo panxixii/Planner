@@ -2,7 +2,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 're
 import { createPortal } from 'react-dom';
 import { CalendarDays, Check, Clock3, Folder, LocateFixed, Plus, Trash2, X } from 'lucide-react';
 import { useAppStore } from '../store';
-import { formatLocalDateTime, parseTaskTime } from '../taskTimeBlocks';
+import { formatLocalDateTime, isUpcomingTodayScheduleItem, parseTaskTime } from '../taskTimeBlocks';
 import type { TaskTimeBlock, TodoItem, TodoLane } from '../types';
 import { DateTimePicker } from './DateTimePicker';
 import { TodoItemToolbarHost } from './TodoItemToolbar';
@@ -147,7 +147,11 @@ export const TodoGantt: React.FC<{ lane: TodoLane }> = ({ lane }) => {
   const addBlock = useAppStore((state) => state.addTodoTimeBlock);
   const updateBlock = useAppStore((state) => state.updateTodoTimeBlock);
   const removeBlock = useAppStore((state) => state.removeTodoTimeBlock);
-  const items = useMemo(() => allItems.filter((item) => item.laneId === lane.id || (item.referencedLaneIds || []).includes(lane.id)).sort((a, b) => a.order - b.order), [allItems, lane.id]);
+  const items = useMemo(() => allItems.filter((item) => (
+    item.laneId === lane.id
+    || (item.referencedLaneIds || []).includes(lane.id)
+    || (lane.id === 'todo-main' && isUpcomingTodayScheduleItem(item))
+  )).sort((a, b) => a.order - b.order), [allItems, lane.id]);
   const initialFocus = useMemo(() => {
     const first = items.flatMap((item) => item.timeBlocks || []).map((block) => parseTaskTime(block.startTime)).find(Number.isFinite);
     return first || Date.now();
