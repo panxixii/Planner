@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import {
   BarChart3,
+  CalendarDays,
   Check,
   ChevronDown,
   ChevronLeft,
@@ -16,13 +17,15 @@ import { DataTransferControls } from './components/DataTransferControls';
 import { WelcomeScreen } from './components/WelcomeScreen';
 
 const TodoPage = lazy(() => import('./components/TodoPage').then((module) => ({ default: module.TodoPage })));
+const SchedulePage = lazy(() => import('./components/SchedulePage').then((module) => ({ default: module.SchedulePage })));
 const TimeTemplatesPage = lazy(() => import('./components/TimeTemplatesPage').then((module) => ({ default: module.TimeTemplatesPage })));
 const DraftsPage = lazy(() => import('./components/DraftsPage').then((module) => ({ default: module.DraftsPage })));
 
-type MenuId = 'task-pool' | 'drafts' | 'time-templates' | 'statistics';
+type MenuId = 'task-pool' | 'schedule' | 'drafts' | 'time-templates' | 'statistics';
 
 const menuItems = [
   { id: 'task-pool' as const, label: 'Todo', icon: ListTodo },
+  { id: 'schedule' as const, label: '日程', icon: CalendarDays },
   { id: 'drafts' as const, label: '草稿', icon: FilePenLine },
   { id: 'time-templates' as const, label: '时间模版', icon: Clock3 },
   { id: 'statistics' as const, label: '统计', icon: BarChart3 },
@@ -180,6 +183,10 @@ export default function App() {
         {activeMenu === 'task-pool' ? (
           <Suspense fallback={<div className="flex min-h-0 flex-1 items-center justify-center text-sm text-neutral-400">正在加载 Todo…</div>}>
             <TodoPage />
+          </Suspense>
+        ) : activeMenu === 'schedule' ? (
+          <Suspense fallback={<div className="flex min-h-0 flex-1 items-center justify-center text-sm text-neutral-400">正在加载日程…</div>}>
+            <SchedulePage />
           </Suspense>
         ) : activeMenu === 'time-templates' ? (
           <Suspense fallback={<div className="flex min-h-0 flex-1 items-center justify-center text-sm text-neutral-400">正在加载时间模版…</div>}>
