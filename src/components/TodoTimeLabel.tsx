@@ -65,12 +65,12 @@ export const TodoTimeLabel: React.FC<{ itemId: string }> = ({ itemId }) => {
         type="button"
         onClick={(event) => { event.stopPropagation(); if (open) setPanelPos(null); else openPanel(); }}
         onDoubleClick={(event) => event.stopPropagation()}
-        className={`flex h-5 shrink-0 items-center gap-1 rounded px-1 text-[10px] font-semibold transition-colors hover:bg-neutral-100 ${item.endTime ? 'text-sky-600' : 'text-neutral-300'}`}
+        className={`flex h-5 min-w-0 max-w-28 shrink items-center gap-1 rounded px-1 text-[10px] font-semibold transition-colors hover:bg-neutral-100 ${item.endTime ? 'text-sky-600' : 'text-neutral-300'}`}
         title={title}
         aria-label={`时间：${label}，点击修改`}
       >
-        <CalendarClock className="h-3 w-3" />
-        <span className="tabular-nums">{label}</span>
+        <CalendarClock className="h-3 w-3 shrink-0" />
+        <span className="min-w-0 truncate tabular-nums">{label}</span>
       </button>
       {open && panelPos ? createPortal(
         <>
