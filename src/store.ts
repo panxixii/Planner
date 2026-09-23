@@ -245,6 +245,7 @@ const normalizeTodoItems = (
       originLaneId: typeof item.originLaneId === 'string' ? item.originLaneId : undefined,
       startTime: typeof item.startTime === 'string' ? item.startTime : undefined,
       endTime: typeof item.endTime === 'string' ? item.endTime : undefined,
+      calendarId: typeof item.calendarId === 'string' ? item.calendarId : undefined,
       timeBlocks: Array.isArray(item.timeBlocks) ? item.timeBlocks.flatMap((block: unknown): TaskTimeBlock[] => {
         if (!block || typeof block !== 'object') return [];
         const candidate = block as Partial<TaskTimeBlock>;

@@ -127,6 +127,7 @@ export interface TodoItem {
   startTime?: string; // YYYY-MM-DD display range start.
   endTime?: string; // YYYY-MM-DD display range end (deadline).
   timeBlocks?: TaskTimeBlock[];
+  calendarId?: string; // Schedule calendar this timed item belongs to.
 }
 
 export interface TodoEdge {
@@ -223,7 +224,7 @@ export interface AppState {
 
   // Standalone Todo views
   createTodoItem: (laneId: string, text?: string) => string | null;
-  updateTodoItem: (itemId: string, updates: Partial<Pick<TodoItem, 'text' | 'position' | 'width' | 'height' | 'color' | 'progressStatus'>>) => void;
+  updateTodoItem: (itemId: string, updates: Partial<Pick<TodoItem, 'text' | 'position' | 'width' | 'height' | 'color' | 'progressStatus' | 'calendarId' | 'laneId' | 'referencedLaneIds'>>) => void;
   addTodoLane: (name?: string) => string;
   renameTodoLane: (laneId: string, name: string) => void;
   deleteTodoLane: (laneId: string) => void;

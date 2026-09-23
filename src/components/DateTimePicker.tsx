@@ -21,9 +21,11 @@ interface DateTimePickerProps {
   onChange: (value: string) => void;
   placeholder?: string;
   dateOnly?: boolean;
+  compact?: boolean;
+  className?: string;
 }
 
-export const DateTimePicker: React.FC<DateTimePickerProps> = ({ id, value, onChange, placeholder = '选择日期和时间', dateOnly = false }) => {
+export const DateTimePicker: React.FC<DateTimePickerProps> = ({ id, value, onChange, placeholder = '选择日期和时间', dateOnly = false, compact = false, className = '' }) => {
   const initial = getParts(value);
   const [isOpen, setIsOpen] = useState(false);
   const [displayMonth, setDisplayMonth] = useState(() => new Date(initial.date.getFullYear(), initial.date.getMonth(), 1));
@@ -92,15 +94,18 @@ export const DateTimePicker: React.FC<DateTimePickerProps> = ({ id, value, onCha
     : (value ? value.replace('T', ' ') : placeholder);
 
   return (
-    <div className="relative">
+    <div className={`relative min-w-0 ${className}`}>
       <button
         ref={anchorRef}
         id={id}
         type="button"
         onClick={openPicker}
-        className="flex h-10 w-full items-center justify-between rounded-lg border border-neutral-200 bg-white px-3 text-left text-sm text-neutral-700 outline-none transition-colors hover:border-purple-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100"
+        className={`flex w-full items-center justify-between gap-1.5 rounded-lg border border-neutral-200 bg-white text-left text-neutral-700 outline-none transition-colors hover:border-purple-200 focus:border-purple-300 focus:ring-2 focus:ring-purple-100 ${
+          compact ? 'h-9 px-2 text-[11px] font-medium' : 'h-10 px-3 text-sm'
+        }`}
       >
-        <span className={value ? '' : 'text-neutral-400'}>{displayText}</span><CalendarDays className="h-4 w-4 text-purple-400" />
+        <span className={`min-w-0 truncate ${value ? '' : 'text-neutral-400'}`}>{displayText}</span>
+        <CalendarDays className={`shrink-0 text-purple-400 ${compact ? 'h-3.5 w-3.5' : 'h-4 w-4'}`} />
       </button>
       {isOpen && panelPos ? createPortal(
         <>
