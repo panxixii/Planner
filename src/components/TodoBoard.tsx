@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Ban, Circle, CircleDashed, CircleCheck, Plus } from 'lucide-react';
 import { useAppStore } from '../store';
+import { isUpcomingTodayScheduleItem } from '../taskTimeBlocks';
 import type { TodoItem, TodoLane } from '../types';
 import { TodoItemToolbarHost } from './TodoItemToolbar';
 import { TodoStatusBadge, isTodoItemStruck, statusKeyOf } from './TodoStatusBadge';
@@ -83,7 +84,11 @@ export const TodoBoard: React.FC<{ lane: TodoLane }> = ({ lane }) => {
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropColumn, setDropColumn] = useState<string | null>(null);
   const [toolbar, setToolbar] = useState<{ id: string; el: HTMLElement; x: number } | null>(null);
-  const items = useMemo(() => allItems.filter((item) => !item.isDirectory && (item.laneId === lane.id || (item.referencedLaneIds || []).includes(lane.id))).sort((a, b) => a.order - b.order), [allItems, lane.id]);
+  const items = useMemo(() => allItems.filter((item) => !item.isDirectory && (
+    item.laneId === lane.id
+    || (item.referencedLaneIds || []).includes(lane.id)
+    || (lane.id === 'todo-main' && isUpcomingTodayScheduleItem(item))
+  )).sort((a, b) => a.order - b.order), [allItems, lane.id]);
   const doneSet = useMemo(() => new Set(items.filter((item) => item.isDone).map((item) => item.id)), [items]);
   const columns = useMemo(() => STATUS_COLUMNS.map((column) => ({
     ...column,
