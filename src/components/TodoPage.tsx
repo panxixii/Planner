@@ -18,7 +18,7 @@ import {
   applyNodeChanges,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { CalendarDays, Check, CircleDot, Columns3, GitBranch, GripVertical, List, Maximize, MousePointer2, Pipette, Plus, Scan, Trash2, ZoomIn, ZoomOut } from 'lucide-react';
+import { CalendarDays, Check, CircleDot, Columns3, GitBranch, GripVertical, Link2, List, Maximize, MousePointer2, Pipette, Plus, Scan, Trash2, ZoomIn, ZoomOut } from 'lucide-react';
 import { useAppStore } from '../store';
 import { isUpcomingTodayScheduleItem } from '../taskTimeBlocks';
 import type { TodoEdge, TodoItem, TodoLane, TodoLaneSection } from '../types';
@@ -404,10 +404,11 @@ const buildDirectoryPath = (itemId: string, laneEdges: TodoEdge[], itemById: Map
 const TodoRow: React.FC<{
   item: TodoItem;
   pathLabel?: string;
+  referenceBadges?: Array<{ id: string; label: string }>;
   dragging?: boolean;
   dropHint?: 'above' | 'below' | null;
   onSortDragStart?: (itemId: string, half: 'top' | 'bottom' | null, targetItemId: string | null, commit?: boolean) => void;
-}> = ({ item, pathLabel, dragging = false, dropHint = null, onSortDragStart }) => {
+}> = ({ item, pathLabel, referenceBadges = [], dragging = false, dropHint = null, onSortDragStart }) => {
   const update = useAppStore((state) => state.updateTodoItem);
   const toggle = useAppStore((state) => state.toggleTodoItemDone);
   const [toolbarOpen, setToolbarOpen] = useState(false);
@@ -487,6 +488,16 @@ const TodoRow: React.FC<{
         className={`min-w-0 flex-1 bg-transparent py-1 text-sm outline-none ${editing ? 'cursor-text' : 'cursor-default'} ${isTodoItemStruck(item) ? 'text-neutral-400 line-through' : 'text-neutral-700'}`}
         aria-label="待办文本"
       />
+      {referenceBadges.length > 0 ? (
+        <span className="flex max-w-[45%] shrink-0 flex-wrap justify-end gap-1">
+          {referenceBadges.map((reference) => (
+            <span key={reference.id} className="flex h-5 items-center gap-1 rounded-full border border-purple-200 bg-purple-50 px-1.5 text-[9px] font-semibold text-purple-600" title={`已引用到${reference.label}`}>
+              <Link2 className="h-2.5 w-2.5" />
+              {reference.label}
+            </span>
+          ))}
+        </span>
+      ) : null}
       {pathLabel ? (
         <span className="max-w-40 shrink-0 truncate text-[10px] leading-none text-neutral-300" title={`${pathLabel}${item.text}`}>
           {pathLabel}
@@ -563,6 +574,10 @@ const ListLane: React.FC<{ lane: TodoLane; laneNamesById: Map<string, string>; h
           key={`${item.id}-${item.laneId === lane.id ? 'own' : 'ref'}`}
           item={item}
           pathLabel={pathLabel}
+          referenceBadges={lane.id === 'todo-main' ? [] : (item.referencedLaneIds || []).map((id) => ({
+            id,
+            label: laneNamesById.get(id) || '未知分线',
+          }))}
           dragging={sortDrag?.itemId === item.id}
           dropHint={sortDrag?.targetItemId === item.id ? (sortDrag.half === 'top' ? 'above' : 'below') : null}
           onSortDragStart={handleSortDrag}
