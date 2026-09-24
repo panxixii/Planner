@@ -621,9 +621,29 @@ export const TimeTemplatesPage: React.FC = () => {
                     {selectedTemplate.blocks.flatMap((block) => {
                       const segments = getBlockSegments(block, cycleMinutes);
                       const fullCycle = getBlockDuration(block, cycleMinutes) >= cycleMinutes;
+                      const labelSegmentIndex = segments.reduce((widestIndex, segment, index) => (
+                        segment.duration > segments[widestIndex].duration ? index : widestIndex
+                      ), 0);
                       return segments.flatMap((segment, index) => {
                         const startHandle = pointOnRing(segment.startMinute, cycleMinutes, RING_RADIUS);
                         const endHandle = pointOnRing(segment.startMinute + segment.duration, cycleMinutes, RING_RADIUS);
+                        const midMinute = segment.startMinute + segment.duration / 2;
+                        const labelPos = pointOnRing(midMinute, cycleMinutes, RING_RADIUS);
+                        const rotate = (midMinute / cycleMinutes) * 360;
+                        const labelRotate = labelPos.y > RING_CENTER ? rotate + 180 : rotate;
+                        const nameLabel = (fullCycle || index === labelSegmentIndex) && block.label ? (
+                          <text
+                            key={`${block.id}-${index}-label`}
+                            x={labelPos.x}
+                            y={labelPos.y}
+                            textAnchor="middle"
+                            dominantBaseline="middle"
+                            fill="#ffffff"
+                            transform={`rotate(${labelRotate} ${labelPos.x} ${labelPos.y})`}
+                            className="pointer-events-none text-[10px] font-semibold"
+                            style={{ paintOrder: 'stroke', stroke: 'rgba(0,0,0,0.28)', strokeWidth: 2.5 }}
+                          >{block.label}</text>
+                        ) : null;
                         const body = fullCycle ? (
                           <circle
                             key={`${block.id}-${index}`}
@@ -648,9 +668,10 @@ export const TimeTemplatesPage: React.FC = () => {
                             onPointerDown={(event) => handleRingPointerStart(event, block)}
                           />
                         );
-                        if (fullCycle) return [body];
+                        if (fullCycle) return [body, nameLabel];
                         return [
                           body,
+                          nameLabel,
                           segment.hasStartHandle ? (
                             <circle
                               key={`${block.id}-${index}-start`}
