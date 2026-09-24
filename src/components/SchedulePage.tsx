@@ -139,7 +139,9 @@ type DragState = {
   itemId: string;
   blockId: string;
   edge: 'move' | 'start' | 'end';
+  originX: number;
   originY: number;
+  dayColumnWidth: number;
   originalStart: number;
   originalEnd: number;
   previewStart: number;
@@ -451,19 +453,12 @@ const DayHourGrid: React.FC<{
 }> = ({ day, events, now, onSlotCreate, onOpenEvent, onDeleteEvent, onBeginDrag, dragPreview }) => {
   const bodyRef = useRef<HTMLDivElement>(null);
   const layout = useMemo(() => {
-    const mapped = timedLayoutForDay(events, day).map((item) => {
-      if (!dragPreview || dragPreview.itemId !== item.itemId || dragPreview.blockId !== item.blockId) return item;
-      const clipStart = Math.max(dragPreview.previewStart, day);
-      const clipEnd = Math.min(dragPreview.previewEnd, addDays(day, 1));
-      return {
-        ...item,
-        clipStart,
-        clipEnd,
-        top: ((clipStart - day) / DAY_MS) * 24 * HOUR_HEIGHT,
-        height: Math.max(22, ((clipEnd - clipStart) / DAY_MS) * 24 * HOUR_HEIGHT),
-      };
-    });
-    return mapped;
+    const previewEvents = dragPreview
+      ? events.map((item) => item.itemId === dragPreview.itemId && item.blockId === dragPreview.blockId
+        ? { ...item, start: dragPreview.previewStart, end: dragPreview.previewEnd }
+        : item)
+      : events;
+    return timedLayoutForDay(previewEvents, day);
   }, [day, dragPreview, events]);
   const showNow = sameDay(day, now);
 
@@ -803,6 +798,7 @@ export const SchedulePage: React.FC = () => {
     pointerEvent.preventDefault();
     pointerEvent.stopPropagation();
     (pointerEvent.currentTarget as HTMLElement).setPointerCapture?.(pointerEvent.pointerId);
+    const dayColumn = (pointerEvent.currentTarget as HTMLElement).closest<HTMLElement>('[data-schedule-day]');
     const activated = edge !== 'move';
     if (activated) {
       beginHistoryGroup();
@@ -813,7 +809,9 @@ export const SchedulePage: React.FC = () => {
       itemId: event.itemId,
       blockId: event.blockId,
       edge,
+      originX: pointerEvent.clientX,
       originY: pointerEvent.clientY,
+      dayColumnWidth: view === 'week' ? dayColumn?.getBoundingClientRect().width || 0 : 0,
       originalStart: event.start,
       originalEnd: event.end,
       previewStart: event.start,
@@ -831,12 +829,19 @@ export const SchedulePage: React.FC = () => {
       const drag = dragRef.current;
       if (!drag || pointerEvent.pointerId !== drag.pointerId) return;
       if (!drag.activated) {
-        if (Math.abs(pointerEvent.clientY - drag.originY) < DRAG_THRESHOLD_PX) return;
+        if (
+          Math.abs(pointerEvent.clientX - drag.originX) < DRAG_THRESHOLD_PX
+          && Math.abs(pointerEvent.clientY - drag.originY) < DRAG_THRESHOLD_PX
+        ) return;
         beginHistoryGroup();
         drag.activated = true;
         suppressClickRef.current = true;
       }
-      const deltaMs = Math.round(((pointerEvent.clientY - drag.originY) / HOUR_HEIGHT) * 60 * 60_000 / SNAP_MS) * SNAP_MS;
+      const deltaDays = drag.dayColumnWidth > 0
+        ? Math.round((pointerEvent.clientX - drag.originX) / drag.dayColumnWidth)
+        : 0;
+      const verticalDeltaMs = Math.round(((pointerEvent.clientY - drag.originY) / HOUR_HEIGHT) * 60 * 60_000 / SNAP_MS) * SNAP_MS;
+      const deltaMs = deltaDays * DAY_MS + verticalDeltaMs;
       let previewStart = drag.originalStart;
       let previewEnd = drag.originalEnd;
       if (drag.edge === 'move') {
@@ -1071,19 +1076,16 @@ export const SchedulePage: React.FC = () => {
                   ))}
                 </div>
                 {weekDays.map((day) => {
-                  const layout = timedLayoutForDay(events, day).map((item) => {
-                    if (!dragPreview || dragPreview.itemId !== item.itemId || dragPreview.blockId !== item.blockId) return item;
-                    const clipStart = Math.max(dragPreview.previewStart, day);
-                    const clipEnd = Math.min(dragPreview.previewEnd, addDays(day, 1));
-                    return {
-                      ...item,
-                      top: ((clipStart - day) / DAY_MS) * 24 * HOUR_HEIGHT,
-                      height: Math.max(22, ((clipEnd - clipStart) / DAY_MS) * 24 * HOUR_HEIGHT),
-                    };
-                  });
+                  const previewEvents = dragPreview
+                    ? events.map((item) => item.itemId === dragPreview.itemId && item.blockId === dragPreview.blockId
+                      ? { ...item, start: dragPreview.previewStart, end: dragPreview.previewEnd }
+                      : item)
+                    : events;
+                  const layout = timedLayoutForDay(previewEvents, day);
                   return (
                     <div
                       key={day}
+                      data-schedule-day={day}
                       className="relative border-l border-neutral-100"
                       onClick={(mouseEvent) => {
                         if ((mouseEvent.target as HTMLElement).closest('[data-event-chip]')) return;
