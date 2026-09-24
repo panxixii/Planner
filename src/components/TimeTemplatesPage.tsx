@@ -3,6 +3,7 @@ import { Check, Circle, Clock3, Copy, Minus, Plus, Trash2, X } from 'lucide-reac
 import { useAppStore } from '../store';
 import type { TimeTemplate, TimeTemplateBlock } from '../types';
 import { ColorPicker } from './ColorPicker';
+import { circularDistance, getBlockDuration, moveBlocksWithPush, normalizeCycleMinute } from '../utils/timeTemplatePush';
 
 const DAILY_WIDTH = 1536;
 const WEEKLY_WIDTH = 1260;
@@ -20,12 +21,6 @@ const KNOB_RADIUS = 118;
 const getCycleMinutes = (type: TimeTemplate['type']) => type === 'daily' ? DAY_MINUTES : WEEK_MINUTES;
 const getTimelineWidth = (type: TimeTemplate['type']) => type === 'daily' ? DAILY_WIDTH : WEEKLY_WIDTH;
 const getSnapMinutes = (type: TimeTemplate['type']) => type === 'daily' ? 5 : 15;
-const normalizeCycleMinute = (minutes: number, cycleMinutes: number) => (
-  ((minutes % cycleMinutes) + cycleMinutes) % cycleMinutes
-);
-const getBlockDuration = (block: Pick<TimeTemplateBlock, 'startMinute' | 'endMinute'>, cycleMinutes: number) => (
-  Math.max(MIN_BLOCK_MINUTES, Math.min(cycleMinutes, block.endMinute - block.startMinute))
-);
 const getBlockColorAtMinute = (blocks: TimeTemplateBlock[], minute: number, cycleMinutes: number) => (
   blocks.find((block) => {
     const duration = getBlockDuration(block, cycleMinutes);
@@ -34,118 +29,6 @@ const getBlockColorAtMinute = (blocks: TimeTemplateBlock[], minute: number, cycl
     return normalizeCycleMinute(minute - start, cycleMinutes) < duration;
   })?.color
 );
-
-const circularDistance = (from: number, to: number, cycleMinutes: number) => (
-  normalizeCycleMinute(to - from, cycleMinutes)
-);
-
-const intervalsOverlapOnCircle = (aStart: number, aDuration: number, bStart: number, bDuration: number, cycleMinutes: number) => (
-  circularDistance(aStart, bStart, cycleMinutes) < aDuration
-  || circularDistance(bStart, aStart, cycleMinutes) < bDuration
-);
-
-const findAdjacentBlock = (
-  blocks: TimeTemplateBlock[],
-  block: Pick<TimeTemplateBlock, 'id' | 'startMinute' | 'endMinute'>,
-  edge: 'start' | 'end',
-  cycleMinutes: number,
-) => {
-  const start = normalizeCycleMinute(block.startMinute, cycleMinutes);
-  const duration = getBlockDuration(block, cycleMinutes);
-  const end = normalizeCycleMinute(start + duration, cycleMinutes);
-  return blocks.find((other) => {
-    if (other.id === block.id) return false;
-    const otherStart = normalizeCycleMinute(other.startMinute, cycleMinutes);
-    const otherEnd = normalizeCycleMinute(otherStart + getBlockDuration(other, cycleMinutes), cycleMinutes);
-    return edge === 'end' ? otherStart === end : otherEnd === start;
-  }) || null;
-};
-
-const resizeSharingEdge = (
-  blocks: TimeTemplateBlock[],
-  movedId: string,
-  neighbor: TimeTemplateBlock,
-  kind: 'start' | 'end',
-  nextDuration: number,
-  cycleMinutes: number,
-  snapMinutes: number,
-): TimeTemplateBlock[] => {
-  const moved = blocks.find((block) => block.id === movedId);
-  if (!moved) return blocks;
-  const movedStart = normalizeCycleMinute(moved.startMinute, cycleMinutes);
-  const movedDuration = getBlockDuration(moved, cycleMinutes);
-  const neighborStart = normalizeCycleMinute(neighbor.startMinute, cycleMinutes);
-  const neighborDuration = getBlockDuration(neighbor, cycleMinutes);
-  let transfer = Math.round((nextDuration - movedDuration) / snapMinutes) * snapMinutes;
-  transfer = Math.min(neighborDuration - snapMinutes, Math.max(snapMinutes - movedDuration, transfer));
-  const movedNextDuration = movedDuration + transfer;
-  const neighborNextDuration = neighborDuration - transfer;
-  if (kind === 'end') {
-    const nextStart = movedStart;
-    const shared = normalizeCycleMinute(nextStart + movedNextDuration, cycleMinutes);
-    return blocks.map((block) => {
-      if (block.id === movedId) return { ...block, startMinute: nextStart, endMinute: nextStart + movedNextDuration };
-      if (block.id === neighbor.id) return { ...block, startMinute: shared, endMinute: shared + neighborNextDuration };
-      return block;
-    });
-  }
-  const movedEnd = normalizeCycleMinute(movedStart + movedDuration, cycleMinutes);
-  const nextStart = normalizeCycleMinute(movedEnd - movedNextDuration, cycleMinutes);
-  return blocks.map((block) => {
-    if (block.id === movedId) return { ...block, startMinute: nextStart, endMinute: nextStart + movedNextDuration };
-    if (block.id === neighbor.id) return { ...block, startMinute: neighborStart, endMinute: neighborStart + neighborNextDuration };
-    return block;
-  });
-};
-
-const moveBlocksWithPush = (
-  blocks: TimeTemplateBlock[],
-  movedId: string,
-  nextStart: number,
-  cycleMinutes: number,
-  direction: 1 | -1,
-  snapMinutes: number,
-): TimeTemplateBlock[] => {
-  const snap = (value: number) => normalizeCycleMinute(Math.round(value / snapMinutes) * snapMinutes, cycleMinutes);
-  const items = blocks.map((block) => ({
-    id: block.id,
-    start: snap(block.id === movedId ? nextStart : block.startMinute),
-    duration: Math.max(snapMinutes, Math.round(getBlockDuration(block, cycleMinutes) / snapMinutes) * snapMinutes),
-    block,
-  }));
-  const moved = items.find((item) => item.id === movedId);
-  if (!moved) return blocks;
-  if (items.reduce((sum, item) => sum + item.duration, 0) > cycleMinutes) return blocks;
-
-  const others = items
-    .filter((item) => item.id !== movedId)
-    .sort((a, b) => (
-      direction > 0
-        ? circularDistance(moved.start, a.start, cycleMinutes) - circularDistance(moved.start, b.start, cycleMinutes)
-        : circularDistance(a.start + a.duration, moved.start, cycleMinutes) - circularDistance(b.start + b.duration, moved.start, cycleMinutes)
-    ));
-
-  let occStart = moved.start;
-  let occDuration = moved.duration;
-  for (const item of others) {
-    if (!intervalsOverlapOnCircle(occStart, occDuration, item.start, item.duration, cycleMinutes)) continue;
-    if (direction > 0) {
-      item.start = normalizeCycleMinute(occStart + occDuration, cycleMinutes);
-      occDuration = circularDistance(occStart, item.start, cycleMinutes) + item.duration;
-    } else {
-      item.start = normalizeCycleMinute(occStart - item.duration, cycleMinutes);
-      occDuration = circularDistance(item.start, moved.start, cycleMinutes) + moved.duration;
-      occStart = item.start;
-    }
-    if (occDuration >= cycleMinutes) return blocks;
-  }
-
-  return items.map((item) => ({
-    ...item.block,
-    startMinute: item.start,
-    endMinute: item.start + item.duration,
-  }));
-};
 
 interface BlockSegment {
   startMinute: number;
@@ -197,7 +80,8 @@ type PointerAction = {
   ringCenterY?: number;
   lastAngle?: number;
   accumulatedAngle?: number;
-  neighbor?: TimeTemplateBlock;
+  grabOffsetMinutes?: number;
+  layout: TimeTemplateBlock[];
 };
 
 type BlockRingRotationAction = {
@@ -320,7 +204,8 @@ export const TimeTemplatesPage: React.FC = () => {
     const nextBlocks = selectedTemplate.blocks.map((block) => (
       block.id === detailsBlock.id ? { ...block, startMinute, endMinute: startMinute + duration } : block
     ));
-    commitBlockTimes(selectedTemplate.id, moveBlocksWithPush(nextBlocks, detailsBlock.id, startMinute, cycleMinutes, 1, getSnapMinutes(selectedTemplate.type)));
+    const packed = moveBlocksWithPush(nextBlocks, detailsBlock.id, startMinute, cycleMinutes, 1, getSnapMinutes(selectedTemplate.type));
+    if (packed) commitBlockTimes(selectedTemplate.id, packed);
   };
 
   const commitBlockTimes = (templateId: string, nextBlocks: TimeTemplateBlock[]) => {
@@ -342,7 +227,8 @@ export const TimeTemplatesPage: React.FC = () => {
     };
     const blockId = addBlock(template.id, payload);
     const currentBlocks = useAppStore.getState().timeTemplates.find((item) => item.id === template.id)?.blocks || [...template.blocks, { id: blockId, ...payload }];
-    commitBlockTimes(template.id, moveBlocksWithPush(currentBlocks, blockId, snappedStart, cycle, 1, snapMinutes));
+    const packed = moveBlocksWithPush(currentBlocks, blockId, snappedStart, cycle, 1, snapMinutes);
+    if (packed) commitBlockTimes(template.id, packed);
     return blockId;
   };
 
@@ -360,6 +246,7 @@ export const TimeTemplatesPage: React.FC = () => {
     if (!selectedTemplate || event.button !== 0) return;
     event.preventDefault();
     event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
     pointerActionRef.current = {
       pointerId: event.pointerId,
       templateId: selectedTemplate.id,
@@ -373,7 +260,7 @@ export const TimeTemplatesPage: React.FC = () => {
       type: selectedTemplate.type,
       moved: false,
       activated: false,
-      neighbor: kind === 'move' ? undefined : findAdjacentBlock(selectedTemplate.blocks, block, kind, getCycleMinutes(selectedTemplate.type)) || undefined,
+      layout: selectedTemplate.blocks.map((item) => ({ ...item })),
     };
   };
 
@@ -381,11 +268,14 @@ export const TimeTemplatesPage: React.FC = () => {
     if (!selectedTemplate || event.button !== 0) return;
     event.preventDefault();
     event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
     const svg = event.currentTarget.ownerSVGElement;
     const rect = svg?.getBoundingClientRect();
     if (!rect) return;
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
+    const cycle = getCycleMinutes(selectedTemplate.type);
+    const pointerMinute = minutesFromPointer(event.clientX, event.clientY, centerX, centerY, cycle);
     pointerActionRef.current = {
       pointerId: event.pointerId,
       templateId: selectedTemplate.id,
@@ -403,7 +293,8 @@ export const TimeTemplatesPage: React.FC = () => {
       ringCenterY: centerY,
       lastAngle: pointerAngle(event.clientX, event.clientY, centerX, centerY),
       accumulatedAngle: 0,
-      neighbor: kind === 'move' ? undefined : findAdjacentBlock(selectedTemplate.blocks, block, kind, getCycleMinutes(selectedTemplate.type)) || undefined,
+      grabOffsetMinutes: circularDistance(block.startMinute, pointerMinute, cycle),
+      layout: selectedTemplate.blocks.map((item) => ({ ...item })),
     };
   };
 
@@ -411,6 +302,7 @@ export const TimeTemplatesPage: React.FC = () => {
     if (!selectedTemplate || event.button !== 0) return;
     event.preventDefault();
     event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
     const rect = event.currentTarget.ownerSVGElement?.getBoundingClientRect();
     if (!rect) return;
     const centerX = rect.left + rect.width / 2;
@@ -434,6 +326,7 @@ export const TimeTemplatesPage: React.FC = () => {
     if (!selectedTemplate || event.button !== 0) return;
     event.preventDefault();
     event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
     const rect = event.currentTarget.ownerSVGElement?.getBoundingClientRect();
     if (!rect) return;
     const centerX = rect.left + rect.width / 2;
@@ -486,6 +379,11 @@ export const TimeTemplatesPage: React.FC = () => {
       if ((event.buttons & 1) === 0) {
         const pendingCreate = ringCreateRef.current;
         if (pendingCreate && !pendingCreate.activated && pendingCreate.pointerId === event.pointerId) return;
+        if (
+          pointerActionRef.current?.activated
+          || blockRingRotationRef.current?.activated
+          || ringCreateRef.current?.activated
+        ) return;
         clearGesture(event.pointerId, false);
         return;
       }
@@ -499,50 +397,47 @@ export const TimeTemplatesPage: React.FC = () => {
           pointerAction.moved = true;
           beginHistoryGroup();
         }
-        let rawDelta: number;
-        if (pointerAction.mode === 'circular' && pointerAction.ringCenterX !== undefined && pointerAction.ringCenterY !== undefined) {
-          const angle = pointerAngle(event.clientX, event.clientY, pointerAction.ringCenterX, pointerAction.ringCenterY);
-          pointerAction.accumulatedAngle = (pointerAction.accumulatedAngle || 0) + signedAngleDelta(angle, pointerAction.lastAngle ?? angle);
-          pointerAction.lastAngle = angle;
-          rawDelta = (pointerAction.accumulatedAngle / (Math.PI * 2)) * actionCycle;
-        } else {
-          rawDelta = ((event.clientX - pointerAction.startX) / getTimelineWidth(pointerAction.type)) * actionCycle;
-        }
-        const delta = Math.round(rawDelta / snapMinutes) * snapMinutes;
         const duration = getBlockDuration(pointerAction, actionCycle);
-        const currentBlocks = useAppStore.getState().timeTemplates.find((template) => template.id === pointerAction.templateId)?.blocks || [];
         let nextStart = normalizeCycleMinute(pointerAction.startMinute, actionCycle);
         let nextDuration = duration;
-        if (pointerAction.kind === 'move') {
-          nextStart = normalizeCycleMinute(pointerAction.startMinute + delta, actionCycle);
-        } else if (pointerAction.kind === 'start') {
-          nextDuration = Math.max(snapMinutes, Math.min(actionCycle, duration - delta));
-          nextStart = normalizeCycleMinute(pointerAction.endMinute - nextDuration, actionCycle);
+        if (pointerAction.mode === 'circular' && pointerAction.ringCenterX !== undefined && pointerAction.ringCenterY !== undefined) {
+          const radius = Math.hypot(event.clientX - pointerAction.ringCenterX, event.clientY - pointerAction.ringCenterY);
+          if (radius < 36) return;
+          const pointerMinute = minutesFromPointer(event.clientX, event.clientY, pointerAction.ringCenterX, pointerAction.ringCenterY, actionCycle);
+          const snappedPointer = normalizeCycleMinute(Math.round(pointerMinute / snapMinutes) * snapMinutes, actionCycle);
+          if (pointerAction.kind === 'move') {
+            nextStart = normalizeCycleMinute(snappedPointer - (pointerAction.grabOffsetMinutes || 0), actionCycle);
+          } else if (pointerAction.kind === 'start') {
+            nextStart = snappedPointer;
+            nextDuration = Math.max(snapMinutes, circularDistance(nextStart, normalizeCycleMinute(pointerAction.endMinute, actionCycle), actionCycle) || snapMinutes);
+          } else {
+            nextStart = normalizeCycleMinute(pointerAction.startMinute, actionCycle);
+            nextDuration = Math.max(snapMinutes, circularDistance(nextStart, snappedPointer, actionCycle) || snapMinutes);
+          }
         } else {
-          nextDuration = Math.max(snapMinutes, Math.min(actionCycle, duration + delta));
+          const rawDelta = ((event.clientX - pointerAction.startX) / getTimelineWidth(pointerAction.type)) * actionCycle;
+          const delta = Math.round(rawDelta / snapMinutes) * snapMinutes;
+          if (pointerAction.kind === 'move') nextStart = normalizeCycleMinute(pointerAction.startMinute + delta, actionCycle);
+          else if (pointerAction.kind === 'start') {
+            nextDuration = Math.max(snapMinutes, Math.min(actionCycle, duration - delta));
+            nextStart = normalizeCycleMinute(pointerAction.endMinute - nextDuration, actionCycle);
+          } else {
+            nextDuration = Math.max(snapMinutes, Math.min(actionCycle, duration + delta));
+          }
         }
-        if (pointerAction.kind !== 'move' && pointerAction.neighbor) {
-          const originalMoved = { id: pointerAction.blockId, startMinute: pointerAction.startMinute, endMinute: pointerAction.endMinute };
-          const originalBlocks = currentBlocks.map((block) => (
-            block.id === pointerAction.blockId
-              ? { ...block, ...originalMoved }
-              : block.id === pointerAction.neighbor?.id
-                ? { ...block, startMinute: pointerAction.neighbor.startMinute, endMinute: pointerAction.neighbor.endMinute }
-                : block
-          ));
-          commitBlockTimes(
-            pointerAction.templateId,
-            resizeSharingEdge(originalBlocks, pointerAction.blockId, pointerAction.neighbor, pointerAction.kind, nextDuration, actionCycle, snapMinutes),
-          );
-          return;
+        const current = pointerAction.layout.find((block) => block.id === pointerAction.blockId);
+        const currentStart = current ? normalizeCycleMinute(current.startMinute, actionCycle) : nextStart;
+        const currentDuration = current ? getBlockDuration(current, actionCycle) : duration;
+        const forward = circularDistance(currentStart, nextStart, actionCycle);
+        const back = circularDistance(nextStart, currentStart, actionCycle);
+        const direction: 1 | -1 = nextDuration !== currentDuration
+          ? (nextDuration > currentDuration ? (pointerAction.kind === 'start' ? -1 : 1) : (pointerAction.kind === 'start' ? 1 : -1))
+          : (back > 0 && back < forward ? -1 : 1);
+        const nextBlocks = moveBlocksWithPush(pointerAction.layout, pointerAction.blockId, nextStart, actionCycle, direction, snapMinutes, nextDuration);
+        if (nextBlocks) {
+          pointerAction.layout = nextBlocks;
+          commitBlockTimes(pointerAction.templateId, nextBlocks);
         }
-        const resized = currentBlocks.map((block) => (
-          block.id === pointerAction.blockId ? { ...block, startMinute: nextStart, endMinute: nextStart + nextDuration } : block
-        ));
-        commitBlockTimes(
-          pointerAction.templateId,
-          moveBlocksWithPush(resized, pointerAction.blockId, nextStart, actionCycle, delta >= 0 ? 1 : -1, snapMinutes),
-        );
         return;
       }
 
@@ -572,10 +467,8 @@ export const TimeTemplatesPage: React.FC = () => {
         const resized = currentBlocks.map((block) => (
           block.id === createAction.blockId ? { ...block, startMinute: nextStart, endMinute: nextStart + nextDuration } : block
         ));
-        commitBlockTimes(
-          createAction.templateId,
-          moveBlocksWithPush(resized, createAction.blockId, nextStart, cycle, growClockwise ? 1 : -1, snapMinutes),
-        );
+        const nextBlocks = moveBlocksWithPush(resized, createAction.blockId, nextStart, cycle, growClockwise ? 1 : -1, snapMinutes);
+        if (nextBlocks) commitBlockTimes(createAction.templateId, nextBlocks);
         return;
       }
 
