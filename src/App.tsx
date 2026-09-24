@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import {
+  Boxes,
   CalendarDays,
   Check,
   ChevronDown,
@@ -20,11 +21,12 @@ const SchedulePage = lazy(() => import('./components/SchedulePage').then((module
 const TimeTemplatesPage = lazy(() => import('./components/TimeTemplatesPage').then((module) => ({ default: module.TimeTemplatesPage })));
 const DraftsPage = lazy(() => import('./components/DraftsPage').then((module) => ({ default: module.DraftsPage })));
 
-type MenuId = 'task-pool' | 'schedule' | 'drafts' | 'time-templates';
+type MenuId = 'task-pool' | 'schedule' | 'bom' | 'drafts' | 'time-templates';
 
 const menuItems = [
   { id: 'task-pool' as const, label: 'Todo', icon: ListTodo },
   { id: 'schedule' as const, label: '日程', icon: CalendarDays },
+  { id: 'bom' as const, label: 'BOM', icon: Boxes },
   { id: 'drafts' as const, label: '草稿', icon: FilePenLine },
   { id: 'time-templates' as const, label: '时间模版', icon: Clock3 },
 ];
@@ -190,10 +192,12 @@ export default function App() {
           <Suspense fallback={<div className="flex min-h-0 flex-1 items-center justify-center text-sm text-neutral-400">正在加载时间模版…</div>}>
             <TimeTemplatesPage />
           </Suspense>
-        ) : (
+        ) : activeMenu === 'drafts' ? (
           <Suspense fallback={<div className="flex min-h-0 flex-1 items-center justify-center text-sm text-neutral-400">正在加载草稿…</div>}>
             <DraftsPage />
           </Suspense>
+        ) : (
+          <div className="min-h-0 flex-1 bg-neutral-50" aria-label="BOM 页面" />
         )}
       </main>
 
