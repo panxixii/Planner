@@ -37,7 +37,7 @@ export default function App() {
   const showWelcome = useAppStore((state) => state.showWelcome);
   const dismissWelcome = useAppStore((state) => state.dismissWelcome);
   const allTodoLanes = useAppStore((state) => state.todoLanes);
-  const todoLanes = useMemo(() => allTodoLanes.filter((lane) => lane.id === 'todo-main' || lane.type === 'custom'), [allTodoLanes]);
+  const todoLanes = useMemo(() => allTodoLanes.filter((lane) => lane.type === 'custom'), [allTodoLanes]);
   const bandDeleteZoneActive = useAppStore((state) => state.bandDeleteZoneActive);
   const focusLane = useAppStore((state) => state.focusLane);
   const selectTask = useAppStore((state) => state.selectTask);

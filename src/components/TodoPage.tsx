@@ -31,7 +31,7 @@ import { TodoViewSwitcher, type TodoLaneView } from './TodoViewSwitcher';
 import { useTapClick } from './useTapClick';
 import { createPortal } from 'react-dom';
 
-const visibleLane = (lane: TodoLane) => lane.id === 'todo-main' || lane.type === 'custom';
+const visibleLane = (lane: TodoLane) => lane.type === 'custom';
 
 const TodoCheckbox: React.FC<{ done: boolean; onClick: () => void }> = ({ done, onClick }) => (
   <button type="button" onClick={onClick} className={`flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[5px] border transition-colors ${done ? 'border-neutral-500 bg-neutral-500 text-white' : 'border-neutral-300 bg-white text-transparent hover:border-purple-400'}`} aria-label={done ? '标记为未完成' : '标记为完成'}>

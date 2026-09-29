@@ -5,8 +5,9 @@ import { formatLocalDateTime, getTaskBlockTimestamps, parseTaskTime } from '../t
 import type { TodoItem } from '../types';
 import { ColorPicker } from './ColorPicker';
 import { DateTimePicker } from './DateTimePicker';
+import { TodoGantt } from './TodoGantt';
 
-type ScheduleView = 'day' | 'week' | 'month';
+type ScheduleView = 'day' | 'week' | 'month' | 'gantt';
 
 type CalendarEvent = {
   itemId: string;
@@ -590,6 +591,10 @@ export const SchedulePage: React.FC = () => {
 
   const weekDays = useMemo(() => getWeekDays(anchor), [anchor]);
   const monthDays = useMemo(() => getMonthGrid(anchor), [anchor]);
+  const ganttLane = useMemo(
+    () => todoLanes.find((lane) => lane.type === 'main') || todoLanes[0],
+    [todoLanes],
+  );
   const title = view === 'month'
     ? formatMonthLabel(anchor)
     : view === 'week'
@@ -1013,17 +1018,24 @@ export const SchedulePage: React.FC = () => {
 
       <section className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <div className="flex h-12 shrink-0 items-center gap-2 border-b border-neutral-200 bg-white px-4">
-          <button type="button" onClick={goToday} className="h-8 rounded-lg border border-neutral-200 px-3 text-xs font-semibold text-neutral-600 transition-colors hover:bg-neutral-50">今天</button>
-          <div className="flex items-center rounded-lg border border-neutral-200 p-0.5">
-            <button type="button" onClick={() => shift(-1)} className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-50" aria-label="上一段"><ChevronLeft className="h-4 w-4" /></button>
-            <button type="button" onClick={() => shift(1)} className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-50" aria-label="下一段"><ChevronRight className="h-4 w-4" /></button>
-          </div>
-          <div className="min-w-0 flex-1 truncate text-sm font-bold text-neutral-800">{title}</div>
+          {view === 'gantt' ? (
+            <div className="min-w-0 flex-1 truncate text-sm font-bold text-neutral-800">甘特图</div>
+          ) : (
+            <>
+              <button type="button" onClick={goToday} className="h-8 rounded-lg border border-neutral-200 px-3 text-xs font-semibold text-neutral-600 transition-colors hover:bg-neutral-50">今天</button>
+              <div className="flex items-center rounded-lg border border-neutral-200 p-0.5">
+                <button type="button" onClick={() => shift(-1)} className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-50" aria-label="上一段"><ChevronLeft className="h-4 w-4" /></button>
+                <button type="button" onClick={() => shift(1)} className="flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-50" aria-label="下一段"><ChevronRight className="h-4 w-4" /></button>
+              </div>
+              <div className="min-w-0 flex-1 truncate text-sm font-bold text-neutral-800">{title}</div>
+            </>
+          )}
           <div className="flex items-center rounded-lg border border-neutral-200 bg-neutral-50 p-0.5">
             {([
               ['day', '日'],
               ['week', '周'],
               ['month', '月'],
+              ['gantt', '甘特'],
             ] as const).map(([id, label]) => (
               <button
                 key={id}
@@ -1206,6 +1218,16 @@ export const SchedulePage: React.FC = () => {
               })}
             </div>
           </div>
+        ) : null}
+
+        {view === 'gantt' ? (
+          ganttLane ? (
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-neutral-50 p-3">
+              <TodoGantt lane={ganttLane} />
+            </div>
+          ) : (
+            <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-neutral-400">暂无可显示的待办泳道</div>
+          )
         ) : null}
       </section>
 

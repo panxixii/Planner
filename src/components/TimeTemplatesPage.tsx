@@ -3,7 +3,7 @@ import { Check, Circle, Clock3, Copy, Minus, Plus, Trash2, X } from 'lucide-reac
 import { useAppStore } from '../store';
 import type { TimeTemplate, TimeTemplateBlock } from '../types';
 import { ColorPicker } from './ColorPicker';
-import { circularDistance, getBlockDuration, moveBlocksWithPush, normalizeCycleMinute } from '../utils/timeTemplatePush';
+import { circularDistance, getBlockDuration, moveBlocksWithPush, moveSingleBlock, normalizeCycleMinute } from '../utils/timeTemplatePush';
 
 const DAILY_WIDTH = 1536;
 const WEEKLY_WIDTH = 1260;
@@ -130,6 +130,15 @@ const ringArcPath = (startMinute: number, duration: number, cycleMinutes: number
 
 const pointerAngle = (clientX: number, clientY: number, centerX: number, centerY: number) => (
   Math.atan2(clientY - centerY, clientX - centerX)
+);
+
+/**
+ * Tangent direction (in degrees) at a ring minute — the direction of INCREASING
+ * minutes along the band. Used to clip a resize handle to the half that sits
+ * inside its own segment, so adjacent blocks' handles never overlap.
+ */
+const ringTangentDeg = (minute: number, cycleMinutes: number) => (
+  ((minute / cycleMinutes) * 360 - 90) + 90
 );
 
 const minutesFromPointer = (clientX: number, clientY: number, centerX: number, centerY: number, cycleMinutes: number) => (
@@ -433,7 +442,13 @@ export const TimeTemplatesPage: React.FC = () => {
         const direction: 1 | -1 = nextDuration !== currentDuration
           ? (nextDuration > currentDuration ? (pointerAction.kind === 'start' ? -1 : 1) : (pointerAction.kind === 'start' ? 1 : -1))
           : (back > 0 && back < forward ? -1 : 1);
-        const nextBlocks = moveBlocksWithPush(pointerAction.layout, pointerAction.blockId, nextStart, actionCycle, direction, snapMinutes, nextDuration);
+        // Ring view: dragging a block moves ONLY that block, and it STOPS flush
+        // against the first neighbour in its path — no pushing, no passing
+        // through, no wrapping past. Resizing (start/end) and the linear view
+        // keep the push behaviour.
+        const nextBlocks = pointerAction.mode === 'circular' && pointerAction.kind === 'move'
+          ? moveSingleBlock(pointerAction.layout, pointerAction.blockId, currentStart, nextStart, actionCycle, direction, snapMinutes, nextDuration)
+          : moveBlocksWithPush(pointerAction.layout, pointerAction.blockId, nextStart, actionCycle, direction, snapMinutes, nextDuration);
         if (nextBlocks) {
           pointerAction.layout = nextBlocks;
           commitBlockTimes(pointerAction.templateId, nextBlocks);
@@ -673,30 +688,48 @@ export const TimeTemplatesPage: React.FC = () => {
                           body,
                           nameLabel,
                           segment.hasStartHandle ? (
-                            <circle
-                              key={`${block.id}-${index}-start`}
-                              cx={startHandle.x}
-                              cy={startHandle.y}
-                              r="8"
-                              fill="#ffffff"
-                              stroke={block.color}
-                              strokeWidth="3"
-                              className="touch-none cursor-ew-resize"
-                              onPointerDown={(event) => handleRingPointerStart(event, block, 'start')}
-                            />
+                            <g key={`${block.id}-${index}-start`}>
+                              <clipPath id={`handle-clip-${block.id}-${index}-start`}>
+                                <rect
+                                  x={startHandle.x}
+                                  y={startHandle.y - 10}
+                                  width={20}
+                                  height={20}
+                                  transform={`rotate(${ringTangentDeg(segment.startMinute, cycleMinutes)} ${startHandle.x} ${startHandle.y})`}
+                                />
+                              </clipPath>
+                              <circle
+                                cx={startHandle.x}
+                                cy={startHandle.y}
+                                r="9"
+                                fill="#ffffff"
+                                clipPath={`url(#handle-clip-${block.id}-${index}-start)`}
+                                className="touch-none cursor-ew-resize"
+                                onPointerDown={(event) => handleRingPointerStart(event, block, 'start')}
+                              />
+                            </g>
                           ) : null,
                           segment.hasEndHandle ? (
-                            <circle
-                              key={`${block.id}-${index}-end`}
-                              cx={endHandle.x}
-                              cy={endHandle.y}
-                              r="8"
-                              fill="#ffffff"
-                              stroke={block.color}
-                              strokeWidth="3"
-                              className="touch-none cursor-ew-resize"
-                              onPointerDown={(event) => handleRingPointerStart(event, block, 'end')}
-                            />
+                            <g key={`${block.id}-${index}-end`}>
+                              <clipPath id={`handle-clip-${block.id}-${index}-end`}>
+                                <rect
+                                  x={endHandle.x}
+                                  y={endHandle.y - 10}
+                                  width={20}
+                                  height={20}
+                                  transform={`rotate(${ringTangentDeg(segment.startMinute + segment.duration, cycleMinutes) + 180} ${endHandle.x} ${endHandle.y})`}
+                                />
+                              </clipPath>
+                              <circle
+                                cx={endHandle.x}
+                                cy={endHandle.y}
+                                r="9"
+                                fill="#ffffff"
+                                clipPath={`url(#handle-clip-${block.id}-${index}-end)`}
+                                className="touch-none cursor-ew-resize"
+                                onPointerDown={(event) => handleRingPointerStart(event, block, 'end')}
+                              />
+                            </g>
                           ) : null,
                         ];
                       });
@@ -730,15 +763,15 @@ export const TimeTemplatesPage: React.FC = () => {
       {selectedTemplate && detailsBlock ? (
         <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto p-4">
           <button type="button" onClick={() => setDetailsBlockId(null)} className="absolute inset-0 bg-neutral-900/25" aria-label="关闭时间块详情" />
-          <section className="custom-scrollbar relative max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-2xl border border-neutral-200 bg-white p-5 shadow-2xl">
+          <section onKeyDown={(event) => { if (event.key === 'Escape') { event.currentTarget.blur(); setDetailsBlockId(null); } }} className="custom-scrollbar relative max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-2xl border border-neutral-200 bg-white p-5 shadow-2xl">
             <div className="mb-5 flex items-center justify-between"><h2 className="text-sm font-bold text-neutral-800">时间块详情</h2><button type="button" onClick={() => setDetailsBlockId(null)} className="flex h-8 w-8 items-center justify-center rounded-md text-neutral-400 hover:bg-neutral-100"><X className="h-4 w-4" /></button></div>
             <div className="space-y-4">
-              <label className="block space-y-1.5"><span className="text-xs font-semibold text-neutral-600">标签名称</span><input value={detailsBlock.label} onFocus={beginHistoryGroup} onChange={(event) => updateBlock(selectedTemplate.id, detailsBlock.id, { label: event.target.value })} onBlur={endHistoryGroup} className="h-10 w-full rounded-lg border border-neutral-200 px-3 text-sm outline-none focus:border-purple-300" /></label>
+              <label className="block space-y-1.5"><span className="text-xs font-semibold text-neutral-600">标签名称</span><input value={detailsBlock.label} onFocus={beginHistoryGroup} onChange={(event) => updateBlock(selectedTemplate.id, detailsBlock.id, { label: event.target.value })} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); endHistoryGroup(); setDetailsBlockId(null); } }} onBlur={endHistoryGroup} className="h-10 w-full rounded-lg border border-neutral-200 px-3 text-sm outline-none focus:border-purple-300" /></label>
               <fieldset className="space-y-1.5">
                 <legend className="text-xs font-semibold text-neutral-600">时长</legend>
                 <div className="grid grid-cols-2 gap-3">
-                  <label className="relative block"><input type="number" min="0" max={Math.floor(cycleMinutes / 60)} step="1" value={detailsDurationHours} onFocus={beginHistoryGroup} onChange={(event) => updateDetailsDuration(Number(event.target.value), detailsDurationMinutes)} onBlur={endHistoryGroup} className="h-10 w-full rounded-lg border border-neutral-200 px-3 pr-10 text-sm outline-none focus:border-purple-300" /><span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-neutral-400">小时</span></label>
-                  <label className="relative block"><input type="number" min="0" max="59" step="1" value={detailsDurationMinutes} onFocus={beginHistoryGroup} onChange={(event) => updateDetailsDuration(detailsDurationHours, Number(event.target.value))} onBlur={endHistoryGroup} className="h-10 w-full rounded-lg border border-neutral-200 px-3 pr-10 text-sm outline-none focus:border-purple-300" /><span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-neutral-400">分钟</span></label>
+                  <label className="relative block"><input type="number" min="0" max={Math.floor(cycleMinutes / 60)} step="1" value={detailsDurationHours} onFocus={beginHistoryGroup} onChange={(event) => updateDetailsDuration(Number(event.target.value), detailsDurationMinutes)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); endHistoryGroup(); setDetailsBlockId(null); } }} onBlur={endHistoryGroup} className="h-10 w-full rounded-lg border border-neutral-200 px-3 pr-10 text-sm outline-none focus:border-purple-300" /><span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-neutral-400">小时</span></label>
+                  <label className="relative block"><input type="number" min="0" max="59" step="1" value={detailsDurationMinutes} onFocus={beginHistoryGroup} onChange={(event) => updateDetailsDuration(detailsDurationHours, Number(event.target.value))} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); endHistoryGroup(); setDetailsBlockId(null); } }} onBlur={endHistoryGroup} className="h-10 w-full rounded-lg border border-neutral-200 px-3 pr-10 text-sm outline-none focus:border-purple-300" /><span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-neutral-400">分钟</span></label>
                 </div>
               </fieldset>
               <ColorPicker label="时间块颜色" value={detailsBlock.color} onChange={(color) => updateBlock(selectedTemplate.id, detailsBlock.id, { color })} />

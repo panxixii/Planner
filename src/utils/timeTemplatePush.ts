@@ -17,6 +17,74 @@ const intervalsOverlap = (aStart: number, aDuration: number, bStart: number, bDu
   || circularDistance(bStart, aStart, cycleMinutes) < bDuration
 );
 
+/**
+ * Move ONLY the dragged block (no pushing of connected blocks). The block
+ * slides from `currentStart` toward the pointer target along `direction`, but
+ * STOPS flush against the first neighbouring block in its path — it never
+ * passes through, wraps past, or collapses onto another block. Resizing keeps
+ * the target size; a pure move keeps the block's own duration. Returns the
+ * updated list, or null when nothing can change (already blocked / would not
+ * fit). Used by the ring view.
+ */
+export const moveSingleBlock = (
+  blocks: TimeTemplateBlock[],
+  movedId: string,
+  currentStart: number,
+  nextStart: number,
+  cycleMinutes: number,
+  direction: 1 | -1,
+  snapMinutes: number,
+  nextDuration?: number,
+): TimeTemplateBlock[] | null => {
+  const snap = (value: number) => normalizeCycleMinute(Math.round(value / snapMinutes) * snapMinutes, cycleMinutes);
+  const from = snap(currentStart);
+  const target = snap(nextStart);
+  const duration = Math.max(
+    snapMinutes,
+    Math.round((nextDuration !== undefined ? nextDuration : getBlockDuration(
+      blocks.find((block) => block.id === movedId) || { startMinute: 0, endMinute: snapMinutes },
+      cycleMinutes,
+    )) / snapMinutes) * snapMinutes,
+  );
+  if (duration > cycleMinutes) return null;
+
+  // How far the pointer wants to travel along `direction` (positive minutes).
+  const desired = direction > 0
+    ? circularDistance(from, target, cycleMinutes)
+    : circularDistance(target, from, cycleMinutes);
+  if (desired === 0) return null;
+
+  // For each other block, the max travel before this block's leading edge would
+  // hit that neighbour. Clamp the desired travel to the tightest limit.
+  const others = blocks.filter((block) => block.id !== movedId);
+  let allowed = desired;
+  for (const other of others) {
+    const otherStart = normalizeCycleMinute(other.startMinute, cycleMinutes);
+    const otherDuration = getBlockDuration(other, cycleMinutes);
+    // Gap ahead of the moving block's leading edge, in the travel direction.
+    const gap = direction > 0
+      ? circularDistance(normalizeCycleMinute(from + duration, cycleMinutes), otherStart, cycleMinutes)
+      : circularDistance(normalizeCycleMinute(otherStart + otherDuration, cycleMinutes), from, cycleMinutes);
+    allowed = Math.min(allowed, gap);
+  }
+  allowed = Math.max(0, Math.floor(allowed / snapMinutes) * snapMinutes);
+  if (allowed === 0) return null;
+
+  const start = direction > 0
+    ? normalizeCycleMinute(from + allowed, cycleMinutes)
+    : normalizeCycleMinute(from - allowed, cycleMinutes);
+
+  // Safety: never emit an overlapping layout.
+  const overlaps = others.some((block) => intervalsOverlap(
+    start, duration, normalizeCycleMinute(block.startMinute, cycleMinutes), getBlockDuration(block, cycleMinutes), cycleMinutes,
+  ));
+  if (overlaps) return null;
+
+  return blocks.map((block) => (
+    block.id === movedId ? { ...block, startMinute: start, endMinute: start + duration } : block
+  ));
+};
+
 export const moveBlocksWithPush = (
   blocks: TimeTemplateBlock[],
   movedId: string,
