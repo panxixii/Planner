@@ -168,6 +168,7 @@ export const TimeTemplatesPage: React.FC = () => {
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(templates[0]?.id || null);
   const [detailsBlockId, setDetailsBlockId] = useState<string | null>(null);
   const [confirmDeleteBlockId, setConfirmDeleteBlockId] = useState<string | null>(null);
+  const [hoveredRingBlockId, setHoveredRingBlockId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'linear' | 'circular'>('linear');
   const [innerRotationMinutes, setInnerRotationMinutes] = useState(0);
   const pointerActionRef = useRef<PointerAction | null>(null);
@@ -659,6 +660,36 @@ export const TimeTemplatesPage: React.FC = () => {
                             style={{ paintOrder: 'stroke', stroke: 'rgba(0,0,0,0.28)', strokeWidth: 2.5 }}
                           >{block.label}</text>
                         ) : null;
+                        const showDelete = (fullCycle || index === labelSegmentIndex) && (hoveredRingBlockId === block.id || confirmDeleteBlockId === block.id);
+                        const deletePos = pointOnRing(midMinute, cycleMinutes, RING_RADIUS + 26);
+                        const confirmingDelete = confirmDeleteBlockId === block.id;
+                        const deleteButton = showDelete ? (
+                          <foreignObject
+                            key={`${block.id}-${index}-delete`}
+                            x={deletePos.x - 24}
+                            y={deletePos.y - 10}
+                            width={48}
+                            height={20}
+                            style={{ overflow: 'visible' }}
+                            onMouseEnter={() => setHoveredRingBlockId(block.id)}
+                            onMouseLeave={() => setHoveredRingBlockId((current) => (current === block.id ? null : current))}
+                          >
+                            <div className="flex h-5 w-full items-center justify-center">
+                              <button
+                                type="button"
+                                onPointerDown={(event) => event.stopPropagation()}
+                                onDoubleClick={(event) => event.stopPropagation()}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  if (confirmDeleteBlockId === block.id) { deleteBlock(selectedTemplate.id, block.id); setConfirmDeleteBlockId(null); setHoveredRingBlockId(null); setDetailsBlockId(null); return; }
+                                  setConfirmDeleteBlockId(block.id);
+                                }}
+                                className={`flex h-5 items-center justify-center rounded-full border px-1.5 text-[9px] font-bold shadow-sm transition-all ${confirmingDelete ? 'w-auto border-rose-500 bg-rose-600 text-white' : 'w-5 border-rose-200 bg-white text-rose-500'}`}
+                                title={confirmingDelete ? '再次点击确认删除' : '删除时间块'}
+                              >{confirmingDelete ? '确认' : <Trash2 className="h-3 w-3" />}</button>
+                            </div>
+                          </foreignObject>
+                        ) : null;
                         const body = fullCycle ? (
                           <circle
                             key={`${block.id}-${index}`}
@@ -670,6 +701,8 @@ export const TimeTemplatesPage: React.FC = () => {
                             strokeWidth={detailsBlockId === block.id ? 42 : 34}
                             className="touch-none cursor-grab drop-shadow-sm active:cursor-grabbing"
                             onPointerDown={(event) => handleRingPointerStart(event, block)}
+                            onMouseEnter={() => setHoveredRingBlockId(block.id)}
+                            onMouseLeave={() => setHoveredRingBlockId((current) => (current === block.id ? null : current))}
                           />
                         ) : (
                           <path
@@ -681,12 +714,15 @@ export const TimeTemplatesPage: React.FC = () => {
                             strokeLinecap="butt"
                             className="touch-none cursor-grab drop-shadow-sm active:cursor-grabbing"
                             onPointerDown={(event) => handleRingPointerStart(event, block)}
+                            onMouseEnter={() => setHoveredRingBlockId(block.id)}
+                            onMouseLeave={() => setHoveredRingBlockId((current) => (current === block.id ? null : current))}
                           />
                         );
-                        if (fullCycle) return [body, nameLabel];
+                        if (fullCycle) return [body, nameLabel, deleteButton];
                         return [
                           body,
                           nameLabel,
+                          deleteButton,
                           segment.hasStartHandle ? (
                             <g key={`${block.id}-${index}-start`}>
                               <clipPath id={`handle-clip-${block.id}-${index}-start`}>
