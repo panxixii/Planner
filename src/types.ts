@@ -2,6 +2,7 @@ export interface TaskTimeBlock {
   id: string;
   startTime: string;
   endTime: string;
+  name?: string; // Non-empty name promotes this time block to a "小任务项" (sub-task); empty/undefined is an ordinary block.
 }
 
 export interface Task {
@@ -335,6 +336,8 @@ export interface AppState {
 
   // Independent Merged View state
   mergedNodePositions: Record<string, { x: number; y: number }>;
+  // Persisted positions of dragged 小任务项 (sub-task) canvas nodes, keyed by time-block id.
+  subTaskPositions: Record<string, { x: number; y: number }>;
   workspaceNodes: GoalNode[];
   addWorkspaceDirectory: (directory: WorkspaceDirectory) => void;
   updateWorkspaceDirectory: (directoryId: string, updates: Partial<Omit<WorkspaceDirectory, 'id'>>) => void;
@@ -344,6 +347,7 @@ export interface AppState {
   mergedEdges: GoalEdge[];
   mergedNodeIds: string[];
   updateMergedNodePositions: (positions: Record<string, { x: number; y: number }>) => void;
+  updateSubTaskPositions: (positions: Record<string, { x: number; y: number }>) => void;
   updateWorkspaceNodeSize: (nodeId: string, width: number, height: number) => void;
   addWorkspaceNode: (node: GoalNode) => void;
   addMergedEdge: (edge: GoalEdge) => void;

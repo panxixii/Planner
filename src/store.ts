@@ -645,6 +645,7 @@ const loadSavedState = () => {
           timelineTaskOrder: Array.isArray(parsed.timelineTaskOrder) ? parsed.timelineTaskOrder : [],
           isTimelineCollapsed: !!parsed.isTimelineCollapsed,
           mergedNodePositions: parsed.mergedNodePositions || {},
+          subTaskPositions: parsed.subTaskPositions || {},
           workspaceNodes: Array.isArray(parsed.workspaceNodes)
             ? parsed.workspaceNodes.filter((node: unknown) => {
                 if (!node || typeof node !== 'object') return false;
@@ -695,6 +696,7 @@ const initialShowHelp = savedState ? savedState.showHelp : true;
 const initialTimelineTaskOrder = savedState ? (savedState.timelineTaskOrder || []) : [];
 const initialIsTimelineCollapsed = savedState ? savedState.isTimelineCollapsed : false;
 const initialMergedNodePositions = (savedState && savedState.mergedNodePositions) ? savedState.mergedNodePositions : {};
+const initialSubTaskPositions = (savedState && savedState.subTaskPositions) ? savedState.subTaskPositions : {};
 const initialWorkspaceNodes = (savedState && Array.isArray(savedState.workspaceNodes)) ? savedState.workspaceNodes : [];
 const initialMergedNodeIds = (savedState && Array.isArray(savedState.mergedNodeIds)) ? savedState.mergedNodeIds : [];
 
@@ -732,6 +734,7 @@ type HistorySnapshot = Pick<AppState,
   | 'crossGoalEdges'
   | 'timelineTaskOrder'
   | 'mergedNodePositions'
+  | 'subTaskPositions'
   | 'workspaceNodes'
   | 'mergedEdges'
   | 'mergedNodeIds'
@@ -741,7 +744,7 @@ const HISTORY_LIMIT = 100;
 const HISTORY_KEYS = new Set<keyof HistorySnapshot>([
   'tasks', 'taskStatuses', 'goals', 'bomTree', 'categories', 'workspaceComponents', 'workspaceDirectories',
   'todoLanes', 'todoItems', 'todoEdges', 'timeTemplates', 'activeTimeTemplateIds', 'favoriteColors',
-  'drafts', 'crossGoalEdges', 'timelineTaskOrder', 'mergedNodePositions', 'workspaceNodes',
+  'drafts', 'crossGoalEdges', 'timelineTaskOrder', 'mergedNodePositions', 'subTaskPositions', 'workspaceNodes',
   'mergedEdges', 'mergedNodeIds',
 ]);
 
@@ -765,6 +768,7 @@ const captureHistorySnapshot = (state: AppState): HistorySnapshot => cloneHistor
   crossGoalEdges: state.crossGoalEdges,
   timelineTaskOrder: state.timelineTaskOrder,
   mergedNodePositions: state.mergedNodePositions,
+  subTaskPositions: state.subTaskPositions,
   workspaceNodes: state.workspaceNodes,
   mergedEdges: state.mergedEdges,
   mergedNodeIds: state.mergedNodeIds,
@@ -808,6 +812,7 @@ export const useAppStore = create<AppState>((set, get) => {
         timelineTaskOrder: state.timelineTaskOrder || [],
         isTimelineCollapsed: state.isTimelineCollapsed,
         mergedNodePositions: state.mergedNodePositions,
+        subTaskPositions: state.subTaskPositions,
         workspaceNodes: state.workspaceNodes,
         mergedEdges: state.mergedEdges,
         mergedNodeIds: state.mergedNodeIds,
@@ -886,6 +891,7 @@ export const useAppStore = create<AppState>((set, get) => {
     timelineTaskOrder: initialTimelineTaskOrder,
     isTimelineCollapsed: initialIsTimelineCollapsed,
     mergedNodePositions: initialMergedNodePositions,
+    subTaskPositions: initialSubTaskPositions,
     workspaceNodes: initialWorkspaceNodes,
     mergedEdges: initialMergedEdges,
     mergedNodeIds: initialMergedNodeIds,
@@ -1138,6 +1144,9 @@ export const useAppStore = create<AppState>((set, get) => {
         timelineTaskOrder: Array.isArray(data.timelineTaskOrder) ? data.timelineTaskOrder as string[] : [],
         mergedNodePositions: data.mergedNodePositions && typeof data.mergedNodePositions === 'object'
           ? data.mergedNodePositions as AppState['mergedNodePositions']
+          : {},
+        subTaskPositions: data.subTaskPositions && typeof data.subTaskPositions === 'object'
+          ? data.subTaskPositions as AppState['subTaskPositions']
           : {},
         workspaceNodes: Array.isArray(data.workspaceNodes) ? data.workspaceNodes as GoalNode[] : [],
         mergedEdges: Array.isArray(data.mergedEdges) ? data.mergedEdges as GoalEdge[] : [],
@@ -1987,6 +1996,10 @@ export const useAppStore = create<AppState>((set, get) => {
 
     updateMergedNodePositions: (positions) => persistSet((state: AppState) => ({
       mergedNodePositions: { ...state.mergedNodePositions, ...positions }
+    })),
+
+    updateSubTaskPositions: (positions) => persistSet((state: AppState) => ({
+      subTaskPositions: { ...state.subTaskPositions, ...positions }
     })),
 
     updateWorkspaceNodeSize: (nodeId, width, height) => persistSet((state: AppState) => ({

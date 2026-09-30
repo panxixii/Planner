@@ -269,10 +269,44 @@ const overlapsDay = (event: CalendarEvent, day: number) => {
   return event.start < dayEnd && event.end > day;
 };
 
+/** A cross-day event: its start and its (exclusive) end fall on different calendar days. Rendered Feishu-style as a spanning bar, not in the hourly grid. */
+const isMultiDayEvent = (event: CalendarEvent) => startOfDay(event.start) !== startOfDay(event.end - 1);
+
+/**
+ * Lay out cross-day events as horizontal bars across the visible week.
+ * Each bar gets a start column (0-based within weekDays), a span (columns),
+ * and a stacked row so overlapping cross-day events don't collide.
+ */
+const spanLayoutForWeek = (events: CalendarEvent[], weekDays: number[]) => {
+  const weekStart = weekDays[0];
+  const weekEnd = addDays(weekDays[weekDays.length - 1], 1);
+  const bars = events
+    .filter((event) => isMultiDayEvent(event) && event.start < weekEnd && event.end > weekStart)
+    .sort((a, b) => a.start - b.start || b.end - a.end)
+    .map((event) => {
+      const startCol = Math.max(0, weekDays.findIndex((day) => overlapsDay(event, day)));
+      let endCol = startCol;
+      for (let i = weekDays.length - 1; i >= 0; i -= 1) {
+        if (overlapsDay(event, weekDays[i])) { endCol = i; break; }
+      }
+      return { event, startCol, span: Math.max(1, endCol - startCol + 1) };
+    });
+  // stack into rows: a row is free if no existing bar in it overlaps columns
+  const rows: { startCol: number; span: number }[][] = [];
+  return bars.map((bar) => {
+    let row = 0;
+    while (
+      rows[row]?.some((placed) => bar.startCol < placed.startCol + placed.span && placed.startCol < bar.startCol + bar.span)
+    ) row += 1;
+    (rows[row] ||= []).push({ startCol: bar.startCol, span: bar.span });
+    return { ...bar, row };
+  });
+};
+
 const timedLayoutForDay = (events: CalendarEvent[], day: number) => {
   const dayEnd = addDays(day, 1);
   const timed = events
-    .filter((event) => overlapsDay(event, day))
+    .filter((event) => !isMultiDayEvent(event) && overlapsDay(event, day))
     .map((event) => ({
       ...event,
       clipStart: Math.max(event.start, day),
@@ -462,6 +496,7 @@ const DayHourGrid: React.FC<{
     return timedLayoutForDay(previewEvents, day);
   }, [day, dragPreview, events]);
   const showNow = sameDay(day, now);
+  const daySpans = useMemo(() => events.filter((event) => isMultiDayEvent(event) && overlapsDay(event, day)), [events, day]);
 
   const yToTime = (clientY: number) => {
     const rect = bodyRef.current?.getBoundingClientRect();
@@ -472,6 +507,26 @@ const DayHourGrid: React.FC<{
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-white">
+      {daySpans.length > 0 ? (
+        <div className="flex shrink-0 flex-col gap-1 border-b border-neutral-200 bg-neutral-50/60 px-2 py-1.5 pl-12">
+          {daySpans.map((event) => (
+            <button
+              key={`${event.itemId}-${event.blockId}`}
+              type="button"
+              onClick={(mouseEvent) => {
+                const rect = (mouseEvent.currentTarget as HTMLElement).getBoundingClientRect();
+                onOpenEvent(event, { left: rect.left, top: rect.top, width: rect.width, height: rect.height });
+              }}
+              className="flex h-5 items-center gap-1 overflow-hidden rounded-md border px-2 text-left text-[11px] font-semibold shadow-sm hover:shadow-md"
+              style={{ background: withAlpha(event.color, 0.18), borderColor: withAlpha(event.color, 0.45), color: event.color }}
+              title={`${event.title}\n${formatRange(event.start, event.end)}\n单击编辑`}
+            >
+              <span className="truncate">{event.title}</span>
+              <span className="shrink-0 opacity-70">跨天</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
       <div ref={bodyRef} className="custom-scrollbar relative min-h-0 flex-1 overflow-y-auto">
         <div className="relative" style={{ height: 24 * HOUR_HEIGHT }}>
           {Array.from({ length: 24 }, (_, hour) => (
@@ -1078,6 +1133,52 @@ export const SchedulePage: React.FC = () => {
                 );
               })}
             </div>
+            {(() => {
+              const spanEvents = dragPreview
+                ? events.map((item) => item.itemId === dragPreview.itemId && item.blockId === dragPreview.blockId
+                  ? { ...item, start: dragPreview.previewStart, end: dragPreview.previewEnd }
+                  : item)
+                : events;
+              const spans = spanLayoutForWeek(spanEvents, weekDays);
+              if (spans.length === 0) return null;
+              const rowCount = Math.max(...spans.map((bar) => bar.row)) + 1;
+              return (
+                <div className="grid shrink-0 grid-cols-[3rem_repeat(7,minmax(0,1fr))] border-b border-neutral-200 bg-neutral-50/60">
+                  <div className="flex items-center justify-end pr-1 text-[10px] font-medium text-neutral-300">跨天</div>
+                  <div className="relative col-span-7" style={{ height: rowCount * 24 + 6 }}>
+                    <div className="grid h-full grid-cols-7">
+                      {weekDays.map((day) => <div key={day} className="border-l border-neutral-100" />)}
+                    </div>
+                    {spans.map((bar) => (
+                      <div
+                        key={`${bar.event.itemId}-${bar.event.blockId}`}
+                        className="absolute"
+                        style={{
+                          left: `calc(${(bar.startCol / 7) * 100}% + 3px)`,
+                          width: `calc(${(bar.span / 7) * 100}% - 6px)`,
+                          top: bar.row * 24 + 3,
+                          height: 20,
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={(mouseEvent) => {
+                            const rect = (mouseEvent.currentTarget as HTMLElement).getBoundingClientRect();
+                            openEvent(bar.event, { left: rect.left, top: rect.top, width: rect.width, height: rect.height });
+                          }}
+                          className="flex h-full w-full items-center gap-1 overflow-hidden rounded-md border px-2 text-left text-[11px] font-semibold shadow-sm transition-shadow hover:shadow-md"
+                          style={{ background: withAlpha(bar.event.color, 0.18), borderColor: withAlpha(bar.event.color, 0.45), color: bar.event.color }}
+                          title={`${bar.event.title}\n${formatRange(bar.event.start, bar.event.end)}\n单击编辑`}
+                        >
+                          <span className="truncate">{bar.event.title}</span>
+                          <span className="shrink-0 opacity-70">{formatTime(bar.event.start)}</span>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
             <div className="custom-scrollbar min-h-0 flex-1 overflow-auto">
               <div className="grid grid-cols-[3rem_repeat(7,minmax(0,1fr))]" style={{ height: 24 * HOUR_HEIGHT }}>
                 <div className="relative">

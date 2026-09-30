@@ -61,6 +61,7 @@ const getCurrentPersistedData = (): Record<string, unknown> => {
     timelineTaskOrder: state.timelineTaskOrder,
     isTimelineCollapsed: state.isTimelineCollapsed,
     mergedNodePositions: state.mergedNodePositions,
+    subTaskPositions: state.subTaskPositions,
     workspaceNodes: state.workspaceNodes,
     mergedEdges: state.mergedEdges,
     mergedNodeIds: state.mergedNodeIds,

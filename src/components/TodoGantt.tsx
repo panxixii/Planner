@@ -80,7 +80,7 @@ const GanttTimeBlock: React.FC<{
   onBeginDrag: (event: React.PointerEvent<HTMLDivElement>, edge: DragState['edge']) => void;
   onMoveDrag: (event: React.PointerEvent<HTMLDivElement>) => void;
   onEndDrag: (event: React.PointerEvent<HTMLDivElement>) => void;
-  onUpdate: (updates: Partial<Pick<TaskTimeBlock, 'startTime' | 'endTime'>>) => void;
+  onUpdate: (updates: Partial<Pick<TaskTimeBlock, 'startTime' | 'endTime' | 'name'>>) => void;
   onRemove: () => void;
 }> = ({ item, block, left, width, color, previewStart, previewEnd, isDone, onBeginDrag, onMoveDrag, onEndDrag, onUpdate, onRemove }) => {
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -105,7 +105,7 @@ const GanttTimeBlock: React.FC<{
         title="双击查看详情；拖动移动；拖动两端调整"
       >
         <div onPointerDown={(event) => onBeginDrag(event, 'start')} onPointerMove={onMoveDrag} onPointerUp={onEndDrag} onPointerCancel={onEndDrag} className="absolute inset-y-0 left-0 z-20 w-2 cursor-ew-resize rounded-l-md bg-white/25 opacity-0 group-hover:opacity-100" />
-        <span className="pointer-events-none min-w-0 flex-1 truncate">{item.text}</span>
+        <span className="pointer-events-none min-w-0 flex-1 truncate">{block.name?.trim() ? block.name : item.text}</span>
         {width > 80 ? <span className="pointer-events-none ml-1 flex items-center gap-0.5 opacity-80"><Clock3 className="h-2.5 w-2.5" />{durationLabel(previewStart, previewEnd)}</span> : null}
         <button
           type="button"
@@ -128,6 +128,7 @@ const GanttTimeBlock: React.FC<{
             <div className="mb-5 flex items-center justify-between"><h2 className="text-sm font-bold text-neutral-800">时间块详情</h2><button type="button" onClick={() => setDetailsOpen(false)} className="flex h-8 w-8 items-center justify-center rounded-md text-neutral-400 hover:bg-neutral-100" aria-label="关闭"><X className="h-4 w-4" /></button></div>
             <div className="space-y-4">
               <label className="block space-y-1.5"><span className="text-xs font-semibold text-neutral-600">所属待办</span><input readOnly value={item.text || '未命名待办'} className="h-10 w-full cursor-default rounded-lg border border-neutral-200 bg-neutral-50 px-3 text-sm text-neutral-500 outline-none" aria-label="所属待办" /></label>
+              <label className="block space-y-1.5"><span className="text-xs font-semibold text-neutral-600">名称</span><input value={block.name || ''} onChange={(event) => onUpdate({ name: event.target.value })} placeholder="填写名称即成为小任务项" className="h-10 w-full rounded-lg border border-neutral-200 bg-white px-3 text-sm text-neutral-700 outline-none focus:border-purple-300" aria-label="小任务项名称" /><span className="text-[10px] text-neutral-400">命名后此时间块将作为「小任务项」显示在画板中。</span></label>
               <label className="block space-y-1.5"><span className="text-xs font-semibold text-neutral-600">开始时间</span><DateTimePicker value={block.startTime} onChange={(value) => onUpdate({ startTime: value })} placeholder="选择开始日期与时间" /></label>
               <label className="block space-y-1.5"><span className="text-xs font-semibold text-neutral-600">结束时间</span><DateTimePicker value={block.endTime} onChange={(value) => onUpdate({ endTime: value })} placeholder="选择结束日期与时间" /></label>
               <div className="rounded-lg bg-neutral-50 px-3 py-2 text-xs text-neutral-500">{formatLocalDateTime(parseTaskTime(block.startTime))} — {formatLocalDateTime(parseTaskTime(block.endTime))} · {durationLabel(parseTaskTime(block.startTime), parseTaskTime(block.endTime))}</div>

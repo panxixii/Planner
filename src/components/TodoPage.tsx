@@ -796,7 +796,23 @@ const BoardNode = React.memo(({ id, data, selected }: NodeProps<Node<BoardNodeDa
   </div>;
 });
 BoardNode.displayName = 'BoardNode';
-const nodeTypes = { todoNode: BoardNode };
+
+interface SubTaskNodeData extends Record<string, unknown> { itemId: string; blockId: string; name: string; color?: string }
+
+const SubTaskNode = React.memo(({ data }: NodeProps<Node<SubTaskNodeData>>) => {
+  const color = boardColors[data.color || ''] || data.color || '#9387d1';
+  return <div
+    className="group flex items-center gap-1.5 rounded-full border border-dashed bg-white/95 px-2.5 py-1"
+    style={{ borderColor: color }}
+    title="小任务项（来自甘特时间块）"
+  >
+    <Handle type="target" position={Position.Left} className="!h-2 !w-2 !border !border-white" style={{ backgroundColor: color }} />
+    <span className="flex h-4 shrink-0 items-center rounded-full px-1.5 text-[8px] font-bold text-white" style={{ backgroundColor: color }}>小</span>
+    <span className="min-w-0 max-w-[160px] truncate text-[10px] font-semibold text-neutral-600">{data.name || '小任务项'}</span>
+  </div>;
+});
+SubTaskNode.displayName = 'SubTaskNode';
+const nodeTypes = { todoNode: BoardNode, subTaskNode: SubTaskNode };
 
 const DeleteSelectionBar: React.FC<{ count: number; onDelete: () => void }> = ({ count, onDelete }) => {
   const [confirming, setConfirming] = useState(false);
@@ -825,6 +841,8 @@ const BoardCanvas: React.FC<{ lane: TodoLane }> = ({ lane }) => {
   const addEdge = useAppStore((state) => state.addTodoEdge);
   const removeEdge = useAppStore((state) => state.removeTodoEdge);
   const removeItem = useAppStore((state) => state.removeTodoItem);
+  const subTaskPositions = useAppStore((state) => state.subTaskPositions);
+  const updateSubTaskPositions = useAppStore((state) => state.updateSubTaskPositions);
   const { screenToFlowPosition, zoomIn, zoomOut, fitView } = useReactFlow();
   const suppressCreateRef = useRef(false);
   const [canvasTool, setCanvasTool] = useState<'pan' | 'select'>('pan');
@@ -833,13 +851,32 @@ const BoardCanvas: React.FC<{ lane: TodoLane }> = ({ lane }) => {
     || (item.referencedLaneIds || []).includes(lane.id)
     || (lane.id === 'todo-main' && isUpcomingTodayScheduleItem(item))
   )), [allItems, lane.id]);
-  const nodes = useMemo<Node<BoardNodeData>[]>(() => items.map((item) => ({ id: item.id, type: 'todoNode', position: item.position, width: item.width, height: item.height, data: { itemId: item.id, text: item.text, done: item.isDone, color: item.color, progressStatus: item.progressStatus, isDirectory: item.isDirectory } })), [items]);
-  const edges = useMemo<Edge[]>(() => allEdges.filter((edge) => edge.laneId === lane.id).map((edge) => ({ id: edge.id, source: edge.sourceItemId, target: edge.targetItemId, type: 'bezier', style: { stroke: '#9b8ae4', strokeWidth: 2 }, interactionWidth: 24 })), [allEdges, lane.id]);
+  const nodes = useMemo<Node[]>(() => {
+    const itemNodes: Node[] = items.map((item) => ({ id: item.id, type: 'todoNode', position: item.position, width: item.width, height: item.height, data: { itemId: item.id, text: item.text, done: item.isDone, color: item.color, progressStatus: item.progressStatus, isDirectory: item.isDirectory } }));
+    const subTaskNodes: Node[] = items.flatMap((item) => (item.timeBlocks || [])
+      .filter((block) => (block.name || '').trim().length > 0)
+      .map((block, index) => ({
+        // 小任务项 node: uses a persisted dragged position when available, else derived relative to its parent TodoItem node (fanned out below-right).
+        id: `subtask-${block.id}`,
+        type: 'subTaskNode',
+        position: subTaskPositions[block.id] || { x: item.position.x + 40, y: item.position.y + (item.height || 44) + 24 + index * 40 },
+        draggable: true,
+        data: { itemId: item.id, blockId: block.id, name: block.name || '', color: item.color },
+      })));
+    return [...itemNodes, ...subTaskNodes];
+  }, [items, subTaskPositions]);
+  const edges = useMemo<Edge[]>(() => {
+    const todoEdges: Edge[] = allEdges.filter((edge) => edge.laneId === lane.id).map((edge) => ({ id: edge.id, source: edge.sourceItemId, target: edge.targetItemId, type: 'bezier', style: { stroke: '#9b8ae4', strokeWidth: 2 }, interactionWidth: 24 }));
+    const subTaskEdges: Edge[] = items.flatMap((item) => (item.timeBlocks || [])
+      .filter((block) => (block.name || '').trim().length > 0)
+      .map((block) => ({ id: `subtask-edge-${block.id}`, source: item.id, target: `subtask-${block.id}`, type: 'smoothstep', animated: false, style: { stroke: '#c4b5fd', strokeWidth: 1.5, strokeDasharray: '4,4' }, interactionWidth: 20, selectable: false })));
+    return [...todoEdges, ...subTaskEdges];
+  }, [allEdges, lane.id, items]);
   const [localNodes, setLocalNodes] = useState(nodes);
   useEffect(() => setLocalNodes(nodes), [nodes]);
-  const onNodesChange = useCallback((changes: NodeChange<Node<BoardNodeData>>[]) => setLocalNodes((current) => applyNodeChanges(changes, current)), []);
+  const onNodesChange = useCallback((changes: NodeChange<Node>[]) => setLocalNodes((current) => applyNodeChanges(changes, current)), []);
   const connect = useCallback((connection: Connection) => { if (connection.source && connection.target) addEdge(lane.id, connection.source, connection.target); }, [addEdge, lane.id]);
-  const selectedNodes = localNodes.filter((node) => node.selected);
+  const selectedNodes = localNodes.filter((node) => node.selected && node.type === 'todoNode');
   const removeSelected = useCallback(() => selectedNodes.forEach((node) => removeItem(node.id)), [removeItem, selectedNodes]);
   const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
     const target = event.target as HTMLElement;
@@ -862,7 +899,21 @@ const BoardCanvas: React.FC<{ lane: TodoLane }> = ({ lane }) => {
     {selectedNodes.length > 1 ? <DeleteSelectionBar count={selectedNodes.length} onDelete={removeSelected} /> : null}
     <div className="absolute bottom-6 left-1/2 z-30 flex -translate-x-1/2 items-center gap-1 rounded-xl border border-neutral-200 bg-white/95 p-1 shadow-lg"><button type="button" onClick={() => setCanvasTool('pan')} className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-semibold ${canvasTool === 'pan' ? 'bg-purple-100 text-purple-600' : 'text-neutral-500 hover:bg-neutral-50'}`}><MousePointer2 className="h-3.5 w-3.5" />移动</button><button type="button" onClick={() => setCanvasTool('select')} className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-semibold ${canvasTool === 'select' ? 'bg-purple-100 text-purple-600' : 'text-neutral-500 hover:bg-neutral-50'}`}><Scan className="h-3.5 w-3.5" />框选</button></div>
     <div className="absolute bottom-6 right-6 z-30 flex items-center gap-1 rounded-xl border border-purple-200 bg-white/95 p-1.5 shadow-lg"><button type="button" onClick={() => zoomIn()} className="flex h-8 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-neutral-600 hover:bg-purple-50"><ZoomIn className="h-3.5 w-3.5" />放大</button><button type="button" onClick={() => zoomOut()} className="flex h-8 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-neutral-600 hover:bg-purple-50"><ZoomOut className="h-3.5 w-3.5" />缩小</button><button type="button" onClick={() => fitView({ padding: 0.25, duration: 400 })} className="flex h-8 items-center gap-1 rounded-lg bg-purple-50 px-2 text-[11px] font-semibold text-purple-600 hover:bg-purple-100"><Maximize className="h-3.5 w-3.5" />适应</button></div>
-    <ReactFlow nodes={localNodes} edges={edges} nodeTypes={nodeTypes} onNodesChange={onNodesChange} onNodeDragStop={() => { localNodes.forEach((node) => { if (node.selected) update(node.id, { position: node.position }); }); }} onConnect={connect} onConnectStart={() => { suppressCreateRef.current = true; }} onConnectEnd={() => { window.setTimeout(() => { suppressCreateRef.current = false; }, 200); }} onEdgeDoubleClick={(_event, edge) => removeEdge(edge.id)} onPaneClick={(event) => { if (event.detail !== 2 || suppressCreateRef.current) return; const position = screenToFlowPosition({ x: event.clientX, y: event.clientY }); const itemId = create(lane.id, '新待办'); if (itemId) update(itemId, { position: { x: position.x - 80, y: position.y - 24 } }); }} zoomOnDoubleClick={false} selectionOnDrag={canvasTool === 'select'} selectionMode={SelectionMode.Partial} panOnDrag={canvasTool === 'pan' ? [0, 1, 2] : [1, 2]} nodesDeletable={false} deleteKeyCode={null} fitView minZoom={0.15} maxZoom={1.5} connectionRadius={28} connectionLineType={ConnectionLineType.Bezier} connectionLineStyle={{ stroke: '#9b8ae4', strokeWidth: 2 }}>
+    <ReactFlow nodes={localNodes} edges={edges} nodeTypes={nodeTypes} onNodesChange={onNodesChange} onNodeDragStop={(_event, draggedNode) => {
+      // persist every node moved in this drag (multi-select drags move all selected together, plus the dragged node itself)
+      const movedIds = new Set<string>([draggedNode.id, ...localNodes.filter((node) => node.selected).map((node) => node.id)]);
+      const nodesToPersist = localNodes.filter((node) => movedIds.has(node.id));
+      const subTaskUpdates: Record<string, { x: number; y: number }> = {};
+      nodesToPersist.forEach((node) => {
+        if (node.type === 'todoNode') {
+          update(node.id, { position: node.position });
+        } else if (node.type === 'subTaskNode') {
+          const blockId = (node.data as { blockId?: string })?.blockId;
+          if (blockId) subTaskUpdates[blockId] = node.position;
+        }
+      });
+      if (Object.keys(subTaskUpdates).length > 0) updateSubTaskPositions(subTaskUpdates);
+    }} onConnect={connect} onConnectStart={() => { suppressCreateRef.current = true; }} onConnectEnd={() => { window.setTimeout(() => { suppressCreateRef.current = false; }, 200); }} onEdgeDoubleClick={(_event, edge) => removeEdge(edge.id)} onPaneClick={(event) => { if (event.detail !== 2 || suppressCreateRef.current) return; const position = screenToFlowPosition({ x: event.clientX, y: event.clientY }); const itemId = create(lane.id, '新待办'); if (itemId) update(itemId, { position: { x: position.x - 80, y: position.y - 24 } }); }} zoomOnDoubleClick={false} selectionOnDrag={canvasTool === 'select'} selectionMode={SelectionMode.Partial} panOnDrag={canvasTool === 'pan' ? [0, 1, 2] : [1, 2]} nodesDeletable={false} deleteKeyCode={null} fitView minZoom={0.15} maxZoom={1.5} connectionRadius={28} connectionLineType={ConnectionLineType.Bezier} connectionLineStyle={{ stroke: '#9b8ae4', strokeWidth: 2 }}>
       <Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="#d9ddea" />
     </ReactFlow>
   </div>;
