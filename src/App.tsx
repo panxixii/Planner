@@ -1,7 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import {
   Boxes,
-  CalendarDays,
   Check,
   ChevronDown,
   ChevronLeft,
@@ -13,19 +12,18 @@ import {
   Undo2,
 } from 'lucide-react';
 import { useAppStore } from './store';
+import { computeBranchLineHeads } from './todoBranchLines';
 import { DataTransferControls } from './components/DataTransferControls';
 import { WelcomeScreen } from './components/WelcomeScreen';
 
 const TodoPage = lazy(() => import('./components/TodoPage').then((module) => ({ default: module.TodoPage })));
-const SchedulePage = lazy(() => import('./components/SchedulePage').then((module) => ({ default: module.SchedulePage })));
 const TimeTemplatesPage = lazy(() => import('./components/TimeTemplatesPage').then((module) => ({ default: module.TimeTemplatesPage })));
 const DraftsPage = lazy(() => import('./components/DraftsPage').then((module) => ({ default: module.DraftsPage })));
 
-type MenuId = 'task-pool' | 'schedule' | 'bom' | 'drafts' | 'time-templates';
+type MenuId = 'task-pool' | 'bom' | 'drafts' | 'time-templates';
 
 const menuItems = [
   { id: 'task-pool' as const, label: 'Todo', icon: ListTodo },
-  { id: 'schedule' as const, label: '日程', icon: CalendarDays },
   { id: 'bom' as const, label: 'BOM', icon: Boxes },
   { id: 'drafts' as const, label: '草稿', icon: FilePenLine },
   { id: 'time-templates' as const, label: '时间模版', icon: Clock3 },
@@ -36,10 +34,12 @@ export default function App() {
   const [todoNavOpen, setTodoNavOpen] = useState(false);
   const showWelcome = useAppStore((state) => state.showWelcome);
   const dismissWelcome = useAppStore((state) => state.dismissWelcome);
-  const allTodoLanes = useAppStore((state) => state.todoLanes);
-  const todoLanes = useMemo(() => allTodoLanes.filter((lane) => lane.type === 'custom'), [allTodoLanes]);
+  const todoItems = useAppStore((state) => state.todoItems);
+  const todoEdges = useAppStore((state) => state.todoEdges);
+  const branchFilter = useAppStore((state) => state.todoBranchFilter);
+  const setBranchFilter = useAppStore((state) => state.setTodoBranchFilter);
+  const heads = useMemo(() => computeBranchLineHeads(todoItems, todoEdges), [todoItems, todoEdges]);
   const bandDeleteZoneActive = useAppStore((state) => state.bandDeleteZoneActive);
-  const focusLane = useAppStore((state) => state.focusLane);
   const selectTask = useAppStore((state) => state.selectTask);
   const isSidebarCollapsed = useAppStore((state) => state.isSidebarCollapsed);
   const toggleSidebar = useAppStore((state) => state.toggleSidebar);
@@ -66,6 +66,18 @@ export default function App() {
   const handleMenuChange = (menuId: MenuId) => {
     setActiveMenu(menuId);
     selectTask(null);
+  };
+
+  const isHeadSelected = (headId: string) => branchFilter === null || branchFilter.includes(headId);
+  const toggleHead = (headId: string) => {
+    if (branchFilter === null) {
+      // currently "all"; toggling one off snapshots the current heads minus this one
+      setBranchFilter(heads.map((h) => h.id).filter((id) => id !== headId));
+    } else if (branchFilter.includes(headId)) {
+      setBranchFilter(branchFilter.filter((id) => id !== headId));
+    } else {
+      setBranchFilter([...branchFilter, headId]);
+    }
   };
 
   if (showWelcome) return <WelcomeScreen onStart={dismissWelcome} />;
@@ -123,19 +135,53 @@ export default function App() {
                     ) : null}
                   </button>
                   {isTodo && todoNavOpen ? (
-                    <div className="custom-scrollbar mt-1 max-h-64 space-y-0.5 overflow-y-auto pl-3.5" aria-label="分线导航">
-                      {todoLanes.map((lane) => (
+                    <div className="mt-1 pl-3.5" aria-label="分线筛选">
+                      <div className="flex items-center gap-1 px-1 pb-1">
                         <button
-                          key={lane.id}
-                          onClick={() => { handleMenuChange('task-pool'); focusLane(lane.id); }}
-                          className="flex h-8 w-full items-center gap-2.5 rounded-md px-2.5 text-left text-xs font-medium text-neutral-500 transition-colors hover:bg-neutral-50 hover:text-neutral-800"
-                          title={lane.name}
+                          type="button"
+                          onClick={() => setBranchFilter(null)}
+                          className="flex h-6 flex-1 items-center justify-center rounded-md border border-neutral-200 bg-neutral-50 text-[10px] font-semibold text-neutral-500 transition-colors hover:bg-purple-50 hover:text-purple-600"
+                          title="全选"
                         >
-                          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${lane.type === 'main' ? 'bg-purple-500' : 'bg-sky-400'}`} />
-                          <span className="truncate">{lane.name}</span>
+                          全选
                         </button>
-                      ))}
-                      {todoLanes.length === 0 ? <p className="px-2.5 py-1.5 text-[11px] text-neutral-300">暂无分线</p> : null}
+                        <button
+                          type="button"
+                          onClick={() => setBranchFilter([])}
+                          className="flex h-6 flex-1 items-center justify-center rounded-md border border-neutral-200 bg-neutral-50 text-[10px] font-semibold text-neutral-500 transition-colors hover:bg-purple-50 hover:text-purple-600"
+                          title="全不选"
+                        >
+                          全不选
+                        </button>
+                      </div>
+                      <div className="custom-scrollbar max-h-56 space-y-0.5 overflow-y-auto">
+                        {heads.map((head) => {
+                          const selected = isHeadSelected(head.id);
+                          return (
+                            <div
+                              key={head.id}
+                              className="flex h-8 w-full items-center gap-2 rounded-md px-2.5 text-xs font-medium text-neutral-500 transition-colors hover:bg-neutral-50"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selected}
+                                onChange={() => { handleMenuChange('task-pool'); toggleHead(head.id); }}
+                                className="h-3.5 w-3.5 shrink-0 cursor-pointer accent-purple-500"
+                                aria-label={`筛选 ${head.label}`}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => { handleMenuChange('task-pool'); setBranchFilter([head.id]); }}
+                                className={`min-w-0 flex-1 truncate text-left transition-colors hover:text-neutral-800 ${selected ? 'text-neutral-700' : 'text-neutral-400'}`}
+                                title={`仅显示 ${head.label}`}
+                              >
+                                {head.label}
+                              </button>
+                            </div>
+                          );
+                        })}
+                        {heads.length === 0 ? <p className="px-2.5 py-1.5 text-[11px] text-neutral-300">暂无分线</p> : null}
+                      </div>
                     </div>
                   ) : null}
                 </div>
@@ -183,10 +229,6 @@ export default function App() {
         {activeMenu === 'task-pool' ? (
           <Suspense fallback={<div className="flex min-h-0 flex-1 items-center justify-center text-sm text-neutral-400">正在加载 Todo…</div>}>
             <TodoPage />
-          </Suspense>
-        ) : activeMenu === 'schedule' ? (
-          <Suspense fallback={<div className="flex min-h-0 flex-1 items-center justify-center text-sm text-neutral-400">正在加载日程…</div>}>
-            <SchedulePage />
           </Suspense>
         ) : activeMenu === 'time-templates' ? (
           <Suspense fallback={<div className="flex min-h-0 flex-1 items-center justify-center text-sm text-neutral-400">正在加载时间模版…</div>}>

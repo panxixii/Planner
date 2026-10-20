@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Background,
   BackgroundVariant,
@@ -21,6 +21,7 @@ import '@xyflow/react/dist/style.css';
 import { CalendarDays, Check, CircleDot, Columns3, GitBranch, GripVertical, Link2, List, Maximize, MousePointer2, Pipette, Plus, Scan, Trash2, ZoomIn, ZoomOut } from 'lucide-react';
 import { useAppStore } from '../store';
 import { isUpcomingTodayScheduleItem } from '../taskTimeBlocks';
+import { buildTodoGraph, computeVisibleItemIds, reachableFrom } from '../todoBranchLines';
 import type { TodoEdge, TodoItem, TodoLane, TodoLaneSection } from '../types';
 import { TodoBoard } from './TodoBoard';
 import { TodoGantt } from './TodoGantt';
@@ -30,6 +31,8 @@ import { TodoTimeLabel } from './TodoTimeLabel';
 import { TodoViewSwitcher, type TodoLaneView } from './TodoViewSwitcher';
 import { useTapClick } from './useTapClick';
 import { createPortal } from 'react-dom';
+
+const SchedulePage = lazy(() => import('./SchedulePage').then((m) => ({ default: m.SchedulePage })));
 
 const visibleLane = (lane: TodoLane) => lane.type === 'custom';
 
@@ -817,28 +820,100 @@ const DeleteSelectionBar: React.FC<{ count: number; onDelete: () => void }> = ({
   );
 };
 
-const BoardCanvas: React.FC<{ lane: TodoLane }> = ({ lane }) => {
+const BoardCanvas: React.FC<{ visibleItemIds: Set<string> | null }> = ({ visibleItemIds }) => {
   const allItems = useAppStore((state) => state.todoItems);
   const allEdges = useAppStore((state) => state.todoEdges);
+  const allLanes = useAppStore((state) => state.todoLanes);
   const create = useAppStore((state) => state.createTodoItem);
   const update = useAppStore((state) => state.updateTodoItem);
   const addEdge = useAppStore((state) => state.addTodoEdge);
   const removeEdge = useAppStore((state) => state.removeTodoEdge);
   const removeItem = useAppStore((state) => state.removeTodoItem);
+  const beginHistoryGroup = useAppStore((state) => state.beginHistoryGroup);
+  const endHistoryGroup = useAppStore((state) => state.endHistoryGroup);
   const { screenToFlowPosition, zoomIn, zoomOut, fitView } = useReactFlow();
   const suppressCreateRef = useRef(false);
   const [canvasTool, setCanvasTool] = useState<'pan' | 'select'>('pan');
+  const mainLaneId = allLanes.find((l) => l.type === 'main')?.id ?? 'todo-main';
   const items = useMemo(() => allItems.filter((item) => (
-    item.laneId === lane.id
-    || (item.referencedLaneIds || []).includes(lane.id)
-    || (lane.id === 'todo-main' && isUpcomingTodayScheduleItem(item))
-  )), [allItems, lane.id]);
+    visibleItemIds === null || visibleItemIds.has(item.id)
+  )), [allItems, visibleItemIds]);
   const nodes = useMemo<Node<BoardNodeData>[]>(() => items.map((item) => ({ id: item.id, type: 'todoNode', position: item.position, width: item.width, height: item.height, data: { itemId: item.id, text: item.text, done: item.isDone, color: item.color, progressStatus: item.progressStatus, isDirectory: item.isDirectory } })), [items]);
-  const edges = useMemo<Edge[]>(() => allEdges.filter((edge) => edge.laneId === lane.id).map((edge) => ({ id: edge.id, source: edge.sourceItemId, target: edge.targetItemId, type: 'bezier', style: { stroke: '#9b8ae4', strokeWidth: 2 }, interactionWidth: 24 })), [allEdges, lane.id]);
+  const edges = useMemo<Edge[]>(() => allEdges.filter((edge) => visibleItemIds === null || (visibleItemIds.has(edge.sourceItemId) && visibleItemIds.has(edge.targetItemId))).map((edge) => ({ id: edge.id, source: edge.sourceItemId, target: edge.targetItemId, type: 'bezier', style: { stroke: '#9b8ae4', strokeWidth: 2 }, interactionWidth: 24 })), [allEdges, visibleItemIds]);
+  // Members each head drags, derived from the FULL graph so hidden members move too.
+  const membersByHead = useMemo(() => {
+    const { outgoing, indegree } = buildTodoGraph(allItems, allEdges);
+    const map = new Map<string, Set<string>>();
+    for (const it of allItems) {
+      if ((indegree.get(it.id) || 0) !== 0) continue; // only heads drag their branch-line
+      const reach = reachableFrom(it.id, outgoing);
+      reach.delete(it.id);
+      map.set(it.id, reach);
+    }
+    return map;
+  }, [allItems, allEdges]);
   const [localNodes, setLocalNodes] = useState(nodes);
   useEffect(() => setLocalNodes(nodes), [nodes]);
   const onNodesChange = useCallback((changes: NodeChange<Node<BoardNodeData>>[]) => setLocalNodes((current) => applyNodeChanges(changes, current)), []);
-  const connect = useCallback((connection: Connection) => { if (connection.source && connection.target) addEdge(lane.id, connection.source, connection.target); }, [addEdge, lane.id]);
+  const connect = useCallback((connection: Connection) => {
+    // laneId is a hint only; addTodoEdge resolves the real lane from the endpoints
+    if (connection.source && connection.target) addEdge(mainLaneId, connection.source, connection.target);
+  }, [addEdge, mainLaneId]);
+
+  // Fixed-origin snapshot captured at drag-start (never a per-frame running sum).
+  const dragSnapshot = useRef<{
+    headId: string;
+    headStart: { x: number; y: number };
+    memberStarts: Map<string, { x: number; y: number }>; // on-screen members only
+  } | null>(null);
+  const onNodeDragStart = useCallback((_e: React.MouseEvent, node: Node<BoardNodeData>) => {
+    const members = membersByHead.get(node.id); // defined iff node is a head
+    if (!members) { dragSnapshot.current = null; return; }
+    const memberStarts = new Map<string, { x: number; y: number }>();
+    localNodes.forEach((n) => {
+      if (members.has(n.id)) memberStarts.set(n.id, { x: n.position.x, y: n.position.y });
+    });
+    dragSnapshot.current = { headId: node.id, headStart: { x: node.position.x, y: node.position.y }, memberStarts };
+  }, [localNodes, membersByHead]);
+  const onNodeDrag = useCallback((_e: React.MouseEvent, node: Node<BoardNodeData>) => {
+    const snap = dragSnapshot.current;
+    if (!snap || snap.headId !== node.id) {
+      setLocalNodes((nds) => nds.map((n) => (n.id === node.id ? { ...n, position: node.position } : n)));
+      return;
+    }
+    const dx = node.position.x - snap.headStart.x;
+    const dy = node.position.y - snap.headStart.y;
+    setLocalNodes((nds) => nds.map((n) => {
+      if (n.id === node.id) return { ...n, position: node.position };
+      const start = snap.memberStarts.get(n.id);
+      if (start) return { ...n, position: { x: start.x + dx, y: start.y + dy } };
+      return n;
+    }));
+  }, []);
+  const onNodeDragStop = useCallback((_e: React.MouseEvent, node: Node<BoardNodeData>) => {
+    const snap = dragSnapshot.current;
+    const members = membersByHead.get(node.id);
+    if (snap && snap.headId === node.id && members) {
+      const dx = node.position.x - snap.headStart.x;
+      const dy = node.position.y - snap.headStart.y;
+      beginHistoryGroup();
+      try {
+        update(node.id, { position: node.position });
+        for (const memberId of members) {
+          const start = snap.memberStarts.get(memberId) ?? allItems.find((i) => i.id === memberId)?.position;
+          if (start) update(memberId, { position: { x: start.x + dx, y: start.y + dy } });
+        }
+      } finally {
+        endHistoryGroup();
+        dragSnapshot.current = null;
+      }
+    } else {
+      localNodes.forEach((n) => { if (n.selected) update(n.id, { position: n.position }); });
+      update(node.id, { position: node.position });
+      dragSnapshot.current = null;
+    }
+  }, [localNodes, membersByHead, update, allItems, beginHistoryGroup, endHistoryGroup]);
+
   const selectedNodes = localNodes.filter((node) => node.selected);
   const removeSelected = useCallback(() => selectedNodes.forEach((node) => removeItem(node.id)), [removeItem, selectedNodes]);
   const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
@@ -852,17 +927,18 @@ const BoardCanvas: React.FC<{ lane: TodoLane }> = ({ lane }) => {
     if (event.key === 'Tab' && selectedNodes.length === 1) {
       event.preventDefault();
       const parent = selectedNodes[0];
-      const itemId = create(lane.id, '新待办');
+      // laneId is a hint only; addTodoEdge resolves the real lane from the endpoints
+      const itemId = create(mainLaneId, '新待办');
       if (!itemId) return;
       update(itemId, { position: { x: parent.position.x + 220, y: parent.position.y } });
-      addEdge(lane.id, parent.id, itemId);
+      addEdge(mainLaneId, parent.id, itemId);
     }
-  }, [addEdge, create, lane.id, removeSelected, selectedNodes, update]);
+  }, [addEdge, create, mainLaneId, removeSelected, selectedNodes, update]);
   return <div onKeyDown={handleKeyDown} tabIndex={0} className="relative min-h-0 flex-1 overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-xs outline-none">
     {selectedNodes.length > 1 ? <DeleteSelectionBar count={selectedNodes.length} onDelete={removeSelected} /> : null}
     <div className="absolute bottom-6 left-1/2 z-30 flex -translate-x-1/2 items-center gap-1 rounded-xl border border-neutral-200 bg-white/95 p-1 shadow-lg"><button type="button" onClick={() => setCanvasTool('pan')} className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-semibold ${canvasTool === 'pan' ? 'bg-purple-100 text-purple-600' : 'text-neutral-500 hover:bg-neutral-50'}`}><MousePointer2 className="h-3.5 w-3.5" />移动</button><button type="button" onClick={() => setCanvasTool('select')} className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-semibold ${canvasTool === 'select' ? 'bg-purple-100 text-purple-600' : 'text-neutral-500 hover:bg-neutral-50'}`}><Scan className="h-3.5 w-3.5" />框选</button></div>
     <div className="absolute bottom-6 right-6 z-30 flex items-center gap-1 rounded-xl border border-purple-200 bg-white/95 p-1.5 shadow-lg"><button type="button" onClick={() => zoomIn()} className="flex h-8 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-neutral-600 hover:bg-purple-50"><ZoomIn className="h-3.5 w-3.5" />放大</button><button type="button" onClick={() => zoomOut()} className="flex h-8 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-neutral-600 hover:bg-purple-50"><ZoomOut className="h-3.5 w-3.5" />缩小</button><button type="button" onClick={() => fitView({ padding: 0.25, duration: 400 })} className="flex h-8 items-center gap-1 rounded-lg bg-purple-50 px-2 text-[11px] font-semibold text-purple-600 hover:bg-purple-100"><Maximize className="h-3.5 w-3.5" />适应</button></div>
-    <ReactFlow nodes={localNodes} edges={edges} nodeTypes={nodeTypes} onNodesChange={onNodesChange} onNodeDragStop={() => { localNodes.forEach((node) => { if (node.selected) update(node.id, { position: node.position }); }); }} onConnect={connect} onConnectStart={() => { suppressCreateRef.current = true; }} onConnectEnd={() => { window.setTimeout(() => { suppressCreateRef.current = false; }, 200); }} onEdgeDoubleClick={(_event, edge) => removeEdge(edge.id)} onPaneClick={(event) => { if (event.detail !== 2 || suppressCreateRef.current) return; const position = screenToFlowPosition({ x: event.clientX, y: event.clientY }); const itemId = create(lane.id, '新待办'); if (itemId) update(itemId, { position: { x: position.x - 80, y: position.y - 24 } }); }} zoomOnDoubleClick={false} selectionOnDrag={canvasTool === 'select'} selectionMode={SelectionMode.Partial} panOnDrag={canvasTool === 'pan' ? [0, 1, 2] : [1, 2]} nodesDeletable={false} deleteKeyCode={null} fitView minZoom={0.15} maxZoom={1.5} connectionRadius={28} connectionLineType={ConnectionLineType.Bezier} connectionLineStyle={{ stroke: '#9b8ae4', strokeWidth: 2 }}>
+    <ReactFlow nodes={localNodes} edges={edges} nodeTypes={nodeTypes} onNodesChange={onNodesChange} onNodeDragStart={onNodeDragStart} onNodeDrag={onNodeDrag} onNodeDragStop={onNodeDragStop} onConnect={connect} onConnectStart={() => { suppressCreateRef.current = true; }} onConnectEnd={() => { window.setTimeout(() => { suppressCreateRef.current = false; }, 200); }} onEdgeDoubleClick={(_event, edge) => removeEdge(edge.id)} onPaneClick={(event) => { if (event.detail !== 2 || suppressCreateRef.current) return; const position = screenToFlowPosition({ x: event.clientX, y: event.clientY }); /* laneId is a hint only; addTodoEdge resolves the real lane from the endpoints */ const itemId = create(mainLaneId, '新待办'); if (itemId) update(itemId, { position: { x: position.x - 80, y: position.y - 24 } }); }} zoomOnDoubleClick={false} selectionOnDrag={canvasTool === 'select'} selectionMode={SelectionMode.Partial} panOnDrag={canvasTool === 'pan' ? [0, 1, 2] : [1, 2]} nodesDeletable={false} deleteKeyCode={null} fitView minZoom={0.15} maxZoom={1.5} connectionRadius={28} connectionLineType={ConnectionLineType.Bezier} connectionLineStyle={{ stroke: '#9b8ae4', strokeWidth: 2 }}>
       <Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="#d9ddea" />
     </ReactFlow>
   </div>;
@@ -870,6 +946,13 @@ const BoardCanvas: React.FC<{ lane: TodoLane }> = ({ lane }) => {
 
 export const TodoPage: React.FC = () => {
   const allLanes = useAppStore((state) => state.todoLanes);
+  const todoItems = useAppStore((state) => state.todoItems);
+  const todoEdges = useAppStore((state) => state.todoEdges);
+  const branchFilter = useAppStore((state) => state.todoBranchFilter);
+  const visibleItemIds = useMemo(
+    () => computeVisibleItemIds(todoItems, todoEdges, branchFilter),
+    [todoItems, todoEdges, branchFilter],
+  );
   const addLane = useAppStore((state) => state.addTodoLane);
   const addSection = useAppStore((state) => state.addTodoLaneSection);
   const pendingFocusLaneId = useAppStore((state) => state.pendingFocusLaneId);
@@ -944,9 +1027,27 @@ export const TodoPage: React.FC = () => {
     }, 60);
   }, [pendingFocusLaneId, consumeFocusedLane]);
 
-  if (boardLane) {
-    return <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-neutral-50 p-6"><div className="mx-auto flex min-h-0 w-full max-w-[1500px] flex-1 flex-col"><div className="flex items-center justify-between gap-3"><h2 className="truncate text-lg font-bold text-neutral-800">{boardLane.name}</h2><TodoViewSwitcher view={laneView} onChange={setLaneView} onBack={() => setBoardLaneId(null)} /></div><div className="mt-5 flex min-h-0 flex-1">{laneView === 'board' ? <ReactFlowProvider><BoardCanvas lane={boardLane} /></ReactFlowProvider> : laneView === 'kanban' ? <TodoBoard lane={boardLane} /> : <TodoGantt lane={boardLane} />}</div></div></div>;
-  }
+  void boardLane;
+  return <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-neutral-50 p-6"><div className="mx-auto flex min-h-0 w-full max-w-[1500px] flex-1 flex-col">
+    <div className="flex items-center justify-between gap-3">
+      <h2 className="truncate text-lg font-bold text-neutral-800">Todo</h2>
+      <TodoViewSwitcher view={laneView} onChange={setLaneView} />
+    </div>
+    <div className="mt-5 flex min-h-0 flex-1">
+      {laneView === 'board' ? (
+        <ReactFlowProvider><BoardCanvas visibleItemIds={visibleItemIds} /></ReactFlowProvider>
+      ) : laneView === 'kanban' ? (
+        <TodoBoard visibleItemIds={visibleItemIds} />
+      ) : laneView === 'gantt' ? (
+        <TodoGantt visibleItemIds={visibleItemIds} />
+      ) : (
+        <Suspense fallback={<div className="flex min-h-0 flex-1 items-center justify-center text-sm text-neutral-400">正在加载日程…</div>}>
+          <SchedulePage visibleItemIds={visibleItemIds} />
+        </Suspense>
+      )}
+    </div>
+  </div></div>;
+
   return <div data-todo-scroller className="relative flex min-h-0 flex-1 flex-col overflow-y-auto bg-neutral-50 p-6 custom-scrollbar"><div className="mx-auto flex min-h-0 w-full max-w-[1100px] flex-1 flex-col">
     <div className="flex items-center justify-between gap-3">
       <div className="flex items-center gap-3"><h2 className="text-lg font-bold text-neutral-800">Todo</h2><div className="flex items-center gap-1 text-xs text-neutral-400"><List className="h-3.5 w-3.5" />List</div></div>

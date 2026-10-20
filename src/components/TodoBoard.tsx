@@ -1,8 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Ban, Circle, CircleDashed, CircleCheck, Link2, Plus } from 'lucide-react';
 import { useAppStore } from '../store';
-import { isUpcomingTodayScheduleItem } from '../taskTimeBlocks';
-import type { TodoItem, TodoLane } from '../types';
+import type { TodoItem } from '../types';
 import { TodoItemToolbarHost } from './TodoItemToolbar';
 import { TodoStatusBadge, isTodoItemStruck, statusKeyOf } from './TodoStatusBadge';
 import { TodoTimeLabel } from './TodoTimeLabel';
@@ -87,7 +86,7 @@ const TodoCard: React.FC<{
   );
 };
 
-export const TodoBoard: React.FC<{ lane: TodoLane }> = ({ lane }) => {
+export const TodoBoard: React.FC<{ visibleItemIds: Set<string> | null }> = ({ visibleItemIds }) => {
   const allItems = useAppStore((state) => state.todoItems);
   const allLanes = useAppStore((state) => state.todoLanes);
   const toggleDone = useAppStore((state) => state.toggleTodoItemDone);
@@ -97,11 +96,10 @@ export const TodoBoard: React.FC<{ lane: TodoLane }> = ({ lane }) => {
   const [dropColumn, setDropColumn] = useState<string | null>(null);
   const [toolbar, setToolbar] = useState<{ id: string; el: HTMLElement; x: number } | null>(null);
   const laneNamesById = useMemo(() => new Map(allLanes.map((item) => [item.id, item.name])), [allLanes]);
+  const mainLaneId = allLanes.find((l) => l.type === 'main')?.id ?? 'todo-main';
   const items = useMemo(() => allItems.filter((item) => !item.isDirectory && (
-    item.laneId === lane.id
-    || (item.referencedLaneIds || []).includes(lane.id)
-    || (lane.id === 'todo-main' && isUpcomingTodayScheduleItem(item))
-  )).sort((a, b) => a.order - b.order), [allItems, lane.id]);
+    visibleItemIds === null || visibleItemIds.has(item.id)
+  )).sort((a, b) => a.order - b.order), [allItems, visibleItemIds]);
   const doneSet = useMemo(() => new Set(items.filter((item) => item.isDone).map((item) => item.id)), [items]);
   const columns = useMemo(() => STATUS_COLUMNS.map((column) => ({
     ...column,
@@ -141,7 +139,7 @@ export const TodoBoard: React.FC<{ lane: TodoLane }> = ({ lane }) => {
               <div className="flex shrink-0 items-center gap-1.5">
                 <span className="text-[11px] text-neutral-400">{column.items.length}</span>
                 {column.id === 'status-not-started' ? (
-                  <button type="button" onClick={() => createItem(lane.id, '新待办')} className="flex h-6 w-6 items-center justify-center rounded text-neutral-400 hover:bg-purple-50 hover:text-purple-600" title="添加待办"><Plus className="h-3.5 w-3.5" /></button>
+                  <button type="button" onClick={() => createItem(mainLaneId, '新待办')} className="flex h-6 w-6 items-center justify-center rounded text-neutral-400 hover:bg-purple-50 hover:text-purple-600" title="添加待办"><Plus className="h-3.5 w-3.5" /></button>
                 ) : null}
               </div>
             </header>
@@ -149,7 +147,7 @@ export const TodoBoard: React.FC<{ lane: TodoLane }> = ({ lane }) => {
               {column.items.map((item) => {
                 const isCurrent = statusOf(item) === column.id;
                 return (
-                  <TodoCard key={item.id} item={item} isCurrent={isCurrent} referenceBadges={lane.id === 'todo-main' ? [] : (item.referencedLaneIds || []).map((id) => ({ id, label: laneNamesById.get(id) || '未知分线' }))} dragging={dragId === item.id} onDragStart={() => setDragId(item.id)} onDragEnd={() => { setDragId(null); setDropColumn(null); }} onToggle={() => toggleDone(item.id)} onUpdate={(text) => updateItem(item.id, { text })} onOpenToolbar={(el, x) => setToolbar((current) => current?.id === item.id ? null : { id: item.id, el, x })} />
+                  <TodoCard key={item.id} item={item} isCurrent={isCurrent} referenceBadges={(item.referencedLaneIds || []).map((id) => ({ id, label: laneNamesById.get(id) || '未知分线' }))} dragging={dragId === item.id} onDragStart={() => setDragId(item.id)} onDragEnd={() => { setDragId(null); setDropColumn(null); }} onToggle={() => toggleDone(item.id)} onUpdate={(text) => updateItem(item.id, { text })} onOpenToolbar={(el, x) => setToolbar((current) => current?.id === item.id ? null : { id: item.id, el, x })} />
                 );
               })}
               {column.items.length === 0 ? <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-neutral-200 py-6 text-[11px] text-neutral-300">拖拽任务到此列</div> : null}

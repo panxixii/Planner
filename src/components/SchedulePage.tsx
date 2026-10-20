@@ -519,7 +519,7 @@ const DayHourGrid: React.FC<{
   );
 };
 
-export const SchedulePage: React.FC = () => {
+export const SchedulePage: React.FC<{ visibleItemIds?: Set<string> | null }> = ({ visibleItemIds = null }) => {
   const todoItems = useAppStore((state) => state.todoItems);
   const createTodoItem = useAppStore((state) => state.createTodoItem);
   const updateTodoItem = useAppStore((state) => state.updateTodoItem);
@@ -561,7 +561,8 @@ export const SchedulePage: React.FC = () => {
     () => new Set(calendars.filter((calendar) => calendar.visible).map((calendar) => calendar.id)),
     [calendars],
   );
-  const allEvents = useMemo(() => collectEvents(todoItems, calendars), [todoItems, calendars]);
+  const scopedItems = useMemo(() => (visibleItemIds === null ? todoItems : todoItems.filter((i) => visibleItemIds.has(i.id))), [todoItems, visibleItemIds]);
+  const allEvents = useMemo(() => collectEvents(scopedItems, calendars), [scopedItems, calendars]);
   const events = useMemo(
     () => allEvents.filter((event) => visibleCalendarIds.has(event.calendarId)),
     [allEvents, visibleCalendarIds],
@@ -591,10 +592,6 @@ export const SchedulePage: React.FC = () => {
 
   const weekDays = useMemo(() => getWeekDays(anchor), [anchor]);
   const monthDays = useMemo(() => getMonthGrid(anchor), [anchor]);
-  const ganttLane = useMemo(
-    () => todoLanes.find((lane) => lane.type === 'main') || todoLanes[0],
-    [todoLanes],
-  );
   const title = view === 'month'
     ? formatMonthLabel(anchor)
     : view === 'week'
@@ -1221,13 +1218,9 @@ export const SchedulePage: React.FC = () => {
         ) : null}
 
         {view === 'gantt' ? (
-          ganttLane ? (
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-neutral-50 p-3">
-              <TodoGantt lane={ganttLane} />
-            </div>
-          ) : (
-            <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-neutral-400">暂无可显示的待办泳道</div>
-          )
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-neutral-50 p-3">
+            <TodoGantt visibleItemIds={visibleItemIds} />
+          </div>
         ) : null}
       </section>
 
