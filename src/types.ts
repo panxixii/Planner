@@ -122,6 +122,7 @@ export interface TodoItem {
   sectionId?: string; // Legacy visual band linkage; kept only for saved-data compatibility.
   progressStatus?: 'not-started' | 'in-progress' | 'cancelled'; // Board column; isDone wins as completed, cancelled mirrors its visuals.
   isDirectory?: boolean; // Board node renders as a directory-style card when true.
+  isHandle?: boolean; // Board node is a 分线头 (branch-line handle): the head of a branch-line, never an edge target.
   referencedLaneIds?: string[]; // Extra lanes that mirror this item (reference display).
   originLaneId?: string; // Lane this item was dragged from into the main lane; drives the path hint.
   startTime?: string; // YYYY-MM-DD display range start.
@@ -152,26 +153,6 @@ export interface TimeTemplate {
   blocks: TimeTemplateBlock[];
 }
 
-export interface DraftStrokePoint {
-  x: number;
-  y: number;
-}
-
-export interface DraftStroke {
-  id: string;
-  color: string;
-  width: number;
-  points: DraftStrokePoint[];
-}
-
-export interface DraftBoard {
-  id: string;
-  name: string;
-  nodes: GoalNode[];
-  edges: GoalEdge[];
-  strokes: DraftStroke[];
-}
-
 export interface AppState {
   tasks: Record<string, Task>;
   taskStatuses: TaskStatus[];
@@ -196,7 +177,6 @@ export interface AppState {
   timeTemplates: TimeTemplate[];
   activeTimeTemplateIds: { daily: string | null; weekly: string | null };
   favoriteColors: string[];
-  drafts: DraftBoard[];
   canUndo: boolean;
   canRedo: boolean;
   
@@ -242,6 +222,7 @@ export interface AppState {
   reorderTodoItem: (itemId: string, order: number) => void;
   toggleTodoItemDone: (itemId: string) => void;
   toggleTodoItemDirectory: (itemId: string) => void;
+  toggleTodoItemHandle: (itemId: string) => void;
   removeTodoItem: (itemId: string) => void;
   addTodoEdge: (laneId: string, sourceItemId: string, targetItemId: string) => void;
   removeTodoEdge: (edgeId: string) => void;
@@ -262,19 +243,6 @@ export interface AppState {
   addFavoriteColor: (color: string) => void;
   removeFavoriteColor: (color: string) => void;
 
-  // Freeform draft canvases
-  addDraft: (name?: string) => string;
-  renameDraft: (id: string, name: string) => void;
-  deleteDraft: (id: string) => void;
-  addDraftNode: (draftId: string, node: GoalNode) => void;
-  updateDraftNodes: (draftId: string, nodes: GoalNode[]) => void;
-  removeDraftNode: (draftId: string, nodeId: string) => void;
-  addDraftEdge: (draftId: string, edge: GoalEdge) => void;
-  removeDraftEdge: (draftId: string, edgeId: string) => void;
-  addDraftStroke: (draftId: string, stroke: DraftStroke) => void;
-  replaceDraftStrokes: (draftId: string, strokes: DraftStroke[]) => void;
-  clearDraftStrokes: (draftId: string) => void;
-  
   // Task Actions
   addTask: (task: Task) => void;
   updateTask: (taskId: string, updates: Partial<Task>) => void;

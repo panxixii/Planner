@@ -25,13 +25,6 @@ const validateData = (data: unknown): data is Record<string, unknown> => {
     && Array.isArray(data.workspaceComponents);
 };
 
-const withoutDraftStrokes = (data: Record<string, unknown>): Record<string, unknown> => ({
-  ...data,
-  drafts: Array.isArray(data.drafts)
-    ? data.drafts.map((draft) => isRecord(draft) ? { ...draft, strokes: [] } : draft)
-    : [],
-});
-
 const getCurrentPersistedData = (): Record<string, unknown> => {
   const state = useAppStore.getState();
   return {
@@ -54,7 +47,6 @@ const getCurrentPersistedData = (): Record<string, unknown> => {
     timeTemplates: state.timeTemplates,
     activeTimeTemplateIds: state.activeTimeTemplateIds,
     favoriteColors: state.favoriteColors,
-    drafts: state.drafts.map((draft) => ({ ...draft, strokes: [] })),
     crossGoalEdges: state.crossGoalEdges,
     isSidebarCollapsed: state.isSidebarCollapsed,
     showHelp: state.showHelp,
@@ -113,5 +105,5 @@ export const importPlannerBackup = async (file: File): Promise<Record<string, un
     throw new Error('备份内容不完整或已经损坏');
   }
 
-  return withoutDraftStrokes(parsed.data);
+  return parsed.data;
 };

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, FolderInput, Link2, Link2Off, ListTodo, Trash2 } from 'lucide-react';
+import { Check, Flag, FolderInput, Link2, Link2Off, ListTodo, Trash2 } from 'lucide-react';
 import { useAppStore } from '../store';
 
 export const TodoItemToolbarHost: React.FC<{
@@ -10,10 +10,12 @@ export const TodoItemToolbarHost: React.FC<{
   pointerX?: number;
   onClose: () => void;
   showDirectoryToggle?: boolean;
-}> = ({ itemId, open, anchor, pointerX, onClose, showDirectoryToggle = false }) => {
+  showHandleToggle?: boolean;
+}> = ({ itemId, open, anchor, pointerX, onClose, showDirectoryToggle = false, showHandleToggle = false }) => {
   const item = useAppStore((state) => state.todoItems.find((candidate) => candidate.id === itemId));
   const remove = useAppStore((state) => state.removeTodoItem);
   const toggleDirectory = useAppStore((state) => state.toggleTodoItemDirectory);
+  const toggleHandle = useAppStore((state) => state.toggleTodoItemHandle);
   const toggleMainReference = useAppStore((state) => state.toggleTodoItemMainReference);
   const reassignLane = useAppStore((state) => state.reassignTodoItemLane);
   const allLanes = useAppStore((state) => state.todoLanes);
@@ -54,7 +56,18 @@ export const TodoItemToolbarHost: React.FC<{
     <>
       <button type="button" className="fixed inset-0 z-[190] cursor-default" onClick={onClose} aria-label="关闭待办操作" />
       <div role="toolbar" aria-label="待办操作" className="fixed z-[200] flex -translate-x-1/2 items-center gap-1.5 rounded-lg border border-neutral-200 bg-white p-1 shadow-lg" style={{ top: pos.top, left: pos.left }}>
-        {showDirectoryToggle ? (
+        {showHandleToggle && !item.isDirectory ? (
+          <button
+            type="button"
+            onClick={() => { toggleHandle(item.id); onClose(); }}
+            className="flex h-8 w-[68px] items-center justify-center gap-1.5 rounded-md border border-violet-200 bg-violet-50 text-[11px] font-semibold text-violet-700 transition-colors hover:bg-violet-100"
+            title={item.isHandle ? '取消分线头，恢复为普通任务节点' : '设为分线头（本分线的头节点）'}
+          >
+            {item.isHandle ? <ListTodo className="h-3.5 w-3.5" /> : <Flag className="h-3.5 w-3.5" />}
+            <span>{item.isHandle ? '任务' : '分线头'}</span>
+          </button>
+        ) : null}
+        {showDirectoryToggle && !item.isHandle ? (
           <button
             type="button"
             onClick={() => { toggleDirectory(item.id); onClose(); }}

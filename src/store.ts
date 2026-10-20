@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { AppState, Task, TaskTimeBlock, Goal, BOMTreeItem, CategoryType, DraftBoard, DraftStroke, GoalNode, GoalEdge, AppCategory, TaskStatus, TimeTemplate, TimeTemplateBlock, TodoEdge, TodoItem, TodoLane, TodoLaneSection, WorkspaceComponent, WorkspaceDirectory } from './types';
+import { AppState, Task, TaskTimeBlock, Goal, BOMTreeItem, CategoryType, GoalNode, GoalEdge, AppCategory, TaskStatus, TimeTemplate, TimeTemplateBlock, TodoEdge, TodoItem, TodoLane, TodoLaneSection, WorkspaceComponent, WorkspaceDirectory } from './types';
 import { getDescendantTaskIds, getWorkspaceGraph } from './workspaceComponents';
 import { getTaskTimeBlocks, normalizeTaskTimeBlocks } from './taskTimeBlocks';
 
@@ -239,6 +239,7 @@ const normalizeTodoItems = (
       sectionId: typeof item.sectionId === 'string' ? item.sectionId : undefined,
       progressStatus: item.progressStatus === 'in-progress' ? 'in-progress' : item.progressStatus === 'not-started' ? 'not-started' : item.progressStatus === 'cancelled' ? 'cancelled' : undefined,
       isDirectory: item.isDirectory === true ? true : undefined,
+      isHandle: item.isHandle === true ? true : undefined,
       referencedLaneIds: Array.isArray(item.referencedLaneIds)
         ? item.referencedLaneIds.filter((id: unknown): id is string => typeof id === 'string')
         : undefined,
@@ -625,20 +626,6 @@ const loadSavedState = () => {
           favoriteColors: Array.isArray(parsed.favoriteColors)
             ? parsed.favoriteColors.filter((color: unknown): color is string => typeof color === 'string' && /^#[0-9a-f]{6}$/i.test(color)).slice(0, 24)
             : [],
-          drafts: Array.isArray(parsed.drafts)
-            ? parsed.drafts.filter((draft: unknown): draft is DraftBoard => (
-                Boolean(draft)
-                && typeof draft === 'object'
-                && typeof (draft as DraftBoard).id === 'string'
-                && typeof (draft as DraftBoard).name === 'string'
-              )).map((draft: DraftBoard) => ({
-                id: draft.id,
-                name: draft.name,
-                nodes: Array.isArray(draft.nodes) ? draft.nodes : [],
-                edges: Array.isArray(draft.edges) ? draft.edges : [],
-                strokes: Array.isArray(draft.strokes) ? draft.strokes : [],
-              }))
-            : [],
           crossGoalEdges: Array.isArray(parsed.crossGoalEdges) ? parsed.crossGoalEdges : [],
           isSidebarCollapsed: !!parsed.isSidebarCollapsed,
           showHelp: typeof parsed.showHelp === 'boolean' ? parsed.showHelp : true,
@@ -690,7 +677,6 @@ const initialTodoWorkspaceMigrated = savedState ? savedState.todoWorkspaceMigrat
 const initialTimeTemplates = savedState ? savedState.timeTemplates : DEFAULT_TIME_TEMPLATES;
 const initialActiveTimeTemplateIds = savedState ? savedState.activeTimeTemplateIds : { daily: null, weekly: null };
 const initialFavoriteColors = savedState ? savedState.favoriteColors : [];
-const initialDrafts = savedState ? savedState.drafts : [];
 const initialCrossGoalEdges = savedState ? savedState.crossGoalEdges : [];
 const initialIsSidebarCollapsed = savedState ? savedState.isSidebarCollapsed : false;
 const initialShowHelp = savedState ? savedState.showHelp : true;
@@ -730,7 +716,6 @@ type HistorySnapshot = Pick<AppState,
   | 'timeTemplates'
   | 'activeTimeTemplateIds'
   | 'favoriteColors'
-  | 'drafts'
   | 'crossGoalEdges'
   | 'timelineTaskOrder'
   | 'mergedNodePositions'
@@ -743,7 +728,7 @@ const HISTORY_LIMIT = 100;
 const HISTORY_KEYS = new Set<keyof HistorySnapshot>([
   'tasks', 'taskStatuses', 'goals', 'bomTree', 'categories', 'workspaceComponents', 'workspaceDirectories',
   'todoLanes', 'todoItems', 'todoEdges', 'timeTemplates', 'activeTimeTemplateIds', 'favoriteColors',
-  'drafts', 'crossGoalEdges', 'timelineTaskOrder', 'mergedNodePositions', 'workspaceNodes',
+  'crossGoalEdges', 'timelineTaskOrder', 'mergedNodePositions', 'workspaceNodes',
   'mergedEdges', 'mergedNodeIds',
 ]);
 
@@ -763,7 +748,6 @@ const captureHistorySnapshot = (state: AppState): HistorySnapshot => cloneHistor
   timeTemplates: state.timeTemplates,
   activeTimeTemplateIds: state.activeTimeTemplateIds,
   favoriteColors: state.favoriteColors,
-  drafts: state.drafts,
   crossGoalEdges: state.crossGoalEdges,
   timelineTaskOrder: state.timelineTaskOrder,
   mergedNodePositions: state.mergedNodePositions,
@@ -803,7 +787,6 @@ export const useAppStore = create<AppState>((set, get) => {
         timeTemplates: state.timeTemplates,
         activeTimeTemplateIds: state.activeTimeTemplateIds,
         favoriteColors: state.favoriteColors,
-        drafts: state.drafts,
         crossGoalEdges: state.crossGoalEdges,
         isSidebarCollapsed: state.isSidebarCollapsed,
         showHelp: state.showHelp,
@@ -878,7 +861,6 @@ export const useAppStore = create<AppState>((set, get) => {
     timeTemplates: initialTimeTemplates,
     activeTimeTemplateIds: initialActiveTimeTemplateIds,
     favoriteColors: initialFavoriteColors,
-    drafts: initialDrafts,
     canUndo: false,
     canRedo: false,
     crossGoalEdges: initialCrossGoalEdges,
@@ -1136,10 +1118,6 @@ export const useAppStore = create<AppState>((set, get) => {
           ? data.activeTimeTemplateIds as AppState['activeTimeTemplateIds']
           : { daily: null, weekly: null },
         favoriteColors: Array.isArray(data.favoriteColors) ? data.favoriteColors as string[] : [],
-        drafts: Array.isArray(data.drafts) ? (data.drafts as DraftBoard[]).map((draft) => ({
-          ...draft,
-          strokes: state.drafts.find((currentDraft) => currentDraft.id === draft.id)?.strokes || [],
-        })) : [],
         crossGoalEdges: Array.isArray(data.crossGoalEdges) ? data.crossGoalEdges as GoalEdge[] : [],
         timelineTaskOrder: Array.isArray(data.timelineTaskOrder) ? data.timelineTaskOrder as string[] : [],
         mergedNodePositions: data.mergedNodePositions && typeof data.mergedNodePositions === 'object'
@@ -1365,9 +1343,20 @@ export const useAppStore = create<AppState>((set, get) => {
     })),
     toggleTodoItemDirectory: (itemId) => persistSet((state: AppState) => ({
       todoItems: state.todoItems.map((item) => item.id === itemId
-        ? { ...item, isDirectory: !item.isDirectory, position: item.position, width: item.isDirectory ? item.width : Math.max(item.width || 0, 176), height: item.isDirectory ? item.height : Math.max(item.height || 0, 48) }
+        ? { ...item, isDirectory: !item.isDirectory, isHandle: !item.isDirectory ? undefined : item.isHandle, position: item.position, width: item.isDirectory ? item.width : Math.max(item.width || 0, 176), height: item.isDirectory ? item.height : Math.max(item.height || 0, 48) }
         : item),
     })),
+    toggleTodoItemHandle: (itemId) => persistSet((state: AppState) => {
+      const target = state.todoItems.find((item) => item.id === itemId);
+      const makingHandle = target ? !target.isHandle : false;
+      return {
+        todoItems: state.todoItems.map((item) => item.id === itemId
+          ? { ...item, isHandle: makingHandle ? true : undefined, isDirectory: makingHandle ? undefined : item.isDirectory }
+          : item),
+        // HANDLE INVARIANT: a handle has no incoming edge. Prune pre-existing edges that targeted this node.
+        todoEdges: makingHandle ? state.todoEdges.filter((edge) => edge.targetItemId !== itemId) : state.todoEdges,
+      };
+    }),
     removeTodoItem: (itemId) => persistSet((state: AppState) => {
       return {
         todoItems: state.todoItems.filter((item) => item.id !== itemId),
@@ -1379,6 +1368,7 @@ export const useAppStore = create<AppState>((set, get) => {
       const src = state.todoItems.find((i) => i.id === sourceItemId);
       const tgt = state.todoItems.find((i) => i.id === targetItemId);
       if (!src || !tgt) return {};
+      if (tgt.isHandle === true) return {}; // HANDLE INVARIANT: a handle can never be an edge target (rule 1)
       const lanesOf = (i: TodoItem) => new Set<string>([i.laneId, ...(i.referencedLaneIds || [])]);
       const srcLanes = lanesOf(src); const tgtLanes = lanesOf(tgt);
       // Prefer the caller-supplied lane when valid, else any shared lane, else fall back to the source lane.
@@ -1513,22 +1503,6 @@ export const useAppStore = create<AppState>((set, get) => {
     removeFavoriteColor: (color) => persistSet((state: AppState) => ({
       favoriteColors: state.favoriteColors.filter((favorite) => favorite !== color),
     })),
-    addDraft: (name) => {
-      const id = `draft-${genId()}`;
-      persistSet((state: AppState) => ({ drafts: [...state.drafts, { id, name: name?.trim() || `草稿 ${state.drafts.length + 1}`, nodes: [], edges: [], strokes: [] }] }));
-      return id;
-    },
-    renameDraft: (id, name) => persistSet((state: AppState) => ({ drafts: state.drafts.map((draft) => draft.id === id ? { ...draft, name } : draft) })),
-    deleteDraft: (id) => persistSet((state: AppState) => ({ drafts: state.drafts.filter((draft) => draft.id !== id) })),
-    addDraftNode: (draftId, node) => persistSet((state: AppState) => ({ drafts: state.drafts.map((draft) => draft.id === draftId ? { ...draft, nodes: [...draft.nodes, node] } : draft) })),
-    updateDraftNodes: (draftId, nodes) => persistSet((state: AppState) => ({ drafts: state.drafts.map((draft) => draft.id === draftId ? { ...draft, nodes } : draft) })),
-    removeDraftNode: (draftId, nodeId) => persistSet((state: AppState) => ({ drafts: state.drafts.map((draft) => draft.id === draftId ? { ...draft, nodes: draft.nodes.filter((node) => node.id !== nodeId), edges: draft.edges.filter((edge) => edge.source !== nodeId && edge.target !== nodeId) } : draft) })),
-    addDraftEdge: (draftId, edge) => persistSet((state: AppState) => ({ drafts: state.drafts.map((draft) => draft.id === draftId ? { ...draft, edges: [...draft.edges, edge] } : draft) })),
-    removeDraftEdge: (draftId, edgeId) => persistSet((state: AppState) => ({ drafts: state.drafts.map((draft) => draft.id === draftId ? { ...draft, edges: draft.edges.filter((edge) => edge.id !== edgeId) } : draft) })),
-    addDraftStroke: (draftId, stroke: DraftStroke) => persistSet((state: AppState) => ({ drafts: state.drafts.map((draft) => draft.id === draftId ? { ...draft, strokes: [...draft.strokes, stroke] } : draft) })),
-    replaceDraftStrokes: (draftId, strokes) => persistSet((state: AppState) => ({ drafts: state.drafts.map((draft) => draft.id === draftId ? { ...draft, strokes } : draft) })),
-    clearDraftStrokes: (draftId) => persistSet((state: AppState) => ({ drafts: state.drafts.map((draft) => draft.id === draftId ? { ...draft, strokes: [] } : draft) })),
-
     // TASK ACTIONS (Normalized changes reflect everywhere instantly!)
     addTask: (task) => persistSet((state: AppState) => {
       const requestedStatus = state.taskStatuses.find((status) => status.id === task.statusId);
@@ -1689,14 +1663,6 @@ export const useAppStore = create<AppState>((set, get) => {
       return {
         tasks: nextTasks,
         goals: nextGoals,
-        drafts: state.drafts.map((draft) => {
-          const removedNodeIds = new Set(draft.nodes.filter((node) => node.taskId === taskId).map((node) => node.id));
-          return {
-            ...draft,
-            nodes: draft.nodes.filter((node) => node.taskId !== taskId),
-            edges: draft.edges.filter((edge) => !removedNodeIds.has(edge.source) && !removedNodeIds.has(edge.target)),
-          };
-        }),
         workspaceNodes: state.workspaceNodes.filter((node) => node.taskId !== taskId),
         mergedEdges: state.mergedEdges.filter(
           (edge) => !removedWorkspaceNodeIds.has(edge.source) && !removedWorkspaceNodeIds.has(edge.target)
@@ -1720,14 +1686,6 @@ export const useAppStore = create<AppState>((set, get) => {
         delete nextTasks[taskId];
         return {
           tasks: nextTasks,
-          drafts: state.drafts.map((draft) => {
-            const draftNodeIds = new Set(draft.nodes.filter((node) => node.taskId === taskId).map((node) => node.id));
-            return {
-              ...draft,
-              nodes: draft.nodes.filter((node) => node.taskId !== taskId),
-              edges: draft.edges.filter((edge) => !draftNodeIds.has(edge.source) && !draftNodeIds.has(edge.target)),
-            };
-          }),
           workspaceNodes: state.workspaceNodes.filter((node) => node.taskId !== taskId),
           goals: Object.fromEntries(Object.entries(state.goals).map(([goalId, goal]) => [goalId, {
             ...goal,
@@ -2202,7 +2160,6 @@ export const useAppStore = create<AppState>((set, get) => {
       workspaceComponentFilter: null,
       workspaceComponents: [],
       workspaceDirectories: [],
-      drafts: [],
       todoLanes: normalizeTodoLanes([]),
       todoItems: [],
       todoEdges: [],

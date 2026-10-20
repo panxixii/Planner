@@ -18,7 +18,7 @@ import {
   applyNodeChanges,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { CalendarDays, Check, CircleDot, Columns3, GitBranch, GripVertical, Link2, List, Maximize, MousePointer2, Pipette, Plus, Scan, Trash2, ZoomIn, ZoomOut } from 'lucide-react';
+import { CalendarDays, Check, CircleDot, Columns3, Flag, GitBranch, GripVertical, Link2, List, Maximize, MousePointer2, Pipette, Plus, Scan, Trash2, ZoomIn, ZoomOut } from 'lucide-react';
 import { useAppStore } from '../store';
 import { isUpcomingTodayScheduleItem } from '../taskTimeBlocks';
 import { buildTodoGraph, computeVisibleItemIds, reachableFrom } from '../todoBranchLines';
@@ -737,7 +737,7 @@ const LaneBandsLayer: React.FC<{
   </>;
 };
 
-interface BoardNodeData extends Record<string, unknown> { itemId: string; text: string; done: boolean; color?: string; progressStatus?: 'not-started' | 'in-progress' | 'cancelled'; isDirectory?: boolean }
+interface BoardNodeData extends Record<string, unknown> { itemId: string; text: string; done: boolean; color?: string; progressStatus?: 'not-started' | 'in-progress' | 'cancelled'; isDirectory?: boolean; isHandle?: boolean }
 
 const boardColors: Record<string, string> = {
   emerald: '#67c8bd', rose: '#d78fb5', sky: '#79bfd5', amber: '#d9b958', violet: '#9b8ae4', indigo: '#9387d1',
@@ -765,16 +765,16 @@ const BoardNode = React.memo(({ id, data, selected }: NodeProps<Node<BoardNodeDa
   const borderColor = mixWithWhite(color, 0.34);
   return <div
     ref={nodeRef}
-    className={`group relative flex h-full min-h-10 w-full items-center border shadow-md transition-colors px-4 py-2 ${data.isDirectory ? 'rounded-xl justify-start' : 'rounded-[999px] justify-center'} ${data.done && !data.isDirectory ? 'border-neutral-300 bg-neutral-100/90' : ''} ${editing ? 'nodrag' : ''}`}
-    style={data.isDirectory ? { backgroundColor: surface, borderColor: selected ? color : borderColor } : data.done ? undefined : { borderColor: color }}
+    className={`group relative flex h-full min-h-10 w-full items-center border shadow-md transition-colors px-4 py-2 ${data.isHandle ? 'rounded-xl justify-start border-2 border-dashed border-violet-400 bg-violet-50/90' : data.isDirectory ? 'rounded-xl justify-start' : 'rounded-[999px] justify-center'} ${data.done && !data.isDirectory && !data.isHandle ? 'border-neutral-300 bg-neutral-100/90' : ''} ${editing ? 'nodrag' : ''}`}
+    style={data.isHandle ? undefined : data.isDirectory ? { backgroundColor: surface, borderColor: selected ? color : borderColor } : data.done ? undefined : { borderColor: color }}
     onClick={(event) => { if (editing) return; if ((event.target as HTMLElement).closest('button, [role="toolbar"]')) return; handleClick(event); }}
     onDoubleClick={(event) => { if ((event.target as HTMLElement).closest('button')) return; cancel(); setToolbarOpen(false); setEditing(true); }}
     title={editing ? undefined : '单击显示操作，双击编辑'}>
     <NodeResizer isVisible={selected} minWidth={128} minHeight={40} maxWidth={Number.POSITIVE_INFINITY} maxHeight={180} color={color} handleStyle={{ width: 8, height: 8, borderRadius: 3 }} onResizeEnd={(_event, params) => update(data.itemId, { width: params.width, height: params.height })} />
-    <Handle type="target" position={Position.Left} className="!h-2.5 !w-2.5 !border-2 !border-white !bg-purple-400" />
-    {data.isDirectory ? <span className="absolute inset-y-2 left-1.5 w-1 rounded-full" style={{ backgroundColor: color }} /> : null}
+    {data.isHandle ? null : <Handle type="target" position={Position.Left} className="!h-2.5 !w-2.5 !border-2 !border-white !bg-purple-400" />}
+    {data.isDirectory && !data.isHandle ? <span className="absolute inset-y-2 left-1.5 w-1 rounded-full" style={{ backgroundColor: color }} /> : null}
     <div className="flex w-full items-center gap-2">
-      <TodoCheckbox done={data.done} onClick={() => toggle(data.itemId)} />
+      {data.isHandle ? <Flag className="h-3.5 w-3.5 shrink-0 text-violet-500" /> : <TodoCheckbox done={data.done} onClick={() => toggle(data.itemId)} />}
       <input
         ref={inputRef}
         readOnly={!editing}
@@ -795,7 +795,7 @@ const BoardNode = React.memo(({ id, data, selected }: NodeProps<Node<BoardNodeDa
       <TodoStatusBadge itemId={data.itemId} compact={data.isDirectory} />
     </div>
     <Handle type="source" position={Position.Right} className="!h-2.5 !w-2.5 !border-2 !border-white" style={{ backgroundColor: color }} />
-    <TodoItemToolbarHost itemId={data.itemId} open={toolbarOpen} anchor={nodeRef.current} pointerX={pointerX} onClose={() => setToolbarOpen(false)} showDirectoryToggle />
+    <TodoItemToolbarHost itemId={data.itemId} open={toolbarOpen} anchor={nodeRef.current} pointerX={pointerX} onClose={() => setToolbarOpen(false)} showDirectoryToggle showHandleToggle />
   </div>;
 });
 BoardNode.displayName = 'BoardNode';
@@ -838,14 +838,14 @@ const BoardCanvas: React.FC<{ visibleItemIds: Set<string> | null }> = ({ visible
   const items = useMemo(() => allItems.filter((item) => (
     visibleItemIds === null || visibleItemIds.has(item.id)
   )), [allItems, visibleItemIds]);
-  const nodes = useMemo<Node<BoardNodeData>[]>(() => items.map((item) => ({ id: item.id, type: 'todoNode', position: item.position, width: item.width, height: item.height, data: { itemId: item.id, text: item.text, done: item.isDone, color: item.color, progressStatus: item.progressStatus, isDirectory: item.isDirectory } })), [items]);
+  const nodes = useMemo<Node<BoardNodeData>[]>(() => items.map((item) => ({ id: item.id, type: 'todoNode', position: item.position, width: item.width, height: item.height, data: { itemId: item.id, text: item.text, done: item.isDone, color: item.color, progressStatus: item.progressStatus, isDirectory: item.isDirectory, isHandle: item.isHandle } })), [items]);
   const edges = useMemo<Edge[]>(() => allEdges.filter((edge) => visibleItemIds === null || (visibleItemIds.has(edge.sourceItemId) && visibleItemIds.has(edge.targetItemId))).map((edge) => ({ id: edge.id, source: edge.sourceItemId, target: edge.targetItemId, type: 'bezier', style: { stroke: '#9b8ae4', strokeWidth: 2 }, interactionWidth: 24 })), [allEdges, visibleItemIds]);
   // Members each head drags, derived from the FULL graph so hidden members move too.
   const membersByHead = useMemo(() => {
-    const { outgoing, indegree } = buildTodoGraph(allItems, allEdges);
+    const { outgoing } = buildTodoGraph(allItems, allEdges);
     const map = new Map<string, Set<string>>();
     for (const it of allItems) {
-      if ((indegree.get(it.id) || 0) !== 0) continue; // only heads drag their branch-line
+      if (it.isHandle !== true) continue; // only handles rigid-drag their branch-line
       const reach = reachableFrom(it.id, outgoing);
       reach.delete(it.id);
       map.set(it.id, reach);
