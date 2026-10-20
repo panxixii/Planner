@@ -266,8 +266,8 @@ const normalizeTodoEdges = (value: unknown, items: TodoItem[], lanes: TodoLane[]
     if (typeof candidate.laneId !== 'string' || !laneIds.has(candidate.laneId)
       || typeof candidate.sourceItemId !== 'string' || typeof candidate.targetItemId !== 'string'
       || candidate.sourceItemId === candidate.targetItemId
-      || itemById.get(candidate.sourceItemId)?.laneId !== candidate.laneId
-      || itemById.get(candidate.targetItemId)?.laneId !== candidate.laneId) return [];
+      || !itemById.has(candidate.sourceItemId)
+      || !itemById.has(candidate.targetItemId)) return [];
     let id = typeof candidate.id === 'string' ? candidate.id : `todo-edge-${genId()}`;
     while (usedIds.has(id)) id = `todo-edge-${genId()}`;
     usedIds.add(id);
@@ -550,6 +550,7 @@ const loadSavedState = () => {
                 ))
               ))
             : null,
+          todoBranchFilter: Array.isArray(parsed.todoBranchFilter) ? parsed.todoBranchFilter.filter((id: unknown): id is string => typeof id === 'string') : null,
           workspaceComponents: Array.isArray(parsed.workspaceComponents)
             ? parsed.workspaceComponents.filter((component: unknown): component is WorkspaceComponent => (
                 Boolean(component)
@@ -679,6 +680,7 @@ const initialSelectedGoalId = savedState ? savedState.selectedGoalId : null;
 const initialIsMergedView = savedState ? savedState.isMergedView : false;
 const initialActiveMergedGoalIds = savedState ? savedState.activeMergedGoalIds : [];
 const initialWorkspaceComponentFilter = savedState ? savedState.workspaceComponentFilter : null;
+const initialTodoBranchFilter = savedState ? (savedState.todoBranchFilter ?? null) : null;
 const initialWorkspaceComponents = savedState ? savedState.workspaceComponents : [];
 const initialWorkspaceDirectories = savedState ? savedState.workspaceDirectories : [];
 const initialTodoLanes = normalizeTodoLanes(savedState?.todoLanes);
@@ -796,6 +798,7 @@ export const useAppStore = create<AppState>((set, get) => {
         todoLanes: state.todoLanes,
         todoItems: state.todoItems,
         todoEdges: state.todoEdges,
+        todoBranchFilter: state.todoBranchFilter,
         todoWorkspaceMigrated: state.todoWorkspaceMigrated,
         timeTemplates: state.timeTemplates,
         activeTimeTemplateIds: state.activeTimeTemplateIds,
@@ -870,6 +873,7 @@ export const useAppStore = create<AppState>((set, get) => {
     todoLanes: initialTodoLanes,
     todoItems: initialTodoItems,
     todoEdges: initialTodoEdges,
+    todoBranchFilter: initialTodoBranchFilter,
     todoWorkspaceMigrated: initialTodoWorkspaceMigrated,
     timeTemplates: initialTimeTemplates,
     activeTimeTemplateIds: initialActiveTimeTemplateIds,
@@ -1020,6 +1024,8 @@ export const useAppStore = create<AppState>((set, get) => {
     setActiveMergedGoalIds: (goalIds) => persistSet({ activeMergedGoalIds: goalIds }),
 
     setWorkspaceComponentFilter: (componentIds) => persistSet({ workspaceComponentFilter: componentIds }),
+
+    setTodoBranchFilter: (headIds) => persistSet({ todoBranchFilter: headIds }),
     addWorkspaceComponent: (name) => {
       const id = `component-${genId()}`;
       persistSet((state: AppState) => ({
@@ -1369,12 +1375,19 @@ export const useAppStore = create<AppState>((set, get) => {
       };
     }),
     addTodoEdge: (laneId, sourceItemId, targetItemId) => persistSet((state: AppState) => {
-      const belongsToLane = (item: TodoItem | undefined) => Boolean(item && (item.laneId === laneId || (item.referencedLaneIds || []).includes(laneId)));
-      if (sourceItemId === targetItemId
-        || !belongsToLane(state.todoItems.find((item) => item.id === sourceItemId))
-        || !belongsToLane(state.todoItems.find((item) => item.id === targetItemId))
-        || state.todoEdges.some((edge) => edge.laneId === laneId && edge.sourceItemId === sourceItemId && edge.targetItemId === targetItemId)) return {};
-      return { todoEdges: [...state.todoEdges, { id: `todo-edge-${genId()}`, laneId, sourceItemId, targetItemId }] };
+      if (sourceItemId === targetItemId) return {};
+      const src = state.todoItems.find((i) => i.id === sourceItemId);
+      const tgt = state.todoItems.find((i) => i.id === targetItemId);
+      if (!src || !tgt) return {};
+      const lanesOf = (i: TodoItem) => new Set<string>([i.laneId, ...(i.referencedLaneIds || [])]);
+      const srcLanes = lanesOf(src); const tgtLanes = lanesOf(tgt);
+      // Prefer the caller-supplied lane when valid, else any shared lane, else fall back to the source lane.
+      const common =
+        (srcLanes.has(laneId) && tgtLanes.has(laneId)) ? laneId
+        : [...srcLanes].find((l) => tgtLanes.has(l))
+        ?? src.laneId; // guarantees a lane; edges are rendered graph-wide, so lane is storage-only now
+      if (state.todoEdges.some((e) => e.sourceItemId === sourceItemId && e.targetItemId === targetItemId)) return {};
+      return { todoEdges: [...state.todoEdges, { id: `todo-edge-${genId()}`, laneId: common, sourceItemId, targetItemId }] };
     }),
     removeTodoEdge: (edgeId) => persistSet((state: AppState) => ({
       todoEdges: state.todoEdges.filter((edge) => edge.id !== edgeId),

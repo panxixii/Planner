@@ -191,6 +191,7 @@ export interface AppState {
   todoLanes: TodoLane[];
   todoItems: TodoItem[];
   todoEdges: TodoEdge[];
+  todoBranchFilter: string[] | null; // null = all branch-lines; [] = none; [ids] = selected HEAD ids
   todoWorkspaceMigrated: boolean;
   timeTemplates: TimeTemplate[];
   activeTimeTemplateIds: { daily: string | null; weekly: string | null };
@@ -244,6 +245,7 @@ export interface AppState {
   removeTodoItem: (itemId: string) => void;
   addTodoEdge: (laneId: string, sourceItemId: string, targetItemId: string) => void;
   removeTodoEdge: (edgeId: string) => void;
+  setTodoBranchFilter: (headIds: string[] | null) => void;
   addTodoTimeBlock: (itemId: string, block: Omit<TaskTimeBlock, 'id'>) => void;
   updateTodoTimeBlock: (itemId: string, blockId: string, updates: Partial<Omit<TaskTimeBlock, 'id'>>) => void;
   removeTodoTimeBlock: (itemId: string, blockId: string) => void;
