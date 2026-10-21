@@ -19,11 +19,14 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { CalendarDays, Check, CircleDot, Columns3, Flag, GitBranch, GripVertical, Link2, List, Maximize, MousePointer2, Pipette, Plus, Scan, Trash2, ZoomIn, ZoomOut } from 'lucide-react';
-import { useAppStore } from '../store';
+import { useAppStore, LEGACY_EDGE_COLOR } from '../store';
 import { withAlpha } from '../colorUtils';
+import { computeZoneMoveSet, selectionBounds } from '../boardZones';
 import { isUpcomingTodayScheduleItem } from '../taskTimeBlocks';
 import { buildTodoGraph, computeVisibleItemIds, reachableFrom } from '../todoBranchLines';
 import type { TodoEdge, TodoItem, TodoLane, TodoLaneSection } from '../types';
+import { ZoneNode, type ZoneNodeData } from './ZoneNode';
+import { ColorPicker } from './ColorPicker';
 import { TodoBoard } from './TodoBoard';
 import { TodoGantt } from './TodoGantt';
 import { TodoItemToolbarHost } from './TodoItemToolbar';
@@ -791,13 +794,31 @@ const BoardNode = React.memo(({ id, data, selected }: NodeProps<Node<BoardNodeDa
   </div>;
 });
 BoardNode.displayName = 'BoardNode';
-const nodeTypes = { todoNode: BoardNode };
+const nodeTypes = { todoNode: BoardNode, zoneNode: ZoneNode };
 
-const DeleteSelectionBar: React.FC<{ count: number; onDelete: () => void }> = ({ count, onDelete }) => {
+type BoardOrZoneNode = Node<BoardNodeData> | Node<ZoneNodeData>;
+
+const BoardSelectionToolbar: React.FC<{
+  count: number;
+  onColor: (color: string) => void;
+  onCreateZone: () => void;
+  canCreateZone: boolean;
+  onDelete: () => void;
+}> = ({ count, onColor, onCreateZone, canCreateZone, onDelete }) => {
   const [confirming, setConfirming] = useState(false);
   return (
     <div className="absolute left-1/2 top-5 z-30 flex -translate-x-1/2 items-center gap-2 rounded-xl border border-neutral-200 bg-white/95 p-2 shadow-xl">
       <span className="px-2 text-[11px] font-bold text-neutral-500">已选 {count} 项</span>
+      <div className="w-32"><ColorPicker label="统一颜色" value={LEGACY_EDGE_COLOR} onChange={onColor} /></div>
+      <button
+        type="button"
+        onClick={onCreateZone}
+        disabled={!canCreateZone}
+        className="flex h-8 items-center gap-1.5 rounded-lg border border-purple-200 bg-purple-50 px-2.5 text-[11px] font-semibold text-purple-600 transition-colors hover:bg-purple-100 disabled:cursor-not-allowed disabled:opacity-50"
+        title="在选区范围创建分区色块"
+      >
+        <Scan className="h-3.5 w-3.5" />创建分区
+      </button>
       <button
         type="button"
         onClick={() => { if (confirming) { setConfirming(false); onDelete(); return; } setConfirming(true); }}
@@ -816,11 +837,15 @@ const BoardCanvas: React.FC<{ visibleItemIds: Set<string> | null }> = ({ visible
   const allItems = useAppStore((state) => state.todoItems);
   const allEdges = useAppStore((state) => state.todoEdges);
   const allLanes = useAppStore((state) => state.todoLanes);
+  const todoZones = useAppStore((state) => state.todoZones);
   const create = useAppStore((state) => state.createTodoItem);
   const update = useAppStore((state) => state.updateTodoItem);
   const addEdge = useAppStore((state) => state.addTodoEdge);
   const removeEdge = useAppStore((state) => state.removeTodoEdge);
   const removeItem = useAppStore((state) => state.removeTodoItem);
+  const createTodoZone = useAppStore((state) => state.createTodoZone);
+  const moveTodoZone = useAppStore((state) => state.moveTodoZone);
+  const setSelectionColor = useAppStore((state) => state.setSelectionColor);
   const beginHistoryGroup = useAppStore((state) => state.beginHistoryGroup);
   const endHistoryGroup = useAppStore((state) => state.endHistoryGroup);
   const { screenToFlowPosition, zoomIn, zoomOut, fitView } = useReactFlow();
@@ -830,8 +855,10 @@ const BoardCanvas: React.FC<{ visibleItemIds: Set<string> | null }> = ({ visible
   const items = useMemo(() => allItems.filter((item) => (
     visibleItemIds === null || visibleItemIds.has(item.id)
   )), [allItems, visibleItemIds]);
-  const nodes = useMemo<Node<BoardNodeData>[]>(() => items.map((item) => ({ id: item.id, type: 'todoNode', position: item.position, width: item.width, height: item.height, data: { itemId: item.id, text: item.text, done: item.isDone, color: item.color, progressStatus: item.progressStatus, isDirectory: item.isDirectory, isHandle: item.isHandle } })), [items]);
-  const edges = useMemo<Edge[]>(() => allEdges.filter((edge) => visibleItemIds === null || (visibleItemIds.has(edge.sourceItemId) && visibleItemIds.has(edge.targetItemId))).map((edge) => ({ id: edge.id, source: edge.sourceItemId, target: edge.targetItemId, type: 'bezier', style: { stroke: '#9b8ae4', strokeWidth: 2 }, interactionWidth: 24 })), [allEdges, visibleItemIds]);
+  const nodes = useMemo<Node<BoardNodeData>[]>(() => items.map((item) => ({ id: item.id, type: 'todoNode', position: item.position, width: item.width, height: item.height, zIndex: 1, data: { itemId: item.id, text: item.text, done: item.isDone, color: item.color, progressStatus: item.progressStatus, isDirectory: item.isDirectory, isHandle: item.isHandle } })), [items]);
+  // Zones are not todo items -> never affected by the branch filter; always render.
+  const zoneNodes = useMemo<Node<ZoneNodeData>[]>(() => todoZones.map((zone) => ({ id: zone.id, type: 'zoneNode', position: { x: zone.x, y: zone.y }, width: zone.width, height: zone.height, zIndex: 0, selectable: false, draggable: true, connectable: false, data: { zoneId: zone.id } })), [todoZones]);
+  const edges = useMemo<Edge[]>(() => allEdges.filter((edge) => visibleItemIds === null || (visibleItemIds.has(edge.sourceItemId) && visibleItemIds.has(edge.targetItemId))).map((edge) => ({ id: edge.id, source: edge.sourceItemId, target: edge.targetItemId, type: 'bezier', color: edge.color, style: { stroke: edge.color || LEGACY_EDGE_COLOR, strokeWidth: 2 }, interactionWidth: 24, zIndex: 2 })), [allEdges, visibleItemIds]);
   // Members each head drags, derived from the FULL graph so hidden members move too.
   const membersByHead = useMemo(() => {
     const { outgoing } = buildTodoGraph(allItems, allEdges);
@@ -844,9 +871,9 @@ const BoardCanvas: React.FC<{ visibleItemIds: Set<string> | null }> = ({ visible
     }
     return map;
   }, [allItems, allEdges]);
-  const [localNodes, setLocalNodes] = useState(nodes);
-  useEffect(() => setLocalNodes(nodes), [nodes]);
-  const onNodesChange = useCallback((changes: NodeChange<Node<BoardNodeData>>[]) => setLocalNodes((current) => applyNodeChanges(changes, current)), []);
+  const [localNodes, setLocalNodes] = useState<BoardOrZoneNode[]>(() => [...nodes, ...zoneNodes]);
+  useEffect(() => setLocalNodes([...nodes, ...zoneNodes]), [nodes, zoneNodes]);
+  const onNodesChange = useCallback((changes: NodeChange<BoardOrZoneNode>[]) => setLocalNodes((current) => applyNodeChanges(changes, current)), []);
   const connect = useCallback((connection: Connection) => {
     // laneId is a hint only; addTodoEdge resolves the real lane from the endpoints
     if (connection.source && connection.target) addEdge(mainLaneId, connection.source, connection.target);
@@ -858,7 +885,23 @@ const BoardCanvas: React.FC<{ visibleItemIds: Set<string> | null }> = ({ visible
     headStart: { x: number; y: number };
     memberStarts: Map<string, { x: number; y: number }>; // on-screen members only
   } | null>(null);
-  const onNodeDragStart = useCallback((_e: React.MouseEvent, node: Node<BoardNodeData>) => {
+  // Zone-drag snapshot: the moving zone + every member's start position (same rigid-drag mechanism).
+  const zoneDragSnapshot = useRef<{
+    zoneId: string;
+    zoneStart: { x: number; y: number };
+    memberStarts: Map<string, { x: number; y: number }>;
+  } | null>(null);
+  const onNodeDragStart = useCallback((_e: React.MouseEvent, node: BoardOrZoneNode) => {
+    if (node.type === 'zoneNode') {
+      const zone = todoZones.find((z) => z.id === node.id);
+      if (!zone) { zoneDragSnapshot.current = null; return; }
+      const moveSet = computeZoneMoveSet(zone, localNodes, membersByHead);
+      const memberStarts = new Map<string, { x: number; y: number }>();
+      localNodes.forEach((n) => { if (moveSet.has(n.id)) memberStarts.set(n.id, { x: n.position.x, y: n.position.y }); });
+      zoneDragSnapshot.current = { zoneId: node.id, zoneStart: { x: node.position.x, y: node.position.y }, memberStarts };
+      dragSnapshot.current = null;
+      return;
+    }
     const members = membersByHead.get(node.id); // defined iff node is a head
     if (!members) { dragSnapshot.current = null; return; }
     const memberStarts = new Map<string, { x: number; y: number }>();
@@ -866,8 +909,24 @@ const BoardCanvas: React.FC<{ visibleItemIds: Set<string> | null }> = ({ visible
       if (members.has(n.id)) memberStarts.set(n.id, { x: n.position.x, y: n.position.y });
     });
     dragSnapshot.current = { headId: node.id, headStart: { x: node.position.x, y: node.position.y }, memberStarts };
-  }, [localNodes, membersByHead]);
-  const onNodeDrag = useCallback((_e: React.MouseEvent, node: Node<BoardNodeData>) => {
+  }, [localNodes, membersByHead, todoZones]);
+  const onNodeDrag = useCallback((_e: React.MouseEvent, node: BoardOrZoneNode) => {
+    if (node.type === 'zoneNode') {
+      const snap = zoneDragSnapshot.current;
+      if (!snap || snap.zoneId !== node.id) {
+        setLocalNodes((nds) => nds.map((n) => (n.id === node.id ? { ...n, position: node.position } : n)));
+        return;
+      }
+      const dx = node.position.x - snap.zoneStart.x;
+      const dy = node.position.y - snap.zoneStart.y;
+      setLocalNodes((nds) => nds.map((n) => {
+        if (n.id === node.id) return { ...n, position: node.position };
+        const start = snap.memberStarts.get(n.id);
+        if (start) return { ...n, position: { x: start.x + dx, y: start.y + dy } };
+        return n;
+      }));
+      return;
+    }
     const snap = dragSnapshot.current;
     if (!snap || snap.headId !== node.id) {
       setLocalNodes((nds) => nds.map((n) => (n.id === node.id ? { ...n, position: node.position } : n)));
@@ -882,7 +941,19 @@ const BoardCanvas: React.FC<{ visibleItemIds: Set<string> | null }> = ({ visible
       return n;
     }));
   }, []);
-  const onNodeDragStop = useCallback((_e: React.MouseEvent, node: Node<BoardNodeData>) => {
+  const onNodeDragStop = useCallback((_e: React.MouseEvent, node: BoardOrZoneNode) => {
+    if (node.type === 'zoneNode') {
+      const snap = zoneDragSnapshot.current;
+      if (snap && snap.zoneId === node.id) {
+        const dx = node.position.x - snap.zoneStart.x;
+        const dy = node.position.y - snap.zoneStart.y;
+        const nodeTargets: Record<string, { x: number; y: number }> = {};
+        snap.memberStarts.forEach((start, memberId) => { nodeTargets[memberId] = { x: start.x + dx, y: start.y + dy }; });
+        moveTodoZone(node.id, dx, dy, nodeTargets);
+      }
+      zoneDragSnapshot.current = null;
+      return;
+    }
     const snap = dragSnapshot.current;
     const members = membersByHead.get(node.id);
     if (snap && snap.headId === node.id && members) {
@@ -904,10 +975,19 @@ const BoardCanvas: React.FC<{ visibleItemIds: Set<string> | null }> = ({ visible
       update(node.id, { position: node.position });
       dragSnapshot.current = null;
     }
-  }, [localNodes, membersByHead, update, allItems, beginHistoryGroup, endHistoryGroup]);
+  }, [localNodes, membersByHead, update, allItems, beginHistoryGroup, endHistoryGroup, moveTodoZone]);
 
   const selectedNodes = localNodes.filter((node) => node.selected);
   const removeSelected = useCallback(() => selectedNodes.forEach((node) => removeItem(node.id)), [removeItem, selectedNodes]);
+  const selectedTodoNodes = selectedNodes.filter((node) => node.type === 'todoNode');
+  const selectedNodeIds = useMemo(() => new Set(selectedTodoNodes.map((node) => node.id)), [selectedTodoNodes]);
+  const selectedEdgeIds = useMemo(
+    () => allEdges.filter((edge) => selectedNodeIds.has(edge.sourceItemId) && selectedNodeIds.has(edge.targetItemId)).map((edge) => edge.id),
+    [allEdges, selectedNodeIds],
+  );
+  const selectionZoneBounds = useMemo(() => selectionBounds(selectedTodoNodes), [selectedTodoNodes]);
+  const applySelectionColor = useCallback((color: string) => setSelectionColor([...selectedNodeIds], selectedEdgeIds, color), [setSelectionColor, selectedNodeIds, selectedEdgeIds]);
+  const createZoneFromSelection = useCallback(() => { if (selectionZoneBounds) createTodoZone(selectionZoneBounds); }, [createTodoZone, selectionZoneBounds]);
   const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
     const target = event.target as HTMLElement;
     if (target.closest('input, textarea, select, [contenteditable="true"]')) return;
@@ -927,7 +1007,7 @@ const BoardCanvas: React.FC<{ visibleItemIds: Set<string> | null }> = ({ visible
     }
   }, [addEdge, create, mainLaneId, removeSelected, selectedNodes, update]);
   return <div onKeyDown={handleKeyDown} tabIndex={0} className="relative min-h-0 flex-1 overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-xs outline-none">
-    {selectedNodes.length > 1 ? <DeleteSelectionBar count={selectedNodes.length} onDelete={removeSelected} /> : null}
+    {selectedNodes.length > 1 ? <BoardSelectionToolbar count={selectedNodes.length} onColor={applySelectionColor} onCreateZone={createZoneFromSelection} canCreateZone={selectionZoneBounds !== null} onDelete={removeSelected} /> : null}
     <div className="absolute bottom-6 left-1/2 z-30 flex -translate-x-1/2 items-center gap-1 rounded-xl border border-neutral-200 bg-white/95 p-1 shadow-lg"><button type="button" onClick={() => setCanvasTool('pan')} className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-semibold ${canvasTool === 'pan' ? 'bg-purple-100 text-purple-600' : 'text-neutral-500 hover:bg-neutral-50'}`}><MousePointer2 className="h-3.5 w-3.5" />移动</button><button type="button" onClick={() => setCanvasTool('select')} className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-semibold ${canvasTool === 'select' ? 'bg-purple-100 text-purple-600' : 'text-neutral-500 hover:bg-neutral-50'}`}><Scan className="h-3.5 w-3.5" />框选</button></div>
     <div className="absolute bottom-6 right-6 z-30 flex items-center gap-1 rounded-xl border border-purple-200 bg-white/95 p-1.5 shadow-lg"><button type="button" onClick={() => zoomIn()} className="flex h-8 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-neutral-600 hover:bg-purple-50"><ZoomIn className="h-3.5 w-3.5" />放大</button><button type="button" onClick={() => zoomOut()} className="flex h-8 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-neutral-600 hover:bg-purple-50"><ZoomOut className="h-3.5 w-3.5" />缩小</button><button type="button" onClick={() => fitView({ padding: 0.25, duration: 400 })} className="flex h-8 items-center gap-1 rounded-lg bg-purple-50 px-2 text-[11px] font-semibold text-purple-600 hover:bg-purple-100"><Maximize className="h-3.5 w-3.5" />适应</button></div>
     <ReactFlow nodes={localNodes} edges={edges} nodeTypes={nodeTypes} onNodesChange={onNodesChange} onNodeDragStart={onNodeDragStart} onNodeDrag={onNodeDrag} onNodeDragStop={onNodeDragStop} onConnect={connect} onConnectStart={() => { suppressCreateRef.current = true; }} onConnectEnd={() => { window.setTimeout(() => { suppressCreateRef.current = false; }, 200); }} onEdgeDoubleClick={(_event, edge) => removeEdge(edge.id)} onPaneClick={(event) => { if (event.detail !== 2 || suppressCreateRef.current) return; const position = screenToFlowPosition({ x: event.clientX, y: event.clientY }); /* laneId is a hint only; addTodoEdge resolves the real lane from the endpoints */ const itemId = create(mainLaneId, '新待办'); if (itemId) update(itemId, { position: { x: position.x - 80, y: position.y - 24 } }); }} zoomOnDoubleClick={false} selectionOnDrag={canvasTool === 'select'} selectionMode={SelectionMode.Partial} panOnDrag={canvasTool === 'pan' ? [0, 1, 2] : [1, 2]} nodesDeletable={false} deleteKeyCode={null} fitView minZoom={0.15} maxZoom={1.5} connectionRadius={28} connectionLineType={ConnectionLineType.Bezier} connectionLineStyle={{ stroke: '#9b8ae4', strokeWidth: 2 }}>

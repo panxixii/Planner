@@ -61,10 +61,10 @@ export const TodoItemToolbarHost: React.FC<{
             type="button"
             onClick={() => { toggleHandle(item.id); onClose(); }}
             className="flex h-8 w-[68px] items-center justify-center gap-1.5 rounded-md border border-violet-200 bg-violet-50 text-[11px] font-semibold text-violet-700 transition-colors hover:bg-violet-100"
-            title={item.isHandle ? '取消分线头，恢复为普通任务节点' : '设为分线头（本分线的头节点）'}
+            title={item.isHandle ? '取消手柄，恢复为普通任务节点' : '设为手柄（本分线的头节点）'}
           >
             {item.isHandle ? <ListTodo className="h-3.5 w-3.5" /> : <Flag className="h-3.5 w-3.5" />}
-            <span>{item.isHandle ? '任务' : '分线头'}</span>
+            <span>{item.isHandle ? '任务' : '手柄'}</span>
           </button>
         ) : null}
         {showDirectoryToggle && !item.isHandle ? (
