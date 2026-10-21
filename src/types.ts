@@ -136,6 +136,17 @@ export interface TodoEdge {
   laneId: string;
   sourceItemId: string;
   targetItemId: string;
+  color?: string; // Stroke color (uppercase hex). Undefined => LEGACY_EDGE_COLOR (#9B8AE4).
+}
+
+export interface TodoZone {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  color: string; // uppercase hex; default = THEME_COLOR (#8D78D5)
+  name: string;  // badge text; '' allowed (placeholder shown)
 }
 
 export interface TimeTemplateBlock {
@@ -172,6 +183,7 @@ export interface AppState {
   todoLanes: TodoLane[];
   todoItems: TodoItem[];
   todoEdges: TodoEdge[];
+  todoZones: TodoZone[];
   todoBranchFilter: string[] | null; // null = all branch-lines; [] = none; [ids] = selected HEAD ids
   todoWorkspaceMigrated: boolean;
   timeTemplates: TimeTemplate[];
@@ -226,6 +238,11 @@ export interface AppState {
   removeTodoItem: (itemId: string) => void;
   addTodoEdge: (laneId: string, sourceItemId: string, targetItemId: string) => void;
   removeTodoEdge: (edgeId: string) => void;
+  createTodoZone: (bounds: { x: number; y: number; width: number; height: number }) => string | null;
+  updateTodoZone: (zoneId: string, updates: Partial<Pick<TodoZone, 'x' | 'y' | 'width' | 'height' | 'color' | 'name'>>) => void;
+  deleteTodoZone: (zoneId: string) => void;
+  moveTodoZone: (zoneId: string, dx: number, dy: number, nodeTargets: Record<string, { x: number; y: number }>) => void;
+  setSelectionColor: (nodeIds: string[], edgeIds: string[], color: string) => void;
   setTodoBranchFilter: (headIds: string[] | null) => void;
   addTodoTimeBlock: (itemId: string, block: Omit<TaskTimeBlock, 'id'>) => void;
   updateTodoTimeBlock: (itemId: string, blockId: string, updates: Partial<Omit<TaskTimeBlock, 'id'>>) => void;

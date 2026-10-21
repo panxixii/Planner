@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { AppState, Task, TaskTimeBlock, Goal, BOMTreeItem, CategoryType, GoalNode, GoalEdge, AppCategory, TaskStatus, TimeTemplate, TimeTemplateBlock, TodoEdge, TodoItem, TodoLane, TodoLaneSection, WorkspaceComponent, WorkspaceDirectory } from './types';
+import { AppState, Task, TaskTimeBlock, Goal, BOMTreeItem, CategoryType, GoalNode, GoalEdge, AppCategory, TaskStatus, TimeTemplate, TimeTemplateBlock, TodoEdge, TodoItem, TodoLane, TodoLaneSection, TodoZone, WorkspaceComponent, WorkspaceDirectory } from './types';
 import { getDescendantTaskIds, getWorkspaceGraph } from './workspaceComponents';
 import { getTaskTimeBlocks, normalizeTaskTimeBlocks } from './taskTimeBlocks';
 
@@ -192,6 +192,13 @@ const TASK_COLOR_HEX: Record<string, string> = {
   indigo: '#9387d1',
 };
 
+export const THEME_COLOR = '#8D78D5';        // zone default (brand purple) — UPPERCASE to match normalizeHexColor output
+export const LEGACY_EDGE_COLOR = '#9B8AE4';  // edge default when color undefined — UPPERCASE to match ColorPicker output
+const DIRECTORY_MIN_WIDTH = 176;
+const DIRECTORY_MIN_HEIGHT = 48;
+const NODE_DEFAULT_WIDTH = DIRECTORY_MIN_WIDTH;        // 176
+const NODE_DEFAULT_HEIGHT = DIRECTORY_MIN_HEIGHT * 2;  // 96
+
 const normalizeTodoItems = (
   value: unknown,
   tasks?: Record<string, Task>,
@@ -272,7 +279,35 @@ const normalizeTodoEdges = (value: unknown, items: TodoItem[], lanes: TodoLane[]
     let id = typeof candidate.id === 'string' ? candidate.id : `todo-edge-${genId()}`;
     while (usedIds.has(id)) id = `todo-edge-${genId()}`;
     usedIds.add(id);
-    return [{ id, laneId: candidate.laneId, sourceItemId: candidate.sourceItemId, targetItemId: candidate.targetItemId }];
+    return [{
+      id,
+      laneId: candidate.laneId,
+      sourceItemId: candidate.sourceItemId,
+      targetItemId: candidate.targetItemId,
+      ...(typeof candidate.color === 'string' ? { color: candidate.color } : {}),
+    }];
+  });
+};
+
+const normalizeTodoZones = (value: unknown): TodoZone[] => {
+  if (!Array.isArray(value)) return [];
+  const usedIds = new Set<string>();
+  return value.flatMap((zone: unknown): TodoZone[] => {
+    if (!zone || typeof zone !== 'object') return [];
+    const c = zone as Partial<TodoZone>;
+    if (![c.x, c.y, c.width, c.height].every((n) => typeof n === 'number' && Number.isFinite(n))) return [];
+    let id = typeof c.id === 'string' && c.id && !usedIds.has(c.id) ? c.id : `todo-zone-${genId()}`;
+    while (usedIds.has(id)) id = `todo-zone-${genId()}`;
+    usedIds.add(id);
+    return [{
+      id,
+      x: c.x as number,
+      y: c.y as number,
+      width: Math.max(1, c.width as number),
+      height: Math.max(1, c.height as number),
+      color: normalizeHexColor(c.color, THEME_COLOR),
+      name: typeof c.name === 'string' ? c.name : '',
+    }];
   });
 };
 
@@ -584,6 +619,7 @@ const loadSavedState = () => {
           todoLanes: migratedTodo.lanes,
           todoItems: migratedTodo.items,
           todoEdges: migratedTodo.edges,
+          todoZones: normalizeTodoZones(parsed.todoZones),
           todoWorkspaceMigrated: true,
           timeTemplates: Array.isArray(parsed.timeTemplates)
             ? parsed.timeTemplates.filter((template: unknown): template is TimeTemplate => (
@@ -673,6 +709,7 @@ const initialWorkspaceDirectories = savedState ? savedState.workspaceDirectories
 const initialTodoLanes = normalizeTodoLanes(savedState?.todoLanes);
 const initialTodoItems = savedState ? savedState.todoItems : [];
 const initialTodoEdges = savedState ? savedState.todoEdges : [];
+const initialTodoZones = savedState ? normalizeTodoZones(savedState.todoZones) : [];
 const initialTodoWorkspaceMigrated = savedState ? savedState.todoWorkspaceMigrated : true;
 const initialTimeTemplates = savedState ? savedState.timeTemplates : DEFAULT_TIME_TEMPLATES;
 const initialActiveTimeTemplateIds = savedState ? savedState.activeTimeTemplateIds : { daily: null, weekly: null };
@@ -713,6 +750,7 @@ type HistorySnapshot = Pick<AppState,
   | 'todoLanes'
   | 'todoItems'
   | 'todoEdges'
+  | 'todoZones'
   | 'timeTemplates'
   | 'activeTimeTemplateIds'
   | 'favoriteColors'
@@ -727,7 +765,7 @@ type HistorySnapshot = Pick<AppState,
 const HISTORY_LIMIT = 100;
 const HISTORY_KEYS = new Set<keyof HistorySnapshot>([
   'tasks', 'taskStatuses', 'goals', 'bomTree', 'categories', 'workspaceComponents', 'workspaceDirectories',
-  'todoLanes', 'todoItems', 'todoEdges', 'timeTemplates', 'activeTimeTemplateIds', 'favoriteColors',
+  'todoLanes', 'todoItems', 'todoEdges', 'todoZones', 'timeTemplates', 'activeTimeTemplateIds', 'favoriteColors',
   'crossGoalEdges', 'timelineTaskOrder', 'mergedNodePositions', 'workspaceNodes',
   'mergedEdges', 'mergedNodeIds',
 ]);
@@ -745,6 +783,7 @@ const captureHistorySnapshot = (state: AppState): HistorySnapshot => cloneHistor
   todoLanes: state.todoLanes,
   todoItems: state.todoItems,
   todoEdges: state.todoEdges,
+  todoZones: state.todoZones,
   timeTemplates: state.timeTemplates,
   activeTimeTemplateIds: state.activeTimeTemplateIds,
   favoriteColors: state.favoriteColors,
@@ -782,6 +821,7 @@ export const useAppStore = create<AppState>((set, get) => {
         todoLanes: state.todoLanes,
         todoItems: state.todoItems,
         todoEdges: state.todoEdges,
+        todoZones: state.todoZones,
         todoBranchFilter: state.todoBranchFilter,
         todoWorkspaceMigrated: state.todoWorkspaceMigrated,
         timeTemplates: state.timeTemplates,
@@ -856,6 +896,7 @@ export const useAppStore = create<AppState>((set, get) => {
     todoLanes: initialTodoLanes,
     todoItems: initialTodoItems,
     todoEdges: initialTodoEdges,
+    todoZones: initialTodoZones,
     todoBranchFilter: initialTodoBranchFilter,
     todoWorkspaceMigrated: initialTodoWorkspaceMigrated,
     timeTemplates: initialTimeTemplates,
@@ -1112,6 +1153,7 @@ export const useAppStore = create<AppState>((set, get) => {
         todoLanes: migratedTodo.lanes,
         todoItems: migratedTodo.items,
         todoEdges: migratedTodo.edges,
+        todoZones: normalizeTodoZones(data.todoZones),
         todoWorkspaceMigrated: true,
         timeTemplates: Array.isArray(data.timeTemplates) ? data.timeTemplates as TimeTemplate[] : [],
         activeTimeTemplateIds: data.activeTimeTemplateIds && typeof data.activeTimeTemplateIds === 'object'
@@ -1144,6 +1186,8 @@ export const useAppStore = create<AppState>((set, get) => {
           order: nextOrder,
           isDone: false,
           position: { x: (nextOrder % 4) * 220, y: Math.floor(nextOrder / 4) * 120 },
+          width: NODE_DEFAULT_WIDTH,
+          height: NODE_DEFAULT_HEIGHT,
           color: 'indigo',
           timeBlocks: [],
         }],
@@ -1343,7 +1387,7 @@ export const useAppStore = create<AppState>((set, get) => {
     })),
     toggleTodoItemDirectory: (itemId) => persistSet((state: AppState) => ({
       todoItems: state.todoItems.map((item) => item.id === itemId
-        ? { ...item, isDirectory: !item.isDirectory, isHandle: !item.isDirectory ? undefined : item.isHandle, position: item.position, width: item.isDirectory ? item.width : Math.max(item.width || 0, 176), height: item.isDirectory ? item.height : Math.max(item.height || 0, 48) }
+        ? { ...item, isDirectory: !item.isDirectory, isHandle: !item.isDirectory ? undefined : item.isHandle, position: item.position, width: item.isDirectory ? item.width : Math.max(item.width || 0, DIRECTORY_MIN_WIDTH), height: item.isDirectory ? item.height : Math.max(item.height || 0, DIRECTORY_MIN_HEIGHT) }
         : item),
     })),
     toggleTodoItemHandle: (itemId) => persistSet((state: AppState) => {
@@ -1382,6 +1426,33 @@ export const useAppStore = create<AppState>((set, get) => {
     removeTodoEdge: (edgeId) => persistSet((state: AppState) => ({
       todoEdges: state.todoEdges.filter((edge) => edge.id !== edgeId),
     })),
+    createTodoZone: (bounds) => {
+      if (![bounds.x, bounds.y, bounds.width, bounds.height].every(Number.isFinite)
+        || bounds.width < 1 || bounds.height < 1) return null;
+      const id = `todo-zone-${genId()}`;
+      persistSet((state: AppState) => ({
+        todoZones: [...state.todoZones, { id, x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, color: THEME_COLOR, name: '' }],
+      }));
+      return id;
+    },
+    updateTodoZone: (zoneId, updates) => persistSet((state: AppState) => ({
+      todoZones: state.todoZones.map((zone) => zone.id === zoneId ? { ...zone, ...updates } : zone),
+    })),
+    deleteTodoZone: (zoneId) => persistSet((state: AppState) => ({
+      todoZones: state.todoZones.filter((zone) => zone.id !== zoneId),
+    })),
+    moveTodoZone: (zoneId, dx, dy, nodeTargets) => persistSet((state: AppState) => ({
+      todoZones: state.todoZones.map((zone) => zone.id === zoneId ? { ...zone, x: zone.x + dx, y: zone.y + dy } : zone),
+      todoItems: state.todoItems.map((item) => nodeTargets[item.id] ? { ...item, position: nodeTargets[item.id] } : item),
+    })),
+    setSelectionColor: (nodeIds, edgeIds, color) => persistSet((state: AppState) => {
+      const nodeSet = new Set(nodeIds);
+      const edgeSet = new Set(edgeIds);
+      return {
+        todoItems: state.todoItems.map((item) => nodeSet.has(item.id) ? { ...item, color } : item),
+        todoEdges: state.todoEdges.map((edge) => edgeSet.has(edge.id) ? { ...edge, color } : edge),
+      };
+    }),
     addTodoTimeBlock: (itemId, block) => persistSet((state: AppState) => ({
       todoItems: state.todoItems.map((item) => {
         if (item.id !== itemId) return item;
