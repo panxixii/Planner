@@ -769,7 +769,7 @@ const BoardNode = React.memo(({ id, data, selected }: NodeProps<Node<BoardNodeDa
     {data.isHandle ? null : <Handle type="target" position={Position.Left} className="!h-2.5 !w-2.5 !border-2 !border-white !bg-purple-400" />}
     <span className="absolute inset-y-2 left-1.5 w-1 rounded-full" style={{ backgroundColor: color }} />
     <div className="flex w-full items-center gap-2">
-      {data.isHandle ? <Flag className="h-3.5 w-3.5 shrink-0 text-violet-500" /> : <TodoCheckbox done={data.done} onClick={() => toggle(data.itemId)} />}
+      {data.isHandle ? <Flag className="h-3.5 w-3.5 shrink-0 text-violet-500" /> : null}
       <input
         ref={inputRef}
         readOnly={!editing}
@@ -787,7 +787,7 @@ const BoardNode = React.memo(({ id, data, selected }: NodeProps<Node<BoardNodeDa
         aria-label={data.isDirectory ? '目录标题' : '待办文本'}
       />
       <TodoTimeLabel itemId={data.itemId} />
-      <TodoStatusBadge itemId={data.itemId} compact={data.isDirectory} />
+      {data.isHandle ? null : <TodoStatusBadge itemId={data.itemId} compact />}
     </div>
     <Handle type="source" position={Position.Right} className="!h-2.5 !w-2.5 !border-2 !border-white" style={{ backgroundColor: color }} />
     <TodoItemToolbarHost itemId={data.itemId} open={toolbarOpen} anchor={nodeRef.current} pointerX={pointerX} onClose={() => setToolbarOpen(false)} showDirectoryToggle showHandleToggle />
@@ -810,7 +810,7 @@ const BoardSelectionToolbar: React.FC<{
   return (
     <div className="absolute left-1/2 top-5 z-30 flex -translate-x-1/2 items-center gap-2 rounded-xl border border-neutral-200 bg-white/95 p-2 shadow-xl">
       <span className="px-2 text-[11px] font-bold text-neutral-500">已选 {count} 项</span>
-      <div className="w-32"><ColorPicker label="统一颜色" value={LEGACY_EDGE_COLOR} onChange={onColor} /></div>
+      <ColorPicker label="统一颜色" value={LEGACY_EDGE_COLOR} onChange={onColor} />
       <div className="flex items-center gap-1 rounded-lg border border-neutral-200 bg-neutral-50 px-1.5 py-1">
         <span className="px-1 text-[11px] font-bold text-neutral-500">节点类型</span>
         {([['task', '任务'], ['directory', '目录'], ['handle', '手柄']] as const).map(([value, label]) => (

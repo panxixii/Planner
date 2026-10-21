@@ -155,9 +155,8 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({ value, onChange, label
 
   return (
     <div className="relative">
-      <button type="button" onClick={() => { setDraftColor(currentValue); setHexDraft(currentValue); setIsOpen((open) => !open); }} className="flex h-9 w-full items-center justify-between gap-3 rounded-lg border border-neutral-200 bg-white px-2.5 text-xs font-semibold text-neutral-600 hover:border-purple-200" aria-expanded={isOpen}>
-        <span className="flex items-center gap-2"><span className="h-5 w-5 rounded-md border border-black/10 shadow-inner" style={{ backgroundColor: currentValue }} /><span>{label}</span></span>
-        <span className="font-mono text-[10px] text-neutral-400">{currentValue}</span>
+      <button type="button" onClick={() => { setDraftColor(currentValue); setHexDraft(currentValue); setIsOpen((open) => !open); }} className="flex h-8 w-8 items-center justify-center rounded-md border border-neutral-200 bg-white transition-colors hover:border-purple-300" aria-expanded={isOpen} aria-label={label} title={label}>
+        <span className="h-5 w-5 rounded-md border border-black/10 shadow-inner" style={{ backgroundColor: currentValue }} />
       </button>
       {isOpen ? createPortal(
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" onClick={(event) => event.stopPropagation()}>

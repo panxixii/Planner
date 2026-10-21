@@ -34,7 +34,7 @@ const ZoneToolbarHost: React.FC<{
   return createPortal(
     <>
       <button type="button" className="fixed inset-0 z-[190] cursor-default" onClick={onClose} aria-label="关闭分区操作" />
-      <div role="toolbar" aria-label="分区操作" className="fixed z-[200] flex w-56 -translate-x-1/2 flex-col gap-1.5 rounded-lg border border-neutral-200 bg-white p-1.5 shadow-lg" style={{ top: pos.top, left: pos.left }}>
+      <div role="toolbar" aria-label="分区操作" className="fixed z-[200] flex -translate-x-1/2 items-center gap-1.5 rounded-lg border border-neutral-200 bg-white p-1.5 shadow-lg" style={{ top: pos.top, left: pos.left }}>
         <ColorPicker label="颜色" value={zone.color} onChange={(color) => updateZone(zoneId, { color })} />
         <button
           type="button"
@@ -43,7 +43,7 @@ const ZoneToolbarHost: React.FC<{
             setConfirmDelete(true);
           }}
           onMouseLeave={() => setConfirmDelete(false)}
-          className={`flex h-8 items-center justify-center gap-1.5 rounded-md border text-[11px] font-semibold transition-colors ${confirmDelete ? 'border-rose-500 bg-rose-600 text-white hover:bg-rose-700' : 'border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100'}`}
+          className={`flex h-8 items-center justify-center gap-1.5 rounded-md border px-2.5 text-[11px] font-semibold transition-colors ${confirmDelete ? 'border-rose-500 bg-rose-600 text-white hover:bg-rose-700' : 'border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100'}`}
           aria-label={confirmDelete ? '确认删除分区' : '删除分区'}
           title={confirmDelete ? '再次点击确认删除（仅删除色块，保留内部节点）' : '删除分区'}
         >

@@ -127,13 +127,11 @@ export const TodoItemToolbarHost: React.FC<{
             ) : null}
           </div>
         )}
-        <div className="w-24">
-          <ColorPicker
-            label="颜色"
-            value={(item.color && /^#[0-9a-f]{6}$/i.test(item.color)) ? item.color : (BOARD_COLOR_HEX[item.color || ''] || '#9387D1')}
-            onChange={(color) => updateItem(item.id, { color })}
-          />
-        </div>
+        <ColorPicker
+          label="颜色"
+          value={(item.color && /^#[0-9a-f]{6}$/i.test(item.color)) ? item.color : (BOARD_COLOR_HEX[item.color || ''] || '#9387D1')}
+          onChange={(color) => updateItem(item.id, { color })}
+        />
         <button
           type="button"
           onClick={() => {
