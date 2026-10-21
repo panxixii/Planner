@@ -18,7 +18,7 @@ import {
   applyNodeChanges,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { CalendarDays, Check, CircleDot, Columns3, Flag, GitBranch, GripVertical, Link2, List, Maximize, MousePointer2, Pipette, Plus, Scan, Trash2, ZoomIn, ZoomOut } from 'lucide-react';
+import { CalendarDays, Check, CircleDot, Columns3, Flag, GitBranch, GripVertical, Hand, Link2, List, Maximize, Pipette, Plus, Scan, Trash2, ZoomIn, ZoomOut } from 'lucide-react';
 import { useAppStore, LEGACY_EDGE_COLOR } from '../store';
 import { withAlpha } from '../colorUtils';
 import { computeZoneMoveSet, selectionBounds } from '../boardZones';
@@ -798,14 +798,61 @@ const nodeTypes = { todoNode: BoardNode, zoneNode: ZoneNode };
 
 type BoardOrZoneNode = Node<BoardNodeData> | Node<ZoneNodeData>;
 
+const NODE_TYPE_SWATCHES = ['#9387d1', '#67c8bd', '#d78fb5', '#79bfd5', '#d9b958', '#9b8ae4', '#e2725b', '#6b7280'];
+
+// A node-type button: single-click converts the selection's type; hovering reveals a
+// color palette that recolors EVERY node of this type globally.
+const NodeTypeButton: React.FC<{
+  value: NodeType;
+  label: string;
+  onConvert: (type: NodeType) => void;
+  onTypeColor: (type: NodeType, color: string) => void;
+}> = ({ value, label, onConvert, onTypeColor }) => {
+  const [hover, setHover] = useState(false);
+  const closeTimer = useRef<number | undefined>(undefined);
+  const open = () => { window.clearTimeout(closeTimer.current); setHover(true); };
+  const scheduleClose = () => { closeTimer.current = window.setTimeout(() => setHover(false), 120); };
+  return (
+    <div className="relative" onMouseEnter={open} onMouseLeave={scheduleClose}>
+      <button
+        type="button"
+        onClick={() => onConvert(value)}
+        className="flex h-6 items-center gap-1 rounded-md border border-transparent bg-white px-2 text-[11px] font-semibold text-neutral-600 transition-colors hover:border-purple-200 hover:bg-purple-50 hover:text-purple-600"
+        title={`单击：把选中节点转为${label}；悬浮：给全部${label}节点统一改色`}
+      >
+        {label}
+      </button>
+      {hover ? (
+        <div className="absolute left-1/2 top-full z-40 mt-1 -translate-x-1/2 rounded-lg border border-neutral-200 bg-white p-2 shadow-xl" onMouseEnter={open} onMouseLeave={scheduleClose}>
+          <p className="whitespace-nowrap px-0.5 pb-1.5 text-[10px] font-semibold text-neutral-400">全部{label}节点改色</p>
+          <div className="grid grid-cols-4 gap-1.5">
+            {NODE_TYPE_SWATCHES.map((color) => (
+              <button
+                key={color}
+                type="button"
+                onClick={() => { onTypeColor(value, color); setHover(false); }}
+                className="h-6 w-6 rounded-md border border-black/10 shadow-inner transition-transform hover:scale-110"
+                style={{ backgroundColor: color }}
+                title={color}
+                aria-label={`将全部${label}节点改为 ${color}`}
+              />
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+};
+
 const BoardSelectionToolbar: React.FC<{
   count: number;
   onColor: (color: string) => void;
   onNodeType: (type: NodeType) => void;
+  onTypeColor: (type: NodeType, color: string) => void;
   onCreateZone: () => void;
   canCreateZone: boolean;
   onDelete: () => void;
-}> = ({ count, onColor, onNodeType, onCreateZone, canCreateZone, onDelete }) => {
+}> = ({ count, onColor, onNodeType, onTypeColor, onCreateZone, canCreateZone, onDelete }) => {
   const [confirming, setConfirming] = useState(false);
   return (
     <div className="absolute left-1/2 top-5 z-30 flex -translate-x-1/2 items-center gap-2 rounded-xl border border-neutral-200 bg-white/95 p-2 shadow-xl">
@@ -814,15 +861,7 @@ const BoardSelectionToolbar: React.FC<{
       <div className="flex items-center gap-1 rounded-lg border border-neutral-200 bg-neutral-50 px-1.5 py-1">
         <span className="px-1 text-[11px] font-bold text-neutral-500">节点类型</span>
         {([['task', '任务'], ['directory', '目录'], ['handle', '手柄']] as const).map(([value, label]) => (
-          <button
-            key={value}
-            type="button"
-            onClick={() => onNodeType(value)}
-            className="flex h-6 items-center gap-1 rounded-md border border-transparent bg-white px-2 text-[11px] font-semibold text-neutral-600 transition-colors hover:border-purple-200 hover:bg-purple-50 hover:text-purple-600"
-            title={value === 'task' ? '把选中的节点转为普通任务' : value === 'directory' ? '把选中的节点转为目录' : '把选中的节点转为手柄（将断开指向它们的连线）'}
-          >
-            {label}
-          </button>
+          <NodeTypeButton key={value} value={value} label={label} onConvert={onNodeType} onTypeColor={onTypeColor} />
         ))}
       </div>
       <button
@@ -862,11 +901,12 @@ const BoardCanvas: React.FC<{ visibleItemIds: Set<string> | null }> = ({ visible
   const moveTodoZone = useAppStore((state) => state.moveTodoZone);
   const setSelectionColor = useAppStore((state) => state.setSelectionColor);
   const setSelectionNodeType = useAppStore((state) => state.setSelectionNodeType);
+  const setNodeTypeColor = useAppStore((state) => state.setNodeTypeColor);
   const beginHistoryGroup = useAppStore((state) => state.beginHistoryGroup);
   const endHistoryGroup = useAppStore((state) => state.endHistoryGroup);
   const { screenToFlowPosition, zoomIn, zoomOut, fitView } = useReactFlow();
   const suppressCreateRef = useRef(false);
-  const [canvasTool, setCanvasTool] = useState<'pan' | 'select'>('pan');
+  const [canvasTool, setCanvasTool] = useState<'pan' | 'select'>('select');
   const mainLaneId = allLanes.find((l) => l.type === 'main')?.id ?? 'todo-main';
   const items = useMemo(() => allItems.filter((item) => (
     visibleItemIds === null || visibleItemIds.has(item.id)
@@ -1024,10 +1064,15 @@ const BoardCanvas: React.FC<{ visibleItemIds: Set<string> | null }> = ({ visible
     }
   }, [addEdge, create, mainLaneId, removeSelected, selectedNodes, update]);
   return <div onKeyDown={handleKeyDown} tabIndex={0} className="relative min-h-0 flex-1 overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-xs outline-none">
-    {selectedNodes.length > 1 ? <BoardSelectionToolbar count={selectedNodes.length} onColor={applySelectionColor} onNodeType={applySelectionNodeType} onCreateZone={createZoneFromSelection} canCreateZone={selectionZoneBounds !== null} onDelete={removeSelected} /> : null}
-    <div className="absolute bottom-6 left-1/2 z-30 flex -translate-x-1/2 items-center gap-1 rounded-xl border border-neutral-200 bg-white/95 p-1 shadow-lg"><button type="button" onClick={() => setCanvasTool('pan')} className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-semibold ${canvasTool === 'pan' ? 'bg-purple-100 text-purple-600' : 'text-neutral-500 hover:bg-neutral-50'}`}><MousePointer2 className="h-3.5 w-3.5" />移动</button><button type="button" onClick={() => setCanvasTool('select')} className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-semibold ${canvasTool === 'select' ? 'bg-purple-100 text-purple-600' : 'text-neutral-500 hover:bg-neutral-50'}`}><Scan className="h-3.5 w-3.5" />框选</button></div>
-    <div className="absolute bottom-6 right-6 z-30 flex items-center gap-1 rounded-xl border border-purple-200 bg-white/95 p-1.5 shadow-lg"><button type="button" onClick={() => zoomIn()} className="flex h-8 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-neutral-600 hover:bg-purple-50"><ZoomIn className="h-3.5 w-3.5" />放大</button><button type="button" onClick={() => zoomOut()} className="flex h-8 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-neutral-600 hover:bg-purple-50"><ZoomOut className="h-3.5 w-3.5" />缩小</button><button type="button" onClick={() => fitView({ padding: 0.25, duration: 400 })} className="flex h-8 items-center gap-1 rounded-lg bg-purple-50 px-2 text-[11px] font-semibold text-purple-600 hover:bg-purple-100"><Maximize className="h-3.5 w-3.5" />适应</button></div>
-    <ReactFlow nodes={localNodes} edges={edges} nodeTypes={nodeTypes} onNodesChange={onNodesChange} onNodeDragStart={onNodeDragStart} onNodeDrag={onNodeDrag} onNodeDragStop={onNodeDragStop} onConnect={connect} onConnectStart={() => { suppressCreateRef.current = true; }} onConnectEnd={() => { window.setTimeout(() => { suppressCreateRef.current = false; }, 200); }} onEdgeDoubleClick={(_event, edge) => removeEdge(edge.id)} onPaneClick={(event) => { if (event.detail !== 2 || suppressCreateRef.current) return; const position = screenToFlowPosition({ x: event.clientX, y: event.clientY }); /* laneId is a hint only; addTodoEdge resolves the real lane from the endpoints */ const itemId = create(mainLaneId, '新待办'); if (itemId) update(itemId, { position: { x: position.x - 80, y: position.y - 24 } }); }} zoomOnDoubleClick={false} selectionOnDrag={canvasTool === 'select'} selectionMode={SelectionMode.Partial} panOnDrag={canvasTool === 'pan' ? [0, 1, 2] : [1, 2]} nodesDeletable={false} deleteKeyCode={null} fitView minZoom={0.15} maxZoom={1.5} connectionRadius={28} connectionLineType={ConnectionLineType.Bezier} connectionLineStyle={{ stroke: '#9b8ae4', strokeWidth: 2 }}>
+    {selectedNodes.length > 1 ? <BoardSelectionToolbar count={selectedNodes.length} onColor={applySelectionColor} onNodeType={applySelectionNodeType} onTypeColor={setNodeTypeColor} onCreateZone={createZoneFromSelection} canCreateZone={selectionZoneBounds !== null} onDelete={removeSelected} /> : null}
+    <div className="absolute bottom-6 right-6 z-30 flex items-center gap-1 rounded-xl border border-purple-200 bg-white/95 p-1.5 shadow-lg">
+      <button type="button" onClick={() => setCanvasTool((tool) => tool === 'pan' ? 'select' : 'pan')} className={`flex h-8 items-center justify-center rounded-lg px-2 transition-colors ${canvasTool === 'pan' ? 'bg-purple-100 text-purple-600' : 'text-neutral-500 hover:bg-purple-50'}`} title={canvasTool === 'pan' ? '抓手模式：拖拽平移画板（点击切回框选）' : '切换到抓手模式，拖拽平移画板'} aria-pressed={canvasTool === 'pan'}><Hand className="h-4 w-4" /></button>
+      <span className="mx-0.5 h-5 w-px bg-neutral-200" />
+      <button type="button" onClick={() => zoomOut()} className="flex h-8 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-neutral-600 hover:bg-purple-50" title="缩小"><ZoomOut className="h-3.5 w-3.5" /></button>
+      <button type="button" onClick={() => fitView({ padding: 0.25, duration: 400 })} className="flex h-8 items-center gap-1 rounded-lg bg-purple-50 px-2 text-[11px] font-semibold text-purple-600 hover:bg-purple-100" title="适应视图"><Maximize className="h-3.5 w-3.5" /></button>
+      <button type="button" onClick={() => zoomIn()} className="flex h-8 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-neutral-600 hover:bg-purple-50" title="放大"><ZoomIn className="h-3.5 w-3.5" /></button>
+    </div>
+    <ReactFlow nodes={localNodes} edges={edges} nodeTypes={nodeTypes} onNodesChange={onNodesChange} onNodeDragStart={onNodeDragStart} onNodeDrag={onNodeDrag} onNodeDragStop={onNodeDragStop} onConnect={connect} onConnectStart={() => { suppressCreateRef.current = true; }} onConnectEnd={() => { window.setTimeout(() => { suppressCreateRef.current = false; }, 200); }} onEdgeDoubleClick={(_event, edge) => removeEdge(edge.id)} onPaneClick={(event) => { if (event.detail !== 2 || suppressCreateRef.current) return; const position = screenToFlowPosition({ x: event.clientX, y: event.clientY }); /* laneId is a hint only; addTodoEdge resolves the real lane from the endpoints */ const itemId = create(mainLaneId, '新待办'); if (itemId) update(itemId, { position: { x: position.x - 80, y: position.y - 24 } }); }} zoomOnDoubleClick={false} selectionOnDrag={canvasTool === 'select'} selectionMode={SelectionMode.Partial} panOnDrag={canvasTool === 'pan' ? [0, 1, 2] : [1, 2]} panOnScroll zoomOnPinch zoomOnScroll={false} nodesDeletable={false} deleteKeyCode={null} fitView minZoom={0.15} maxZoom={1.5} connectionRadius={28} connectionLineType={ConnectionLineType.Bezier} connectionLineStyle={{ stroke: '#9b8ae4', strokeWidth: 2 }}>
       <Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="#d9ddea" />
     </ReactFlow>
   </div>;

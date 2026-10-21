@@ -1483,6 +1483,13 @@ export const useAppStore = create<AppState>((set, get) => {
           : state.todoEdges,
       };
     }),
+    // Recolor EVERY node of a given kind (global, ignores selection), one undo step.
+    setNodeTypeColor: (type, color) => persistSet((state: AppState) => ({
+      todoItems: state.todoItems.map((item) => {
+        const itemType: NodeType = item.isHandle ? 'handle' : item.isDirectory ? 'directory' : 'task';
+        return itemType === type ? { ...item, color } : item;
+      }),
+    })),
     addTodoTimeBlock: (itemId, block) => persistSet((state: AppState) => ({
       todoItems: state.todoItems.map((item) => {
         if (item.id !== itemId) return item;
