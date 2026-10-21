@@ -24,7 +24,7 @@ import { withAlpha } from '../colorUtils';
 import { computeZoneMoveSet, selectionBounds } from '../boardZones';
 import { isUpcomingTodayScheduleItem } from '../taskTimeBlocks';
 import { buildTodoGraph, computeVisibleItemIds, reachableFrom } from '../todoBranchLines';
-import type { TodoEdge, TodoItem, TodoLane, TodoLaneSection } from '../types';
+import type { NodeType, TodoEdge, TodoItem, TodoLane, TodoLaneSection } from '../types';
 import { ZoneNode, type ZoneNodeData } from './ZoneNode';
 import { ColorPicker } from './ColorPicker';
 import { TodoBoard } from './TodoBoard';
@@ -801,15 +801,30 @@ type BoardOrZoneNode = Node<BoardNodeData> | Node<ZoneNodeData>;
 const BoardSelectionToolbar: React.FC<{
   count: number;
   onColor: (color: string) => void;
+  onNodeType: (type: NodeType) => void;
   onCreateZone: () => void;
   canCreateZone: boolean;
   onDelete: () => void;
-}> = ({ count, onColor, onCreateZone, canCreateZone, onDelete }) => {
+}> = ({ count, onColor, onNodeType, onCreateZone, canCreateZone, onDelete }) => {
   const [confirming, setConfirming] = useState(false);
   return (
     <div className="absolute left-1/2 top-5 z-30 flex -translate-x-1/2 items-center gap-2 rounded-xl border border-neutral-200 bg-white/95 p-2 shadow-xl">
       <span className="px-2 text-[11px] font-bold text-neutral-500">已选 {count} 项</span>
       <div className="w-32"><ColorPicker label="统一颜色" value={LEGACY_EDGE_COLOR} onChange={onColor} /></div>
+      <div className="flex items-center gap-1 rounded-lg border border-neutral-200 bg-neutral-50 px-1.5 py-1">
+        <span className="px-1 text-[11px] font-bold text-neutral-500">节点类型</span>
+        {([['task', '任务'], ['directory', '目录'], ['handle', '手柄']] as const).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => onNodeType(value)}
+            className="flex h-6 items-center gap-1 rounded-md border border-transparent bg-white px-2 text-[11px] font-semibold text-neutral-600 transition-colors hover:border-purple-200 hover:bg-purple-50 hover:text-purple-600"
+            title={value === 'task' ? '把选中的节点转为普通任务' : value === 'directory' ? '把选中的节点转为目录' : '把选中的节点转为手柄（将断开指向它们的连线）'}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
       <button
         type="button"
         onClick={onCreateZone}
@@ -846,6 +861,7 @@ const BoardCanvas: React.FC<{ visibleItemIds: Set<string> | null }> = ({ visible
   const createTodoZone = useAppStore((state) => state.createTodoZone);
   const moveTodoZone = useAppStore((state) => state.moveTodoZone);
   const setSelectionColor = useAppStore((state) => state.setSelectionColor);
+  const setSelectionNodeType = useAppStore((state) => state.setSelectionNodeType);
   const beginHistoryGroup = useAppStore((state) => state.beginHistoryGroup);
   const endHistoryGroup = useAppStore((state) => state.endHistoryGroup);
   const { screenToFlowPosition, zoomIn, zoomOut, fitView } = useReactFlow();
@@ -987,6 +1003,7 @@ const BoardCanvas: React.FC<{ visibleItemIds: Set<string> | null }> = ({ visible
   );
   const selectionZoneBounds = useMemo(() => selectionBounds(selectedTodoNodes), [selectedTodoNodes]);
   const applySelectionColor = useCallback((color: string) => setSelectionColor([...selectedNodeIds], selectedEdgeIds, color), [setSelectionColor, selectedNodeIds, selectedEdgeIds]);
+  const applySelectionNodeType = useCallback((type: NodeType) => setSelectionNodeType([...selectedNodeIds], type), [setSelectionNodeType, selectedNodeIds]);
   const createZoneFromSelection = useCallback(() => { if (selectionZoneBounds) createTodoZone(selectionZoneBounds); }, [createTodoZone, selectionZoneBounds]);
   const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
     const target = event.target as HTMLElement;
@@ -1007,7 +1024,7 @@ const BoardCanvas: React.FC<{ visibleItemIds: Set<string> | null }> = ({ visible
     }
   }, [addEdge, create, mainLaneId, removeSelected, selectedNodes, update]);
   return <div onKeyDown={handleKeyDown} tabIndex={0} className="relative min-h-0 flex-1 overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-xs outline-none">
-    {selectedNodes.length > 1 ? <BoardSelectionToolbar count={selectedNodes.length} onColor={applySelectionColor} onCreateZone={createZoneFromSelection} canCreateZone={selectionZoneBounds !== null} onDelete={removeSelected} /> : null}
+    {selectedNodes.length > 1 ? <BoardSelectionToolbar count={selectedNodes.length} onColor={applySelectionColor} onNodeType={applySelectionNodeType} onCreateZone={createZoneFromSelection} canCreateZone={selectionZoneBounds !== null} onDelete={removeSelected} /> : null}
     <div className="absolute bottom-6 left-1/2 z-30 flex -translate-x-1/2 items-center gap-1 rounded-xl border border-neutral-200 bg-white/95 p-1 shadow-lg"><button type="button" onClick={() => setCanvasTool('pan')} className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-semibold ${canvasTool === 'pan' ? 'bg-purple-100 text-purple-600' : 'text-neutral-500 hover:bg-neutral-50'}`}><MousePointer2 className="h-3.5 w-3.5" />移动</button><button type="button" onClick={() => setCanvasTool('select')} className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-semibold ${canvasTool === 'select' ? 'bg-purple-100 text-purple-600' : 'text-neutral-500 hover:bg-neutral-50'}`}><Scan className="h-3.5 w-3.5" />框选</button></div>
     <div className="absolute bottom-6 right-6 z-30 flex items-center gap-1 rounded-xl border border-purple-200 bg-white/95 p-1.5 shadow-lg"><button type="button" onClick={() => zoomIn()} className="flex h-8 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-neutral-600 hover:bg-purple-50"><ZoomIn className="h-3.5 w-3.5" />放大</button><button type="button" onClick={() => zoomOut()} className="flex h-8 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-neutral-600 hover:bg-purple-50"><ZoomOut className="h-3.5 w-3.5" />缩小</button><button type="button" onClick={() => fitView({ padding: 0.25, duration: 400 })} className="flex h-8 items-center gap-1 rounded-lg bg-purple-50 px-2 text-[11px] font-semibold text-purple-600 hover:bg-purple-100"><Maximize className="h-3.5 w-3.5" />适应</button></div>
     <ReactFlow nodes={localNodes} edges={edges} nodeTypes={nodeTypes} onNodesChange={onNodesChange} onNodeDragStart={onNodeDragStart} onNodeDrag={onNodeDrag} onNodeDragStop={onNodeDragStop} onConnect={connect} onConnectStart={() => { suppressCreateRef.current = true; }} onConnectEnd={() => { window.setTimeout(() => { suppressCreateRef.current = false; }, 200); }} onEdgeDoubleClick={(_event, edge) => removeEdge(edge.id)} onPaneClick={(event) => { if (event.detail !== 2 || suppressCreateRef.current) return; const position = screenToFlowPosition({ x: event.clientX, y: event.clientY }); /* laneId is a hint only; addTodoEdge resolves the real lane from the endpoints */ const itemId = create(mainLaneId, '新待办'); if (itemId) update(itemId, { position: { x: position.x - 80, y: position.y - 24 } }); }} zoomOnDoubleClick={false} selectionOnDrag={canvasTool === 'select'} selectionMode={SelectionMode.Partial} panOnDrag={canvasTool === 'pan' ? [0, 1, 2] : [1, 2]} nodesDeletable={false} deleteKeyCode={null} fitView minZoom={0.15} maxZoom={1.5} connectionRadius={28} connectionLineType={ConnectionLineType.Bezier} connectionLineStyle={{ stroke: '#9b8ae4', strokeWidth: 2 }}>

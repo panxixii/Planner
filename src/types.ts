@@ -131,6 +131,8 @@ export interface TodoItem {
   calendarId?: string; // Schedule calendar this timed item belongs to.
 }
 
+export type NodeType = 'task' | 'directory' | 'handle';
+
 export interface TodoEdge {
   id: string;
   laneId: string;
@@ -243,6 +245,7 @@ export interface AppState {
   deleteTodoZone: (zoneId: string) => void;
   moveTodoZone: (zoneId: string, dx: number, dy: number, nodeTargets: Record<string, { x: number; y: number }>) => void;
   setSelectionColor: (nodeIds: string[], edgeIds: string[], color: string) => void;
+  setSelectionNodeType: (nodeIds: string[], type: NodeType) => void;
   setTodoBranchFilter: (headIds: string[] | null) => void;
   addTodoTimeBlock: (itemId: string, block: Omit<TaskTimeBlock, 'id'>) => void;
   updateTodoTimeBlock: (itemId: string, blockId: string, updates: Partial<Omit<TaskTimeBlock, 'id'>>) => void;

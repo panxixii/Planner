@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { AppState, Task, TaskTimeBlock, Goal, BOMTreeItem, CategoryType, GoalNode, GoalEdge, AppCategory, TaskStatus, TimeTemplate, TimeTemplateBlock, TodoEdge, TodoItem, TodoLane, TodoLaneSection, TodoZone, WorkspaceComponent, WorkspaceDirectory } from './types';
+import { AppState, NodeType, Task, TaskTimeBlock, Goal, BOMTreeItem, CategoryType, GoalNode, GoalEdge, AppCategory, TaskStatus, TimeTemplate, TimeTemplateBlock, TodoEdge, TodoItem, TodoLane, TodoLaneSection, TodoZone, WorkspaceComponent, WorkspaceDirectory } from './types';
 import { getDescendantTaskIds, getWorkspaceGraph } from './workspaceComponents';
 import { getTaskTimeBlocks, normalizeTaskTimeBlocks } from './taskTimeBlocks';
 
@@ -198,6 +198,26 @@ const DIRECTORY_MIN_WIDTH = 176;
 const DIRECTORY_MIN_HEIGHT = 48;
 const NODE_DEFAULT_WIDTH = DIRECTORY_MIN_WIDTH;        // 176
 const NODE_DEFAULT_HEIGHT = DIRECTORY_MIN_HEIGHT * 2;  // 96
+
+// Pure per-item node-type transform. Owns the field-level invariants (handle ⟂ directory
+// mutual exclusion, directory size clamp); cross-entity effects (incoming-edge pruning for
+// handles) live in the store slice, not here, to keep this a pure TodoItem -> TodoItem fn.
+const applyNodeType = (item: TodoItem, type: NodeType): TodoItem => {
+  switch (type) {
+    case 'handle':
+      return { ...item, isHandle: true, isDirectory: undefined };
+    case 'directory':
+      return {
+        ...item,
+        isDirectory: true,
+        isHandle: undefined,
+        width: Math.max(item.width || 0, DIRECTORY_MIN_WIDTH),
+        height: Math.max(item.height || 0, DIRECTORY_MIN_HEIGHT),
+      };
+    case 'task':
+      return { ...item, isHandle: undefined, isDirectory: undefined };
+  }
+};
 
 const normalizeTodoItems = (
   value: unknown,
@@ -1451,6 +1471,16 @@ export const useAppStore = create<AppState>((set, get) => {
       return {
         todoItems: state.todoItems.map((item) => nodeSet.has(item.id) ? { ...item, color } : item),
         todoEdges: state.todoEdges.map((edge) => edgeSet.has(edge.id) ? { ...edge, color } : edge),
+      };
+    }),
+    setSelectionNodeType: (nodeIds, type) => persistSet((state: AppState) => {
+      const nodeSet = new Set(nodeIds);
+      return {
+        todoItems: state.todoItems.map((item) => nodeSet.has(item.id) ? applyNodeType(item, type) : item),
+        // HANDLE INVARIANT: a handle can never be an edge target — prune edges pointing at any promoted node.
+        todoEdges: type === 'handle'
+          ? state.todoEdges.filter((edge) => !nodeSet.has(edge.targetItemId))
+          : state.todoEdges,
       };
     }),
     addTodoTimeBlock: (itemId, block) => persistSet((state: AppState) => ({
