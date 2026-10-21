@@ -1,7 +1,0 @@
-{
-  "task_id": "task-board-zones",
-  "task_description": "HEAVY incremental change to the Planner Todo DAG board (TodoPage.tsx BoardCanvas): R1 rename user-facing 分线头→手柄 (label-only, isHandle field unchanged); R2 box-selection color action recoloring selected nodes + edges whose BOTH endpoints are selected, with persisted TodoEdge.color; R3 new-node defaults = directory min width (176) × directory min height×2 (96); R4 new persisted todoZones entity (create/update/delete/move) rendered below nodes/edges, geometric non-persisted membership, zone-drag translates (geometric members)∪(branch-lines of handles inside) as one undo step while handle-drag does not move the zone, delete removes only the block; R5 editable top-left name badge same color as zone. Implements the APPROVED design at .agents/tasks/design.md.",
-  "status": "completed",
-  "feature_order": ["FEAT-001", "FEAT-002", "FEAT-003"],
-  "blocked_reason": null
-}
