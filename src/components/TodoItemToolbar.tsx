@@ -2,6 +2,11 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, Flag, FolderInput, Link2, Link2Off, ListTodo, Trash2 } from 'lucide-react';
 import { useAppStore } from '../store';
+import { ColorPicker } from './ColorPicker';
+
+const BOARD_COLOR_HEX: Record<string, string> = {
+  emerald: '#67c8bd', rose: '#d78fb5', sky: '#79bfd5', amber: '#d9b958', violet: '#9b8ae4', indigo: '#9387d1',
+};
 
 export const TodoItemToolbarHost: React.FC<{
   itemId: string;
@@ -14,6 +19,7 @@ export const TodoItemToolbarHost: React.FC<{
 }> = ({ itemId, open, anchor, pointerX, onClose, showDirectoryToggle = false, showHandleToggle = false }) => {
   const item = useAppStore((state) => state.todoItems.find((candidate) => candidate.id === itemId));
   const remove = useAppStore((state) => state.removeTodoItem);
+  const updateItem = useAppStore((state) => state.updateTodoItem);
   const toggleDirectory = useAppStore((state) => state.toggleTodoItemDirectory);
   const toggleHandle = useAppStore((state) => state.toggleTodoItemHandle);
   const toggleMainReference = useAppStore((state) => state.toggleTodoItemMainReference);
@@ -121,6 +127,13 @@ export const TodoItemToolbarHost: React.FC<{
             ) : null}
           </div>
         )}
+        <div className="w-24">
+          <ColorPicker
+            label="颜色"
+            value={(item.color && /^#[0-9a-f]{6}$/i.test(item.color)) ? item.color : (BOARD_COLOR_HEX[item.color || ''] || '#9387D1')}
+            onChange={(color) => updateItem(item.id, { color })}
+          />
+        </div>
         <button
           type="button"
           onClick={() => {

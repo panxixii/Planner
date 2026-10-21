@@ -760,14 +760,14 @@ const BoardNode = React.memo(({ id, data, selected }: NodeProps<Node<BoardNodeDa
   const borderColor = mixWithWhite(color, 0.34);
   return <div
     ref={nodeRef}
-    className={`group relative flex h-full min-h-10 w-full items-center border shadow-md transition-colors px-4 py-2 ${data.isHandle ? 'rounded-xl justify-start border-2 border-dashed border-violet-400 bg-violet-50/90' : data.isDirectory ? 'rounded-xl justify-start' : 'rounded-[999px] justify-center'} ${data.done && !data.isDirectory && !data.isHandle ? 'border-neutral-300 bg-neutral-100/90' : ''} ${editing ? 'nodrag' : ''}`}
-    style={data.isHandle ? undefined : data.isDirectory ? { backgroundColor: surface, borderColor: selected ? color : borderColor } : data.done ? undefined : { borderColor: color }}
+    className={`group relative flex h-full min-h-10 w-full items-center justify-start rounded-xl border shadow-md transition-colors px-4 py-2 ${data.done && !data.isDirectory && !data.isHandle ? 'border-neutral-300 bg-neutral-100/90' : ''} ${editing ? 'nodrag' : ''}`}
+    style={data.done && !data.isDirectory && !data.isHandle ? undefined : { backgroundColor: surface, borderColor: selected ? color : borderColor }}
     onClick={(event) => { if (editing) return; if ((event.target as HTMLElement).closest('button, [role="toolbar"]')) return; handleClick(event); }}
     onDoubleClick={(event) => { if ((event.target as HTMLElement).closest('button')) return; cancel(); setToolbarOpen(false); setEditing(true); }}
     title={editing ? undefined : '单击显示操作，双击编辑'}>
     <NodeResizer isVisible={selected} minWidth={128} minHeight={40} maxWidth={Number.POSITIVE_INFINITY} maxHeight={180} color={color} handleStyle={{ width: 8, height: 8, borderRadius: 3 }} onResizeEnd={(_event, params) => update(data.itemId, { width: params.width, height: params.height })} />
     {data.isHandle ? null : <Handle type="target" position={Position.Left} className="!h-2.5 !w-2.5 !border-2 !border-white !bg-purple-400" />}
-    {data.isDirectory && !data.isHandle ? <span className="absolute inset-y-2 left-1.5 w-1 rounded-full" style={{ backgroundColor: color }} /> : null}
+    <span className="absolute inset-y-2 left-1.5 w-1 rounded-full" style={{ backgroundColor: color }} />
     <div className="flex w-full items-center gap-2">
       {data.isHandle ? <Flag className="h-3.5 w-3.5 shrink-0 text-violet-500" /> : <TodoCheckbox done={data.done} onClick={() => toggle(data.itemId)} />}
       <input

@@ -196,8 +196,8 @@ export const THEME_COLOR = '#8D78D5';        // zone default (brand purple) — 
 export const LEGACY_EDGE_COLOR = '#9B8AE4';  // edge default when color undefined — UPPERCASE to match ColorPicker output
 const DIRECTORY_MIN_WIDTH = 176;
 const DIRECTORY_MIN_HEIGHT = 48;
-const NODE_DEFAULT_WIDTH = DIRECTORY_MIN_WIDTH;        // 176
-const NODE_DEFAULT_HEIGHT = DIRECTORY_MIN_HEIGHT * 2;  // 96
+const NODE_DEFAULT_WIDTH = DIRECTORY_MIN_WIDTH;        // 176 — same as directory
+const NODE_DEFAULT_HEIGHT = DIRECTORY_MIN_HEIGHT;      // 48 — same as directory
 
 // Pure per-item node-type transform. Owns the field-level invariants (handle ⟂ directory
 // mutual exclusion, directory size clamp); cross-entity effects (incoming-edge pruning for

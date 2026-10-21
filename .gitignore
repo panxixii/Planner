@@ -6,6 +6,3 @@ coverage/
 *.log
 .env*
 !.env.example
-# Workflow agent artifacts
-.agents/
-.worktrees/
