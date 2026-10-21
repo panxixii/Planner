@@ -20,6 +20,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import { CalendarDays, Check, CircleDot, Columns3, Flag, GitBranch, GripVertical, Link2, List, Maximize, MousePointer2, Pipette, Plus, Scan, Trash2, ZoomIn, ZoomOut } from 'lucide-react';
 import { useAppStore } from '../store';
+import { withAlpha } from '../colorUtils';
 import { isUpcomingTodayScheduleItem } from '../taskTimeBlocks';
 import { buildTodoGraph, computeVisibleItemIds, reachableFrom } from '../todoBranchLines';
 import type { TodoEdge, TodoItem, TodoLane, TodoLaneSection } from '../types';
@@ -41,15 +42,6 @@ const TodoCheckbox: React.FC<{ done: boolean; onClick: () => void }> = ({ done, 
     <Check className="h-3 w-3 stroke-[3]" />
   </button>
 );
-
-const withAlpha = (hex: string, alpha: number) => {
-  const cleaned = hex.replace('#', '');
-  const full = cleaned.length === 3 ? cleaned.split('').map((character) => character + character).join('') : cleaned;
-  const r = Number.parseInt(full.slice(0, 2), 16);
-  const g = Number.parseInt(full.slice(2, 4), 16);
-  const b = Number.parseInt(full.slice(4, 6), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-};
 
 const normalizeHex = (value: string) => {
   const cleaned = value.trim().replace(/^#/, '');

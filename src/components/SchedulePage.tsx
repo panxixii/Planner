@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, ChevronLeft, ChevronRight, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { useAppStore } from '../store';
+import { withAlpha } from '../colorUtils';
 import { formatLocalDateTime, getTaskBlockTimestamps, parseTaskTime } from '../taskTimeBlocks';
 import type { TodoItem } from '../types';
 import { ColorPicker } from './ColorPicker';
@@ -212,14 +213,6 @@ const eventColor = (color?: string) => {
   if (/^#[0-9a-f]{6}$/i.test(color)) return color;
   return COLORS.indigo;
 };
-const withAlpha = (hex: string, alpha: number) => {
-  const cleaned = hex.replace('#', '');
-  const r = Number.parseInt(cleaned.slice(0, 2), 16);
-  const g = Number.parseInt(cleaned.slice(2, 4), 16);
-  const b = Number.parseInt(cleaned.slice(4, 6), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-};
-
 /** Monday-based week start (Feishu CN default). */
 const startOfWeek = (timestamp: number) => {
   const date = new Date(startOfDay(timestamp));
