@@ -267,6 +267,7 @@ const normalizeTodoItems = (
       progressStatus: item.progressStatus === 'in-progress' ? 'in-progress' : item.progressStatus === 'not-started' ? 'not-started' : item.progressStatus === 'cancelled' ? 'cancelled' : undefined,
       isDirectory: item.isDirectory === true ? true : undefined,
       isHandle: item.isHandle === true ? true : undefined,
+      isCollapsed: item.isCollapsed === true ? true : undefined,
       referencedLaneIds: Array.isArray(item.referencedLaneIds)
         ? item.referencedLaneIds.filter((id: unknown): id is string => typeof id === 'string')
         : undefined,
@@ -1421,6 +1422,9 @@ export const useAppStore = create<AppState>((set, get) => {
         todoEdges: makingHandle ? state.todoEdges.filter((edge) => edge.targetItemId !== itemId) : state.todoEdges,
       };
     }),
+    toggleTodoItemCollapsed: (itemId) => persistSet((state: AppState) => ({
+      todoItems: state.todoItems.map((item) => item.id === itemId ? { ...item, isCollapsed: !item.isCollapsed } : item),
+    })),
     removeTodoItem: (itemId) => persistSet((state: AppState) => {
       return {
         todoItems: state.todoItems.filter((item) => item.id !== itemId),

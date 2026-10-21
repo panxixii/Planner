@@ -18,7 +18,7 @@ import {
   applyNodeChanges,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { CalendarDays, Check, CircleDot, Columns3, Flag, GitBranch, GripVertical, Hand, Link2, List, Maximize, Pipette, Plus, Scan, Trash2, ZoomIn, ZoomOut } from 'lucide-react';
+import { CalendarDays, Check, ChevronDown, ChevronRight, CircleDot, Columns3, Flag, GitBranch, GripVertical, Hand, Link2, List, Maximize, Pipette, Plus, Scan, Trash2, ZoomIn, ZoomOut } from 'lucide-react';
 import { useAppStore, LEGACY_EDGE_COLOR } from '../store';
 import { withAlpha } from '../colorUtils';
 import { computeZoneMoveSet, selectionBounds } from '../boardZones';
@@ -732,7 +732,7 @@ const LaneBandsLayer: React.FC<{
   </>;
 };
 
-interface BoardNodeData extends Record<string, unknown> { itemId: string; text: string; done: boolean; color?: string; progressStatus?: 'not-started' | 'in-progress' | 'cancelled'; isDirectory?: boolean; isHandle?: boolean }
+interface BoardNodeData extends Record<string, unknown> { itemId: string; text: string; done: boolean; color?: string; progressStatus?: 'not-started' | 'in-progress' | 'cancelled'; isDirectory?: boolean; isHandle?: boolean; isCollapsed?: boolean; hasChildren?: boolean }
 
 const boardColors: Record<string, string> = {
   emerald: '#67c8bd', rose: '#d78fb5', sky: '#79bfd5', amber: '#d9b958', violet: '#9b8ae4', indigo: '#9387d1',
@@ -747,6 +747,7 @@ const mixWithWhite = (hex: string, ratio: number) => {
 const BoardNode = React.memo(({ id, data, selected }: NodeProps<Node<BoardNodeData>>) => {
   const update = useAppStore((state) => state.updateTodoItem);
   const toggle = useAppStore((state) => state.toggleTodoItemDone);
+  const toggleCollapsed = useAppStore((state) => state.toggleTodoItemCollapsed);
   const [toolbarOpen, setToolbarOpen] = useState(false);
   const [pointerX, setPointerX] = useState<number | undefined>(undefined);
   const [editing, setEditing] = useState(false);
@@ -790,6 +791,18 @@ const BoardNode = React.memo(({ id, data, selected }: NodeProps<Node<BoardNodeDa
       {data.isHandle ? null : <TodoStatusBadge itemId={data.itemId} compact />}
     </div>
     <Handle type="source" position={Position.Right} className="!h-2.5 !w-2.5 !border-2 !border-white" style={{ backgroundColor: color }} />
+    {data.isDirectory && !data.isHandle && data.hasChildren ? (
+      <button
+        type="button"
+        onClick={(event) => { event.preventDefault(); event.stopPropagation(); toggleCollapsed(data.itemId); }}
+        onDoubleClick={(event) => event.stopPropagation()}
+        className="nodrag nopan absolute -bottom-7 left-1/2 z-20 flex h-5 w-5 -translate-x-1/2 items-center justify-center rounded-full border border-white bg-neutral-500 text-white shadow-sm hover:bg-purple-600"
+        title={data.isCollapsed ? '展开全部子节点' : '折叠全部子节点'}
+        aria-label={data.isCollapsed ? '展开全部子节点' : '折叠全部子节点'}
+      >
+        {data.isCollapsed ? <ChevronRight className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+      </button>
+    ) : null}
     <TodoItemToolbarHost itemId={data.itemId} open={toolbarOpen} anchor={nodeRef.current} pointerX={pointerX} onClose={() => setToolbarOpen(false)} showDirectoryToggle showHandleToggle />
   </div>;
 });
@@ -908,10 +921,29 @@ const BoardCanvas: React.FC<{ visibleItemIds: Set<string> | null }> = ({ visible
   const suppressCreateRef = useRef(false);
   const [canvasTool, setCanvasTool] = useState<'pan' | 'select'>('select');
   const mainLaneId = allLanes.find((l) => l.type === 'main')?.id ?? 'todo-main';
+  // Nodes hidden because an ancestor directory is collapsed: union of every collapsed
+  // directory's forward-reachable descendants (the directory itself stays visible).
+  const collapsedHiddenIds = useMemo(() => {
+    const { outgoing } = buildTodoGraph(allItems, allEdges);
+    const hidden = new Set<string>();
+    for (const it of allItems) {
+      if (it.isDirectory !== true || it.isCollapsed !== true) continue;
+      const reach = reachableFrom(it.id, outgoing);
+      reach.delete(it.id);
+      reach.forEach((descId) => hidden.add(descId));
+    }
+    return hidden;
+  }, [allItems, allEdges]);
   const items = useMemo(() => allItems.filter((item) => (
-    visibleItemIds === null || visibleItemIds.has(item.id)
-  )), [allItems, visibleItemIds]);
-  const nodes = useMemo<Node<BoardNodeData>[]>(() => items.map((item) => ({ id: item.id, type: 'todoNode', position: item.position, width: item.width, height: item.height, zIndex: 1, data: { itemId: item.id, text: item.text, done: item.isDone, color: item.color, progressStatus: item.progressStatus, isDirectory: item.isDirectory, isHandle: item.isHandle } })), [items]);
+    (visibleItemIds === null || visibleItemIds.has(item.id)) && !collapsedHiddenIds.has(item.id)
+  )), [allItems, visibleItemIds, collapsedHiddenIds]);
+  // Node ids that have at least one outgoing edge (i.e. have child/descendant nodes).
+  const nodesWithChildren = useMemo(() => {
+    const set = new Set<string>();
+    for (const edge of allEdges) set.add(edge.sourceItemId);
+    return set;
+  }, [allEdges]);
+  const nodes = useMemo<Node<BoardNodeData>[]>(() => items.map((item) => ({ id: item.id, type: 'todoNode', position: item.position, width: item.width, height: item.height, zIndex: 1, data: { itemId: item.id, text: item.text, done: item.isDone, color: item.color, progressStatus: item.progressStatus, isDirectory: item.isDirectory, isHandle: item.isHandle, isCollapsed: item.isCollapsed, hasChildren: nodesWithChildren.has(item.id) } })), [items, nodesWithChildren]);
   // Zones are not todo items -> never affected by the branch filter; always render.
   const zoneNodes = useMemo<Node<ZoneNodeData>[]>(() => todoZones.map((zone) => ({ id: zone.id, type: 'zoneNode', position: { x: zone.x, y: zone.y }, width: zone.width, height: zone.height, zIndex: 0, selectable: false, draggable: true, connectable: false, data: { zoneId: zone.id } })), [todoZones]);
   const edges = useMemo<Edge[]>(() => allEdges.filter((edge) => visibleItemIds === null || (visibleItemIds.has(edge.sourceItemId) && visibleItemIds.has(edge.targetItemId))).map((edge) => ({ id: edge.id, source: edge.sourceItemId, target: edge.targetItemId, type: 'bezier', color: edge.color, style: { stroke: edge.color || LEGACY_EDGE_COLOR, strokeWidth: 2 }, interactionWidth: 24, zIndex: 2 })), [allEdges, visibleItemIds]);
@@ -1045,6 +1077,17 @@ const BoardCanvas: React.FC<{ visibleItemIds: Set<string> | null }> = ({ visible
   const applySelectionColor = useCallback((color: string) => setSelectionColor([...selectedNodeIds], selectedEdgeIds, color), [setSelectionColor, selectedNodeIds, selectedEdgeIds]);
   const applySelectionNodeType = useCallback((type: NodeType) => setSelectionNodeType([...selectedNodeIds], type), [setSelectionNodeType, selectedNodeIds]);
   const createZoneFromSelection = useCallback(() => { if (selectionZoneBounds) createTodoZone(selectionZoneBounds); }, [createTodoZone, selectionZoneBounds]);
+  // Double-click on empty pane creates a node. Using the DOM dblclick is reliable even
+  // when selectionOnDrag swallows React Flow's onPaneClick.
+  const handlePaneDoubleClick = useCallback((event: React.MouseEvent) => {
+    if (suppressCreateRef.current) return;
+    const target = event.target as HTMLElement;
+    // Only when the double-click lands on the empty canvas (pane / background), not a node/edge/control.
+    if (!target.closest('.react-flow__pane') || target.closest('.react-flow__node, .react-flow__edge, button, [role="toolbar"], input, textarea')) return;
+    const position = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+    const itemId = create(mainLaneId, '新待办');
+    if (itemId) update(itemId, { position: { x: position.x - 80, y: position.y - 24 } });
+  }, [create, mainLaneId, screenToFlowPosition, update]);
   const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
     const target = event.target as HTMLElement;
     if (target.closest('input, textarea, select, [contenteditable="true"]')) return;
@@ -1072,7 +1115,7 @@ const BoardCanvas: React.FC<{ visibleItemIds: Set<string> | null }> = ({ visible
       <button type="button" onClick={() => fitView({ padding: 0.25, duration: 400 })} className="flex h-8 items-center gap-1 rounded-lg bg-purple-50 px-2 text-[11px] font-semibold text-purple-600 hover:bg-purple-100" title="适应视图"><Maximize className="h-3.5 w-3.5" /></button>
       <button type="button" onClick={() => zoomIn()} className="flex h-8 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-neutral-600 hover:bg-purple-50" title="放大"><ZoomIn className="h-3.5 w-3.5" /></button>
     </div>
-    <ReactFlow nodes={localNodes} edges={edges} nodeTypes={nodeTypes} onNodesChange={onNodesChange} onNodeDragStart={onNodeDragStart} onNodeDrag={onNodeDrag} onNodeDragStop={onNodeDragStop} onConnect={connect} onConnectStart={() => { suppressCreateRef.current = true; }} onConnectEnd={() => { window.setTimeout(() => { suppressCreateRef.current = false; }, 200); }} onEdgeDoubleClick={(_event, edge) => removeEdge(edge.id)} onPaneClick={(event) => { if (event.detail !== 2 || suppressCreateRef.current) return; const position = screenToFlowPosition({ x: event.clientX, y: event.clientY }); /* laneId is a hint only; addTodoEdge resolves the real lane from the endpoints */ const itemId = create(mainLaneId, '新待办'); if (itemId) update(itemId, { position: { x: position.x - 80, y: position.y - 24 } }); }} zoomOnDoubleClick={false} selectionOnDrag={canvasTool === 'select'} selectionMode={SelectionMode.Partial} panOnDrag={canvasTool === 'pan' ? [0, 1, 2] : [1, 2]} panOnScroll zoomOnPinch zoomOnScroll={false} nodesDeletable={false} deleteKeyCode={null} fitView minZoom={0.15} maxZoom={1.5} connectionRadius={28} connectionLineType={ConnectionLineType.Bezier} connectionLineStyle={{ stroke: '#9b8ae4', strokeWidth: 2 }}>
+    <ReactFlow nodes={localNodes} edges={edges} nodeTypes={nodeTypes} onNodesChange={onNodesChange} onNodeDragStart={onNodeDragStart} onNodeDrag={onNodeDrag} onNodeDragStop={onNodeDragStop} onConnect={connect} onConnectStart={() => { suppressCreateRef.current = true; }} onConnectEnd={() => { window.setTimeout(() => { suppressCreateRef.current = false; }, 200); }} onEdgeDoubleClick={(_event, edge) => removeEdge(edge.id)} onDoubleClick={handlePaneDoubleClick} zoomOnDoubleClick={false} selectionOnDrag={canvasTool === 'select'} selectionMode={SelectionMode.Partial} panOnDrag={canvasTool === 'pan' ? [0, 1, 2] : [1, 2]} panOnScroll zoomOnPinch zoomOnScroll={false} nodesDeletable={false} deleteKeyCode={null} fitView minZoom={0.15} maxZoom={1.5} connectionRadius={28} connectionLineType={ConnectionLineType.Bezier} connectionLineStyle={{ stroke: '#9b8ae4', strokeWidth: 2 }}>
       <Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="#d9ddea" />
     </ReactFlow>
   </div>;

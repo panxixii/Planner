@@ -34,7 +34,7 @@ const ZoneToolbarHost: React.FC<{
   return createPortal(
     <>
       <button type="button" className="fixed inset-0 z-[190] cursor-default" onClick={onClose} aria-label="关闭分区操作" />
-      <div role="toolbar" aria-label="分区操作" className="fixed z-[200] flex -translate-x-1/2 items-center gap-1.5 rounded-lg border border-neutral-200 bg-white p-1.5 shadow-lg" style={{ top: pos.top, left: pos.left }}>
+      <div role="toolbar" aria-label="分区操作" className="planner-zone-toolbar fixed z-[200] flex -translate-x-1/2 items-center gap-1.5 rounded-lg border border-neutral-200 bg-white p-1.5 shadow-lg" style={{ top: pos.top, left: pos.left }}>
         <ColorPicker label="颜色" value={zone.color} onChange={(color) => updateZone(zoneId, { color })} />
         <button
           type="button"
@@ -72,6 +72,18 @@ export const ZoneNode = React.memo(({ data }: NodeProps<Node<ZoneNodeData>>) => 
     inputRef.current?.focus();
     inputRef.current?.select();
   }, [isEditing]);
+
+  // Close the toolbar when a pointer-down lands outside this zone and outside the toolbar.
+  useEffect(() => {
+    if (!toolbarOpen) return undefined;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target && (target.closest('.planner-zone-toolbar') || nodeRef.current?.contains(target))) return;
+      setToolbarOpen(false);
+    };
+    window.addEventListener('pointerdown', onPointerDown, true);
+    return () => window.removeEventListener('pointerdown', onPointerDown, true);
+  }, [toolbarOpen]);
 
   if (!zone) return null;
 

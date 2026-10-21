@@ -123,6 +123,7 @@ export interface TodoItem {
   progressStatus?: 'not-started' | 'in-progress' | 'cancelled'; // Board column; isDone wins as completed, cancelled mirrors its visuals.
   isDirectory?: boolean; // Board node renders as a directory-style card when true.
   isHandle?: boolean; // Board node is a 分线头 (branch-line handle): the head of a branch-line, never an edge target.
+  isCollapsed?: boolean; // Directory node: when true, all forward-reachable descendant nodes are hidden on the board.
   referencedLaneIds?: string[]; // Extra lanes that mirror this item (reference display).
   originLaneId?: string; // Lane this item was dragged from into the main lane; drives the path hint.
   startTime?: string; // YYYY-MM-DD display range start.
@@ -237,6 +238,7 @@ export interface AppState {
   toggleTodoItemDone: (itemId: string) => void;
   toggleTodoItemDirectory: (itemId: string) => void;
   toggleTodoItemHandle: (itemId: string) => void;
+  toggleTodoItemCollapsed: (itemId: string) => void;
   removeTodoItem: (itemId: string) => void;
   addTodoEdge: (laneId: string, sourceItemId: string, targetItemId: string) => void;
   removeTodoEdge: (edgeId: string) => void;

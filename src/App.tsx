@@ -133,24 +133,16 @@ export default function App() {
                   </button>
                   {isTodo && todoNavOpen ? (
                     <div className="mt-1 pl-3.5" aria-label="分线筛选">
-                      <div className="flex items-center gap-1 px-1 pb-1">
-                        <button
-                          type="button"
-                          onClick={() => setBranchFilter(null)}
-                          className="flex h-6 flex-1 items-center justify-center rounded-md border border-neutral-200 bg-neutral-50 text-[10px] font-semibold text-neutral-500 transition-colors hover:bg-purple-50 hover:text-purple-600"
-                          title="全选"
-                        >
-                          全选
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setBranchFilter([])}
-                          className="flex h-6 flex-1 items-center justify-center rounded-md border border-neutral-200 bg-neutral-50 text-[10px] font-semibold text-neutral-500 transition-colors hover:bg-purple-50 hover:text-purple-600"
-                          title="全不选"
-                        >
-                          全不选
-                        </button>
-                      </div>
+                      <label className="flex h-8 w-full cursor-pointer items-center gap-2 rounded-md px-2.5 text-xs font-semibold text-neutral-600 transition-colors hover:bg-neutral-50">
+                        <input
+                          type="checkbox"
+                          checked={branchFilter === null || (heads.length > 0 && heads.every((h) => branchFilter.includes(h.id)))}
+                          onChange={(event) => setBranchFilter(event.target.checked ? null : [])}
+                          className="h-3.5 w-3.5 shrink-0 cursor-pointer accent-purple-500"
+                          aria-label="全选分线"
+                        />
+                        <span>全选</span>
+                      </label>
                       <div className="custom-scrollbar max-h-56 space-y-0.5 overflow-y-auto">
                         {heads.map((head) => {
                           const selected = isHeadSelected(head.id);
@@ -168,9 +160,9 @@ export default function App() {
                               />
                               <button
                                 type="button"
-                                onClick={() => { handleMenuChange('task-pool'); setBranchFilter([head.id]); }}
+                                onClick={() => { handleMenuChange('task-pool'); toggleHead(head.id); }}
                                 className={`min-w-0 flex-1 truncate text-left transition-colors hover:text-neutral-800 ${selected ? 'text-neutral-700' : 'text-neutral-400'}`}
-                                title={`仅显示 ${head.label}`}
+                                title={`切换筛选 ${head.label}`}
                               >
                                 {head.label}
                               </button>
